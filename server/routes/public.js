@@ -1900,7 +1900,8 @@ publicRouter.get(
         return res.status(403).json({ error: "card_payment_not_allowed" });
       }
       const tariffs = db.prepare(`
-        SELECT id, title, limit_minor, transition_cost_text, position
+        SELECT id, title, limit_minor, monthly_limit_minor, per_order_limit_minor,
+          transition_cost_text, position
         FROM card_payment_tariffs
         WHERE active = 1
         ORDER BY position, id
@@ -1946,7 +1947,7 @@ publicRouter.post(
           }
         }
         const tariff = db.prepare(`
-          SELECT id, title, limit_minor
+          SELECT id, title, limit_minor, monthly_limit_minor, per_order_limit_minor
           FROM card_payment_tariffs
           WHERE id = ? AND active = 1
         `).get(tariffId);

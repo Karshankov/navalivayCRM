@@ -23,6 +23,9 @@ const LOGIN_LOCK_MS = 15 * 60_000;
 const LOGIN_MAX_FAILURES = 5;
 const SHIFT_START_MINUTE = 10 * 60;
 const SHIFT_END_MINUTE = 21 * 60 + 15;
+// Сотрудники с этими должностями могут открывать смену в любое время —
+// для тестирования ночных сценариев выдачи заказов (владелец, 2026-10-09).
+const SHIFT_ANY_TIME_POSITIONS = new Set(['тестировщик', 'tester']);
 const SHIFT_SCHEDULER_INTERVAL_MS = 30_000;
 const MAX_IDEMPOTENCY_KEY_LENGTH = 200;
 
@@ -149,6 +152,15 @@ function getShiftWindow(now = new Date()) {
     start,
     end,
   };
+}
+
+function getAnyTimeShiftWindow(now = new Date()) {
+  const window = getShiftWindow(now);
+  const start = now < window.start ? window.start : new Date(now);
+  // 12-часовая смена для тестировочных сценариев: переживает полночь
+  // и не закрывается автозакрытием в 21:15.
+  const end = new Date(start.getTime() + 12 * 60 * 60 * 1000);
+  return { ...window, start, end, minute: 12 * 60 + 60 };
 }
 
 function publicEmployee(row) {
@@ -793,10 +805,20 @@ export function createStaffService(database, {
     now = null,
   } = {}) {
     const openedAt = currentNow(now);
-    const window = getShiftWindow(openedAt);
+    const requestedEmployee = database
+      .prepare('SELECT position FROM employees WHERE id = ? AND active = 1')
+      .get(String(employeeId || ''));
+    const position = String(requestedEmployee?.position || '').trim().toLowerCase();
+    const anyTimeAllowed = SHIFT_ANY_TIME_POSITIONS.has(position);
+    // Для тестировочных должностей окно = любые 12 часов с момента открытия;
+    // для остальных — обычное окно 10:00–21:15 по Минску.
+    const window = anyTimeAllowed
+      ? getAnyTimeShiftWindow(openedAt)
+      : getShiftWindow(openedAt);
     if (
-      window.minute < SHIFT_START_MINUTE ||
-      window.minute >= SHIFT_END_MINUTE
+      !anyTimeAllowed &&
+      (window.minute < SHIFT_START_MINUTE ||
+        window.minute >= SHIFT_END_MINUTE)
     ) {
       throw new StaffServiceError('shift_open_outside_hours', 409, {
         opens_at: window.start.toISOString(),

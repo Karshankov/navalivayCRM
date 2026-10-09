@@ -69,6 +69,7 @@ import {
 } from "../utils/internal-notifications.js";
 import { roundMoney } from "../utils/money.js";
 import {
+  forceIssueCardPayment,
   issueCardOrder,
   reverseCardOrder,
 } from "../utils/card-payment-service.js";
@@ -2299,15 +2300,38 @@ crmOperationsRouter.post(
         `).get(id);
 
         if (payment_type === "card") {
-          if (!reservedCard || Number(reservedCard.amount_minor || 0) <= 0) {
-            throw new StaffServiceError("card_reservation_not_found", 409);
+          if (reservedCard && Number(reservedCard.amount_minor || 0) > 0) {
+            // Заказ оформлялся как карточный: резерва хватает, проводим его.
+            const cardAmount = Number(reservedCard.amount_minor) / 100;
+            cashAmount = Math.max(0, totalAmount - cardAmount);
+            if (cashAmount > 0 && !account) {
+              throw new StaffServiceError("payment_account_required", 400);
+            }
+            issueCardOrder(id, new Date());
+          } else {
+            // Принудительная оплата картой: клиент платит картой по решению
+            // магазина, хотя заказ оформлялся за наличные и карты может не
+            // быть разрешено. Списываем с дневного и месячного лимита,
+            // ставим паузу аккаунту. Личные лимиты не проверяем — это
+            // осознанное решение менеджера (войти в положение клиента).
+            const customerRow = freshOrder.customer_id
+              ? db.prepare("SELECT telegram_id FROM customers WHERE id = ?").get(freshOrder.customer_id)
+              : null;
+            const customerTelegramId = String(
+              customerRow?.telegram_id || "",
+            ).trim();
+            if (!customerTelegramId) {
+              throw new StaffServiceError("customer_telegram_id_required", 400);
+            }
+            forceIssueCardPayment({
+              orderId: id,
+              telegramId: customerTelegramId,
+              amountMinor: Math.round(totalAmount * 100),
+              note: payment_notes || null,
+              actorUsername: req.user?.u || "admin",
+            });
+            cashAmount = 0;
           }
-          const cardAmount = Number(reservedCard.amount_minor) / 100;
-          cashAmount = Math.max(0, totalAmount - cardAmount);
-          if (cashAmount > 0 && !account) {
-            throw new StaffServiceError("payment_account_required", 400);
-          }
-          issueCardOrder(id, new Date());
         } else if (reservedCard) {
           // A seller may convert a card reservation to cash before issue.
           reverseCardOrder(id, new Date());

@@ -15,6 +15,8 @@ const crmStoreMock = vi.hoisted(() => ({
   updateCardRequest: vi.fn(async () => undefined),
   saveCardTariff: vi.fn(async () => undefined),
   deleteCardTariff: vi.fn(async () => undefined),
+  applyCardTariff: vi.fn(async () => undefined),
+  approveCardRequest: vi.fn(async () => undefined),
 }));
 
 vi.mock("@/stores/crm", () => ({
@@ -90,6 +92,11 @@ function snapshotFixture() {
         monthly_limit_minor: 25000,
         cooldown_started_at: "2026-10-08T13:53:51.410Z",
         last_issued_at: "2026-10-08T13:53:51.410Z",
+        tariff_id: "t1",
+        tariff_title: "Максимум",
+        tariff_monthly_limit_minor: 35000,
+        tariff_per_order_limit_minor: 6000,
+        tariff_transition_cost_text: "35 BYN",
       },
       {
         telegram_id: "100002",
@@ -99,22 +106,32 @@ function snapshotFixture() {
         monthly_limit_minor: 25000,
         cooldown_started_at: null,
         last_issued_at: null,
+        tariff_id: null,
+        tariff_title: null,
+        tariff_monthly_limit_minor: null,
+        tariff_per_order_limit_minor: null,
+        tariff_transition_cost_text: null,
       },
     ],
     pending_accounts: [
       { telegram_username: "carol", enabled: 1, max_order_minor: 4500, monthly_limit_minor: 25000 },
     ],
     tariffs: [
-      { id: "t1", title: "Максимум", limit_minor: 13000, transition_cost_text: null, position: 0, active: 1 },
+      { id: "t1", title: "Максимум", limit_minor: 13000, monthly_limit_minor: 35000, per_order_limit_minor: 6000, transition_cost_text: "35 BYN", position: 0, active: 1 },
+      { id: "t2", title: "Архивный", limit_minor: 5000, monthly_limit_minor: 5000, per_order_limit_minor: 4500, transition_cost_text: null, position: 1, active: 0 },
     ],
     requests: [
       {
         id: "r1",
         telegram_id: "100001",
         telegram_username: "alice",
+        tariff_id: "t1",
         tariff_title: "Максимум",
         current_limit_minor: 4500,
         requested_limit_minor: 13000,
+        tariff_transition_cost_text: "35 BYN",
+        tariff_monthly_limit_minor: 35000,
+        tariff_per_order_limit_minor: 6000,
         status: "new",
         created_at: "2026-10-08T00:03:11Z",
         resolved_by: null,
@@ -218,7 +235,7 @@ describe("CardPaymentsModal — вкладки и сводка", () => {
     await requestsTab.trigger("click");
     expect(wrapper.text()).toContain("Новых: 1");
     expect(wrapper.text()).toContain("@alice");
-    expect(wrapper.text()).toContain("45.00 BYN → 130.00 BYN");
+    expect(wrapper.text()).toContain("Тариф «Максимум»");
   });
 });
 
@@ -264,7 +281,7 @@ describe("CardPaymentsModal — аккаунты", () => {
     expect(crmStoreMock.updateCardAccount).toHaveBeenCalledWith("100001", { max_order: 60 });
   });
 
-  it("форма добавления аккаунта требует @username", async () => {
+  it("форма добавления аккаунта требует только @username, без лимитов", async () => {
     const wrapper = mountModal();
     await openAccounts(wrapper);
     await wrapper.find("form").trigger("submit");
@@ -272,12 +289,83 @@ describe("CardPaymentsModal — аккаунты", () => {
     expect(wrapper.text()).toContain("Укажите @username клиента.");
     await wrapper.find('input[aria-label="Telegram username без собаки"]').setValue("@newbie");
     await wrapper.find("form").trigger("submit");
+    // Лимиты не передаются: сервер выдаёт стандартные 250 BYN/мес и 45 BYN на заказ.
     expect(crmStoreMock.saveCardAccount).toHaveBeenCalledWith({
       telegram_username: "newbie",
-      monthly_limit: 250,
-      max_order: 45,
       enabled: true,
     });
+  });
+
+  it("в форме нет полей ручного ввода лимитов", async () => {
+    const wrapper = mountModal();
+    await openAccounts(wrapper);
+    expect(wrapper.find('input[aria-label="Месячный лимит аккаунта BYN"]').exists()).toBe(false);
+    expect(wrapper.find('input[aria-label="Лимит одного заказа BYN"]').exists()).toBe(false);
+    expect(wrapper.text()).toContain("250 BYN/мес");
+  });
+});
+
+describe("CardPaymentsModal — тарифы и заявки", () => {
+  it("карточка аккаунта показывает тариф и селектор с активными тарифами", async () => {
+    const wrapper = mountModal();
+    const tab = wrapper.findAll("nav button").find((b) => b.text().includes("Аккаунты"))!;
+    await tab.trigger("click");
+    const select = wrapper.find('select[aria-label="Тариф для alice"]');
+    expect(select.exists()).toBe(true);
+    expect(select.element.value).toBe("t1");
+    const options = select.findAll("option");
+    expect(options.map((o) => o.text())).toEqual([
+      "Стандарт (250/45 BYN)",
+      "Максимум · 350/60 BYN",
+    ]);
+    // Неактивный тариф не показывается в селекторе
+    expect(options.some((o) => o.text().includes("Архивный"))).toBe(false);
+  });
+
+  it("смена тарифа в селекторе вызывает applyCardTariff", async () => {
+    const wrapper = mountModal();
+    const tab = wrapper.findAll("nav button").find((b) => b.text().includes("Аккаунты"))!;
+    await tab.trigger("click");
+    const select = wrapper.find('select[aria-label="Тариф для alice"]');
+    await select.setValue("");
+    expect(crmStoreMock.applyCardTariff).toHaveBeenCalledWith("100001", null);
+    await select.setValue("t1");
+    expect(crmStoreMock.applyCardTariff).toHaveBeenCalledWith("100001", "t1");
+  });
+
+  it("заявка показывает тариф, стоимость и лимиты тарифа", async () => {
+    const wrapper = mountModal();
+    const tab = wrapper.findAll("nav button").find((b) => b.text().includes("Заявки"))!;
+    await tab.trigger("click");
+    expect(wrapper.text()).toContain("Тариф «Максимум»");
+    expect(wrapper.text()).toContain("стоимость: 35 BYN");
+    expect(wrapper.text()).toContain("350.00 BYN/мес");
+    expect(wrapper.text()).toContain("60.00 BYN/заказ");
+  });
+
+  it("кнопка «Одобрить» вызывает approveCardRequest", async () => {
+    const wrapper = mountModal();
+    const tab = wrapper.findAll("nav button").find((b) => b.text().includes("Заявки"))!;
+    await tab.trigger("click");
+    const approveButton = wrapper
+      .findAll("button")
+      .find((b) => b.text() === "Одобрить");
+    expect(approveButton).toBeTruthy();
+    await approveButton!.trigger("click");
+    expect(crmStoreMock.approveCardRequest).toHaveBeenCalledWith("r1");
+    // Кнопка «Обработана» заменена на «Одобрить»
+    expect(wrapper.findAll("button").some((b) => b.text() === "Обработана")).toBe(false);
+  });
+
+  it("форма тарифа содержит оба лимита", async () => {
+    const wrapper = mountModal();
+    const tab = wrapper.findAll("nav button").find((b) => b.text().includes("Тарифы"))!;
+    await tab.trigger("click");
+    expect(wrapper.text()).toContain("Максимум · 350.00 BYN/мес · 60.00 BYN/заказ");
+    const addButton = wrapper.findAll("button").find((b) => b.text().includes("Добавить"));
+    await addButton!.trigger("click");
+    expect(wrapper.find('input[aria-label="Месячный лимит тарифа BYN"]').exists()).toBe(true);
+    expect(wrapper.find('input[aria-label="Лимит заказа тарифа BYN"]').exists()).toBe(true);
   });
 });
 

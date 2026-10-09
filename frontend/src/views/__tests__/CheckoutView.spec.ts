@@ -516,6 +516,9 @@ describe("CheckoutView order flows", () => {
           enabled: true,
           max_order_minor: 4500,
           card_available: true,
+          monthly_limit_minor: 25000,
+          monthly_used_minor: 14500,
+          monthly_remaining_minor: 10500,
           limits: {
             daily_limit_minor: 25000,
             spent_today_minor: 23500,
@@ -563,9 +566,13 @@ describe("CheckoutView order flows", () => {
     expect(fetchMock.mock.calls.some(([input]) => String(input) === "/api/orders")).toBe(false);
     await wrapper.findAll(".payment-modal button")[1].trigger("click");
     await flushPromises();
-    expect(wrapper.find(".payment-modal").text()).toContain("Остаток дневного лимита — 15.00 BYN");
-    expect(wrapper.find(".payment-modal").text()).toContain("Сумма заказа — 45.00 BYN");
-    expect(wrapper.find(".payment-modal").text()).toContain("Этот заказ можно оплатить картой полностью");
+    // Клиент видит только свой месячный остаток, без дневной механики магазина.
+    expect(wrapper.find(".payment-modal").text()).toContain("Оплата картой доступна");
+    expect(wrapper.find(".payment-modal").text()).toContain("105.00 BYN осталось в этом месяце");
+    expect(wrapper.find(".payment-modal").text()).not.toContain("дневного лимита");
+    expect(wrapper.find(".payment-modal").text()).not.toContain("Лимит на заказ");
+    // 105 из 250 BYN = 42% — жёлтый уровень
+    expect(wrapper.find(".card-status-limit-bar span").attributes("data-level")).toBe("warn");
     expect(wrapper.find(".payment-modal button.checkout-modal-cta").attributes("disabled")).toBeUndefined();
 
     wrapper.unmount();
@@ -641,9 +648,282 @@ describe("CheckoutView order flows", () => {
     await flushPromises();
 
     expect(wrapper.find(".payment-modal").text()).toContain(
-      "Лимит по карте на сегодня уже израсходован. Можно оплатить только наличными.",
+      "Сегодня картой оплатить нельзя",
+    );
+    expect(wrapper.find(".payment-modal").text()).toContain(
+      "Можно оформить заказ за наличные",
     );
     expect(wrapper.find(".payment-modal button.checkout-modal-cta:not(.checkout-modal-cta--dark)").attributes("disabled")).toBeDefined();
+
+    wrapper.unmount();
+  });
+
+  it("shows cooldown days instead of dates when the card is paused", async () => {
+    const cartStore = useCartStore();
+    cartStore.replaceItemsFromOrder([
+      {
+        productId: "p-1",
+        title: "Liquid Cherry",
+        productTitle: "Liquid Cherry",
+        groupName: "Жидкости",
+        priceRub: 15,
+        quantity: 1,
+        image: "/img/liquid.png",
+        variantId: null,
+        variantName: null,
+        groupId: "group-1",
+        categoryId: "cat-1",
+      },
+    ]);
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith("/api/product/")) {
+        return createJsonResponse({ id: "p-1", hasVariants: false, stock: 10 });
+      }
+      if (url === "/api/card-payment/status") {
+        return createJsonResponse({
+          enabled: true,
+          max_order_minor: 4500,
+          card_available: false,
+          cooldown_until: new Date(Date.now() + 3.5 * 86400000).toISOString(),
+          monthly_limit_minor: 25000,
+          monthly_used_minor: 0,
+          monthly_remaining_minor: 25000,
+          limits: {
+            daily_limit_minor: 25000,
+            spent_today_minor: 0,
+            reserved_minor: 0,
+          },
+        });
+      }
+      if (url.startsWith("/api/loyalty/me")) {
+        return createJsonResponse(buildLoyaltySnapshot());
+      }
+      if (url === "/api/loyalty/checkout-preview") {
+        return createJsonResponse(buildLoyaltyPreview(0));
+      }
+      if (url === "/api/agreements") {
+        return createJsonResponse({ items: [] });
+      }
+      if (url === "/api/orders") {
+        return createJsonResponse({ ok: true, id: "order-1" });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const wrapper = mount(CheckoutView, {
+      global: {
+        stubs: {
+          MinDeliveryBanner: { template: "<div />" },
+          DeliveryConditionsBanner: { template: "<div />" },
+          AdminModal: { template: "<div><slot /></div>" },
+          CustomerModalShell: {
+            props: ["open", "title"],
+            template: "<div v-if=\"open\" class=\"payment-modal\"><h2>{{ title }}</h2><slot /><slot name='footer' /></div>",
+          },
+          LoyaltyBonusPopup: { template: "<div />" },
+          CheckoutAgreements: { template: "<div />" },
+        },
+      },
+    });
+
+    await flushPromises();
+    await wrapper.find(".submit-button").trigger("click");
+    await flushPromises();
+
+    // Карта на паузе: окно выбора открывается, кнопка «Картой» серая и неактивна.
+    expect(wrapper.find(".payment-modal").exists()).toBe(true);
+    const cardButton = wrapper.findAll(".payment-modal button")[1];
+    expect(cardButton.attributes("disabled")).toBeDefined();
+    expect(cardButton.classes()).toContain("card-payment-choice--disabled");
+    // Заказ не отправляется, пока клиент сам не подтвердит наличные
+    expect(fetchMock.mock.calls.some(([input]) => String(input) === "/api/orders")).toBe(false);
+
+    wrapper.unmount();
+  });
+
+  it("shows cooldown days instead of dates when the card is paused after opening the choice modal", async () => {
+    const cartStore = useCartStore();
+    cartStore.replaceItemsFromOrder([
+      {
+        productId: "p-1",
+        title: "Liquid Cherry",
+        productTitle: "Liquid Cherry",
+        groupName: "Жидкости",
+        priceRub: 15,
+        quantity: 1,
+        image: "/img/liquid.png",
+        variantId: null,
+        variantName: null,
+        groupId: "group-1",
+        categoryId: "cat-1",
+      },
+    ]);
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith("/api/product/")) {
+        return createJsonResponse({ id: "p-1", hasVariants: false, stock: 10 });
+      }
+      if (url === "/api/card-payment/status") {
+        // Вызов №1 — onMounted (доступно), №2 — beginCheckout (доступно),
+        // №3 — выбор «Картой» в модалке (пауза началась за это время).
+        statusCalls += 1;
+        if (statusCalls <= 2) {
+          return createJsonResponse({
+            enabled: true,
+            max_order_minor: 4500,
+            card_available: true,
+            monthly_limit_minor: 25000,
+            monthly_used_minor: 0,
+            monthly_remaining_minor: 25000,
+            limits: {
+              daily_limit_minor: 25000,
+              spent_today_minor: 0,
+              reserved_minor: 0,
+            },
+          });
+        }
+        return createJsonResponse({
+          enabled: true,
+          max_order_minor: 4500,
+          card_available: false,
+          cooldown_until: new Date(Date.now() + 3.5 * 86400000).toISOString(),
+          monthly_limit_minor: 25000,
+          monthly_used_minor: 0,
+          monthly_remaining_minor: 25000,
+          limits: {
+            daily_limit_minor: 25000,
+            spent_today_minor: 0,
+            reserved_minor: 0,
+          },
+        });
+      }
+      if (url.startsWith("/api/loyalty/me")) {
+        return createJsonResponse(buildLoyaltySnapshot());
+      }
+      if (url === "/api/loyalty/checkout-preview") {
+        return createJsonResponse(buildLoyaltyPreview(0));
+      }
+      if (url === "/api/agreements") {
+        return createJsonResponse({ items: [] });
+      }
+      if (url === "/api/orders") {
+        return createJsonResponse({ ok: true });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    let statusCalls = 0;
+    vi.stubGlobal("fetch", fetchMock);
+
+    const wrapper = mount(CheckoutView, {
+      global: {
+        stubs: {
+          MinDeliveryBanner: { template: "<div />" },
+          DeliveryConditionsBanner: { template: "<div />" },
+          AdminModal: { template: "<div><slot /></div>" },
+          CustomerModalShell: {
+            props: ["open", "title"],
+            template: "<div v-if=\"open\" class=\"payment-modal\"><h2>{{ title }}</h2><slot /><slot name='footer' /></div>",
+          },
+          LoyaltyBonusPopup: { template: "<div />" },
+          CheckoutAgreements: { template: "<div />" },
+        },
+      },
+    });
+
+    await flushPromises();
+    await wrapper.find(".submit-button").trigger("click");
+    await flushPromises();
+    expect(wrapper.find(".payment-modal").exists()).toBe(true);
+    await wrapper.findAll(".payment-modal button")[1].trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find(".payment-modal").text()).toContain("Карта доступна через 4 дня");
+    expect(wrapper.find(".payment-modal").text()).toContain("Пауза после прошлой покупки");
+    expect(wrapper.find(".payment-modal").text()).not.toContain("будет доступна после");
+
+    wrapper.unmount();
+  });
+
+  it("colors the monthly limit bar yellow when remaining is between 20 and 50 percent", async () => {
+    const cartStore = useCartStore();
+    cartStore.replaceItemsFromOrder([
+      {
+        productId: "p-1",
+        title: "Liquid Cherry",
+        productTitle: "Liquid Cherry",
+        groupName: "Жидкости",
+        priceRub: 15,
+        quantity: 1,
+        image: "/img/liquid.png",
+        variantId: null,
+        variantName: null,
+        groupId: "group-1",
+        categoryId: "cat-1",
+      },
+    ]);
+
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith("/api/product/")) {
+        return createJsonResponse({ id: "p-1", hasVariants: false, stock: 10 });
+      }
+      if (url === "/api/card-payment/status") {
+        // 30% из 200 BYN осталось — жёлтый уровень.
+        return createJsonResponse({
+          enabled: true,
+          max_order_minor: 4500,
+          card_available: true,
+          monthly_limit_minor: 20000,
+          monthly_used_minor: 14000,
+          monthly_remaining_minor: 6000,
+          limits: {
+            daily_limit_minor: 25000,
+            spent_today_minor: 0,
+            reserved_minor: 0,
+          },
+        });
+      }
+      if (url.startsWith("/api/loyalty/me")) {
+        return createJsonResponse(buildLoyaltySnapshot());
+      }
+      if (url === "/api/loyalty/checkout-preview") {
+        return createJsonResponse(buildLoyaltyPreview(0));
+      }
+      if (url === "/api/agreements") {
+        return createJsonResponse({ items: [] });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    }));
+
+    const wrapper = mount(CheckoutView, {
+      global: {
+        stubs: {
+          MinDeliveryBanner: { template: "<div />" },
+          DeliveryConditionsBanner: { template: "<div />" },
+          AdminModal: { template: "<div><slot /></div>" },
+          CustomerModalShell: {
+            props: ["open", "title"],
+            template: "<div v-if=\"open\" class=\"payment-modal\"><h2>{{ title }}</h2><slot /><slot name='footer' /></div>",
+          },
+          LoyaltyBonusPopup: { template: "<div />" },
+          CheckoutAgreements: { template: "<div />" },
+        },
+      },
+    });
+
+    await flushPromises();
+    await wrapper.find(".submit-button").trigger("click");
+    await flushPromises();
+    await wrapper.findAll(".payment-modal button")[1].trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find(".payment-modal").text()).toContain("60.00 BYN осталось в этом месяце");
+    expect(wrapper.find(".card-status-limit-bar span").attributes("data-level")).toBe("warn");
+    expect(wrapper.find(".card-status-limit-bar span").attributes("style")).toContain("width: 30%");
 
     wrapper.unmount();
   });

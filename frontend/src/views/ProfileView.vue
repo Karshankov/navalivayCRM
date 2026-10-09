@@ -47,7 +47,9 @@
             <p class="card-limit-eyebrow">СПОСОБ ОПЛАТЫ</p>
             <h2 id="card-limit-title">Лимит по карте</h2>
           </div>
-          <span class="card-limit-status">Разрешена</span>
+          <span class="card-limit-status" :class="{ 'card-limit-status--blocked': isCardPaused }">
+            {{ isCardPaused ? 'На паузе' : 'Разрешена' }}
+          </span>
         </div>
         <div class="card-limit-total">
           {{ formatCardAmount(userStore.cardPaymentStatus.monthly_remaining_minor) }}
@@ -70,10 +72,12 @@
           Лимит одного заказа:
           <strong>{{ formatCardAmount(userStore.cardPaymentStatus.max_order_minor) }} BYN</strong>
         </p>
-        <p v-if="userStore.cardPaymentStatus.cooldown_until" class="card-limit-cooldown">
-          Оплата картой будет доступна через
-          <strong>{{ cardCooldownDaysLeft(userStore.cardPaymentStatus.cooldown_until) }}</strong>.
-        </p>
+        <div v-if="userStore.cardPaymentStatus.cooldown_until" class="card-limit-pause" role="status">
+          <div class="card-limit-pause__row">
+            <strong>Оплата по карте станет доступна {{ formatCardDate(userStore.cardPaymentStatus.cooldown_until) }}</strong>
+          </div>
+          <span class="card-limit-pause__days">({{ cardCooldownDaysLeft(userStore.cardPaymentStatus.cooldown_until) }} до снятия паузы)</span>
+        </div>
         <p v-else-if="userStore.cardPaymentStatus.monthly_remaining_minor <= 0" class="card-limit-cooldown">
           Месячный лимит исчерпан. Он обновится в следующем месяце.
         </p>
@@ -502,6 +506,11 @@ onMounted(async () => {
   ]);
 });
 
+const isCardPaused = computed(() => {
+  const until = userStore.cardPaymentStatus?.cooldown_until
+  return Boolean(until) && new Date(String(until)).getTime() > Date.now()
+})
+
 function formatCardAmount(minor: number) {
   return (Number(minor || 0) / 100).toLocaleString('ru-BY', {
     minimumFractionDigits: 0,
@@ -523,8 +532,13 @@ function formatCardDate(value: string) {
 }
 
 function cardCooldownDaysLeft(value: string) {
-  const milliseconds = Math.max(0, new Date(value).getTime() - Date.now());
-  return `${Math.ceil(milliseconds / 86400000)} ${Math.ceil(milliseconds / 86400000) === 1 ? "день" : "дней"}`;
+  const days = Math.ceil(Math.max(0, new Date(value).getTime() - Date.now()) / 86400000);
+  const mod10 = days % 10;
+  const mod100 = days % 100;
+  let word = "дней";
+  if (mod10 === 1 && mod100 !== 11) word = "день";
+  else if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) word = "дня";
+  return `${days} ${word}`;
 }
 
 async function openCardLimitRequest() {
@@ -927,6 +941,30 @@ async function goShopping() {
 
 .card-limit-breakdown > div:last-child strong {
   color: #16824c;
+}
+
+.card-limit-pause {
+  margin-top: 12px;
+  border: 1px solid #f6c991;
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: #fff4e3;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.card-limit-pause__row strong {
+  color: #9b4a10;
+  font-size: 13px;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.card-limit-pause__days {
+  color: #b06a24;
+  font-size: 11.5px;
+  font-weight: 600;
 }
 
 .card-limit-cooldown {

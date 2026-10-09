@@ -99,12 +99,17 @@ export function getCardAdminSnapshot(referenceDate = new Date()) {
   const limits = getCardLimitSnapshot(referenceDate);
   const accounts = db.prepare(`
     SELECT a.telegram_id, a.telegram_username, a.enabled, a.monthly_limit_minor,
-      a.max_order_minor, a.cooldown_started_at,
+      a.max_order_minor, a.cooldown_started_at, a.tariff_id,
+      tariff.title AS tariff_title,
+      tariff.monthly_limit_minor AS tariff_monthly_limit_minor,
+      tariff.per_order_limit_minor AS tariff_per_order_limit_minor,
+      tariff.transition_cost_text AS tariff_transition_cost_text,
       (SELECT MAX(o.issued_at)
        FROM card_payment_operations o
        WHERE o.customer_telegram_id = a.telegram_id
          AND o.operation_type = 'order' AND o.operation_status = 'spent') AS last_issued_at
     FROM card_payment_accounts a
+    LEFT JOIN card_payment_tariffs tariff ON tariff.id = a.tariff_id
     ORDER BY lower(COALESCE(a.telegram_username, a.telegram_id))
   `).all();
   const pendingAccounts = db.prepare(`
@@ -113,14 +118,20 @@ export function getCardAdminSnapshot(referenceDate = new Date()) {
     ORDER BY telegram_username
   `).all();
   const tariffs = db.prepare(`
-    SELECT id, title, limit_minor, transition_cost_text, position, active
+    SELECT id, title, limit_minor, monthly_limit_minor, per_order_limit_minor,
+      transition_cost_text, position, active
     FROM card_payment_tariffs ORDER BY position, id
   `).all();
   const requests = db.prepare(`
-    SELECT id, telegram_username, tariff_title, current_limit_minor,
-      requested_limit_minor, status, created_at, resolved_by, resolution_note
-    FROM card_payment_limit_requests
-    ORDER BY CASE status WHEN 'new' THEN 0 ELSE 1 END, created_at DESC
+    SELECT r.id, r.telegram_id, r.telegram_username, r.tariff_id, r.tariff_title,
+      r.current_limit_minor, r.requested_limit_minor, r.status, r.created_at,
+      r.resolved_by, r.resolution_note,
+      tariff.transition_cost_text AS tariff_transition_cost_text,
+      tariff.monthly_limit_minor AS tariff_monthly_limit_minor,
+      tariff.per_order_limit_minor AS tariff_per_order_limit_minor
+    FROM card_payment_limit_requests r
+    LEFT JOIN card_payment_tariffs tariff ON tariff.id = r.tariff_id
+    ORDER BY CASE r.status WHEN 'new' THEN 0 ELSE 1 END, r.created_at DESC
     LIMIT 100
   `).all();
   const operations = db.prepare(`
@@ -447,4 +458,151 @@ export function addManualCardOperation({ amountMinor, note = null, actorUsername
     ) VALUES (?, 'manual', 'spent', ?, ?, ?, ?)
   `).run(id, amountMinor, businessDate, note, actorUsername);
   return id;
+}
+
+/**
+ * Применить тариф к аккаунту: обновляет оба лимита и запоминает тариф.
+ * null tariffId = сброс на стандартные лимиты (250/45 BYN).
+ */
+export function applyCardTariffToAccount(telegramId, tariffId, referenceDate = new Date()) {
+  const id = String(telegramId || "").trim();
+  if (!id) throw new Error("invalid_telegram_id");
+  const account = db
+    .prepare("SELECT * FROM card_payment_accounts WHERE telegram_id = ?")
+    .get(id);
+  if (!account) throw new Error("card_account_not_found");
+
+  let monthlyLimitMinor = 25000;
+  let maxOrderMinor = 4500;
+  if (tariffId) {
+    const tariff = db
+      .prepare("SELECT * FROM card_payment_tariffs WHERE id = ?")
+      .get(String(tariffId));
+    if (!tariff) throw new Error("card_tariff_not_found");
+    if (!Number(tariff.active)) throw new Error("card_tariff_inactive");
+    monthlyLimitMinor = Number(tariff.monthly_limit_minor ?? tariff.limit_minor ?? 25000);
+    maxOrderMinor = Number(tariff.per_order_limit_minor ?? 4500);
+    if (monthlyLimitMinor < 0 || maxOrderMinor <= 0) {
+      throw new Error("invalid_tariff_limits");
+    }
+  }
+
+  db.prepare(`
+    UPDATE card_payment_accounts
+    SET monthly_limit_minor = ?, max_order_minor = ?, tariff_id = ?, updated_at = ?
+    WHERE telegram_id = ?
+  `).run(monthlyLimitMinor, maxOrderMinor, tariffId ? String(tariffId) : null, referenceDate.toISOString(), id);
+  return db
+    .prepare("SELECT * FROM card_payment_accounts WHERE telegram_id = ?")
+    .get(id);
+}
+
+/**
+ * Одобрить заявку на увеличение лимита: применяет лимиты тарифа заявки
+ * к аккаунту клиента и переводит заявку в processed. Транзакционно.
+ * Аккаунт включается автоматически, если был выключен — одобренная заявка
+ * сама по себе означает согласие магазина.
+ */
+export function approveCardLimitRequest(requestId, actorUsername = "admin", referenceDate = new Date()) {
+  const request = db
+    .prepare("SELECT * FROM card_payment_limit_requests WHERE id = ?")
+    .get(String(requestId || ""));
+  if (!request) throw new Error("card_request_not_found");
+  if (request.status !== "new") throw new Error("card_request_already_resolved");
+
+  const telegramId = String(request.telegram_id || "").trim();
+  if (!telegramId) throw new Error("card_request_missing_telegram_id");
+
+  const apply = db.transaction(() => {
+    const account = db
+      .prepare("SELECT * FROM card_payment_accounts WHERE telegram_id = ?")
+      .get(telegramId);
+    if (!account) {
+      // Аккаунт мог быть удалён/не создан — создаём по данным заявки.
+      db.prepare(`
+        INSERT INTO card_payment_accounts
+          (telegram_id, telegram_username, enabled, monthly_limit_minor, max_order_minor, cooldown_days)
+        VALUES (?, ?, 1, 25000, 4500, 10)
+      `).run(telegramId, request.telegram_username || null);
+    }
+
+    let monthlyLimitMinor = Number(request.requested_limit_minor || 25000);
+    let maxOrderMinor = 4500;
+    let tariffId = null;
+    if (request.tariff_id) {
+      const tariff = db
+        .prepare("SELECT * FROM card_payment_tariffs WHERE id = ?")
+        .get(String(request.tariff_id));
+      if (tariff) {
+        monthlyLimitMinor = Number(tariff.monthly_limit_minor ?? tariff.limit_minor ?? monthlyLimitMinor);
+        maxOrderMinor = Number(tariff.per_order_limit_minor ?? 4500);
+        tariffId = tariff.id;
+      }
+    }
+
+    db.prepare(`
+      UPDATE card_payment_accounts
+      SET monthly_limit_minor = ?, max_order_minor = ?, tariff_id = ?, enabled = 1, updated_at = ?
+      WHERE telegram_id = ?
+    `).run(monthlyLimitMinor, maxOrderMinor, tariffId, referenceDate.toISOString(), telegramId);
+
+    db.prepare(`
+      UPDATE card_payment_limit_requests
+      SET status = 'processed', resolved_at = ?, resolved_by = ?, resolution_note = ?
+      WHERE id = ?
+    `).run(referenceDate.toISOString(), actorUsername, "Одобрено: лимиты тарифа применены автоматически", String(requestId));
+  });
+  apply();
+  return db
+    .prepare("SELECT * FROM card_payment_limit_requests WHERE id = ?")
+    .get(String(requestId));
+}
+
+/**
+ * Принудительная оплата картой при выдаче (клиент без карты/резерва).
+ * Создаёт операцию spent на бизнес-дату выдачи, ставит паузу аккаунту
+ * (если аккаунт существует) и списывает с дневного/месячного лимита магазина.
+ * Не проверяет разрешения и личные лимиты — это осознанное решение менеджера.
+ */
+export function forceIssueCardPayment({
+  orderId,
+  telegramId,
+  amountMinor,
+  note = null,
+  actorUsername = null,
+  referenceDate = new Date(),
+}) {
+  const id = String(orderId || "").trim();
+  const customerTelegramId = String(telegramId || "").trim();
+  if (!id) throw new Error("invalid_order_id");
+  if (!customerTelegramId) throw new Error("customer_telegram_id_required");
+  const amount = Number(amountMinor);
+  if (!Number.isFinite(amount) || amount <= 0) throw new Error("invalid_amount");
+
+  const businessDate = cardBusinessDateKey(referenceDate);
+  const operationId = `card_forced_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+  db.transaction(() => {
+    db.prepare(`
+      INSERT INTO card_payment_operations (
+        id, operation_type, operation_status, order_id, customer_telegram_id,
+        amount_minor, business_date, note, actor_username, issued_at
+      ) VALUES (?, 'order', 'spent', ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(order_id) DO NOTHING
+    `).run(
+      operationId,
+      id,
+      customerTelegramId,
+      amount,
+      businessDate,
+      note || `Принудительная оплата картой при выдаче${actorUsername ? ` (${actorUsername})` : ""}`,
+      actorUsername,
+      referenceDate.toISOString(),
+    );
+    db.prepare(`
+      UPDATE card_payment_accounts
+      SET cooldown_started_at = ?, updated_at = ?
+      WHERE telegram_id = ?
+    `).run(referenceDate.toISOString(), referenceDate.toISOString(), customerTelegramId);
+  })();
+  return operationId;
 }

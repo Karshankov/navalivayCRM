@@ -712,6 +712,11 @@ export interface CardPaymentAdminSnapshot {
     monthly_limit_minor: number;
     cooldown_started_at: string | null;
     last_issued_at: string | null;
+    tariff_id: string | null;
+    tariff_title: string | null;
+    tariff_monthly_limit_minor: number | null;
+    tariff_per_order_limit_minor: number | null;
+    tariff_transition_cost_text: string | null;
   }>;
   pending_accounts: Array<{
     telegram_username: string;
@@ -723,6 +728,8 @@ export interface CardPaymentAdminSnapshot {
     id: string;
     title: string;
     limit_minor: number;
+    monthly_limit_minor: number | null;
+    per_order_limit_minor: number | null;
     transition_cost_text: string | null;
     position: number;
     active: number;
@@ -731,9 +738,13 @@ export interface CardPaymentAdminSnapshot {
     id: string;
     telegram_id: string;
     telegram_username: string | null;
+    tariff_id: string | null;
     tariff_title: string | null;
     current_limit_minor: number;
     requested_limit_minor: number;
+    tariff_transition_cost_text: string | null;
+    tariff_monthly_limit_minor: number | null;
+    tariff_per_order_limit_minor: number | null;
     status: "new" | "processed" | "rejected";
     created_at: string;
     resolved_by: string | null;
@@ -4456,6 +4467,8 @@ export const useCrmStore = defineStore("crm", () => {
       id?: string;
       title: string;
       limit: number;
+      monthly_limit?: number;
+      per_order_limit?: number;
       transition_cost_text?: string;
       position?: number;
       active?: boolean;
@@ -4477,6 +4490,25 @@ export const useCrmStore = defineStore("crm", () => {
     cardPaymentAdminSnapshot.value = await fetchAPI<CardPaymentAdminSnapshot>(
       `${API_BASE}/card-payments/tariffs/${encodeURIComponent(id)}`,
       { method: "DELETE" },
+    );
+    return cardPaymentAdminSnapshot.value;
+  }
+
+  // Применить тариф к аккаунту: лимиты меняются автоматически.
+  // tariffId === null — сброс на стандартные лимиты.
+  async function applyCardTariff(telegramId: string, tariffId: string | null) {
+    cardPaymentAdminSnapshot.value = await fetchAPI<CardPaymentAdminSnapshot>(
+      `${API_BASE}/card-payments/accounts/${encodeURIComponent(telegramId)}/tariff`,
+      { method: "PUT", body: JSON.stringify({ tariff_id: tariffId }) },
+    );
+    return cardPaymentAdminSnapshot.value;
+  }
+
+  // Одобрить заявку: лимиты тарифа применяются к аккаунту автоматически.
+  async function approveCardRequest(id: string) {
+    cardPaymentAdminSnapshot.value = await fetchAPI<CardPaymentAdminSnapshot>(
+      `${API_BASE}/card-payments/requests/${encodeURIComponent(id)}/approve`,
+      { method: "POST" },
     );
     return cardPaymentAdminSnapshot.value;
   }
@@ -5444,6 +5476,8 @@ export const useCrmStore = defineStore("crm", () => {
     updateCardRequest,
     saveCardTariff,
     deleteCardTariff,
+    applyCardTariff,
+    approveCardRequest,
 
     // Cash pacing
     cashPacingMonths,

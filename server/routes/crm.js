@@ -74,6 +74,8 @@ import { createStaffAccessMiddleware } from '../utils/staff-service.js';
 import {
   addCardDailyIncrease,
   addManualCardOperation,
+  applyCardTariffToAccount,
+  approveCardLimitRequest,
   fromMinorUnits,
   getCardAdminSnapshot,
   getCardCustomerSnapshot,
@@ -254,6 +256,30 @@ crmRouter.put('/api/admin/crm/card-payments/accounts/by-telegram-id/:telegramId'
   }
 });
 
+// Смена тарифа аккаунта: лимиты применяются автоматически.
+// tariff_id: null | '' — сброс на стандарт 250/45, иначе id активного тарифа.
+crmRouter.put('/api/admin/crm/card-payments/accounts/:telegramId/tariff', authMiddleware, (req, res) => {
+  try {
+    const telegramId = String(req.params.telegramId || '').trim();
+    const tariffId = req.body?.tariff_id == null ? '' : String(req.body.tariff_id).trim();
+    if (!telegramId) return res.status(400).json({ error: 'invalid_telegram_id' });
+    applyCardTariffToAccount(telegramId, tariffId || null);
+    return res.json(getCardAdminSnapshot());
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'card_tariff_apply_failed' });
+  }
+});
+
+// Одобрить заявку: лимиты тарифа заявки применяются к аккаунту автоматически.
+crmRouter.post('/api/admin/crm/card-payments/requests/:id/approve', authMiddleware, (req, res) => {
+  try {
+    approveCardLimitRequest(req.params.id, req.user?.u || 'admin');
+    return res.json(getCardAdminSnapshot());
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'card_request_approve_failed' });
+  }
+});
+
 crmRouter.patch('/api/admin/crm/card-payments/requests/:id', authMiddleware, (req, res) => {
   try {
     const status = String(req.body?.status || '').trim();
@@ -285,19 +311,33 @@ crmRouter.post('/api/admin/crm/card-payments/tariffs', authMiddleware, (req, res
   try {
     const title = String(req.body?.title || '').trim();
     const limitMinor = toMinorUnits(req.body?.limit);
+    // Два поля тарифа: месячный лимит и лимит заказа. Если передан только
+    // старый limit — считаем его месячным, лимит заказа = стандарт 45 BYN.
+    const monthlyLimitMinor = req.body?.monthly_limit === undefined
+      ? limitMinor
+      : toMinorUnits(req.body.monthly_limit);
+    const perOrderLimitMinor = req.body?.per_order_limit === undefined
+      ? 4500
+      : toMinorUnits(req.body.per_order_limit);
     const position = Number(req.body?.position ?? 0);
-    if (!title || limitMinor <= 0 || !Number.isInteger(position) || position < 0) {
+    if (
+      !title || limitMinor <= 0 || monthlyLimitMinor < 0 || perOrderLimitMinor <= 0
+      || !Number.isInteger(position) || position < 0
+    ) {
       return res.status(400).json({ error: 'invalid_tariff' });
     }
     const id = `tariff_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     db.prepare(`
       INSERT INTO card_payment_tariffs
-        (id, title, limit_minor, transition_cost_text, position, active)
-      VALUES (?, ?, ?, ?, ?, ?)
+        (id, title, limit_minor, monthly_limit_minor, per_order_limit_minor,
+         transition_cost_text, position, active)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       title,
       limitMinor,
+      monthlyLimitMinor,
+      perOrderLimitMinor,
       String(req.body?.transition_cost_text || '').trim() || null,
       position,
       req.body?.active === false ? 0 : 1,
@@ -316,19 +356,31 @@ crmRouter.patch('/api/admin/crm/card-payments/tariffs/:id', authMiddleware, (req
     const limitMinor = req.body?.limit === undefined
       ? Number(current.limit_minor)
       : toMinorUnits(req.body.limit);
+    const monthlyLimitMinor = req.body?.monthly_limit === undefined
+      ? Number(current.monthly_limit_minor ?? current.limit_minor)
+      : toMinorUnits(req.body.monthly_limit);
+    const perOrderLimitMinor = req.body?.per_order_limit === undefined
+      ? Number(current.per_order_limit_minor ?? 4500)
+      : toMinorUnits(req.body.per_order_limit);
     const position = req.body?.position === undefined
       ? Number(current.position)
       : Number(req.body.position);
-    if (!title || limitMinor <= 0 || !Number.isInteger(position) || position < 0) {
+    if (
+      !title || limitMinor <= 0 || monthlyLimitMinor < 0 || perOrderLimitMinor <= 0
+      || !Number.isInteger(position) || position < 0
+    ) {
       return res.status(400).json({ error: 'invalid_tariff' });
     }
     db.prepare(`
       UPDATE card_payment_tariffs
-      SET title = ?, limit_minor = ?, transition_cost_text = ?, position = ?, active = ?
+      SET title = ?, limit_minor = ?, monthly_limit_minor = ?, per_order_limit_minor = ?,
+          transition_cost_text = ?, position = ?, active = ?
       WHERE id = ?
     `).run(
       title,
       limitMinor,
+      monthlyLimitMinor,
+      perOrderLimitMinor,
       String(req.body?.transition_cost_text ?? current.transition_cost_text ?? '').trim() || null,
       position,
       req.body?.active === undefined ? current.active : (req.body.active === false ? 0 : 1),

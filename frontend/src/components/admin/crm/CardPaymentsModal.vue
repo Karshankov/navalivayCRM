@@ -173,28 +173,18 @@
         <form class="rounded-xl border border-gray-200 bg-white p-4" @submit.prevent="addAccount">
           <h3 class="mb-1 text-sm font-bold text-gray-900">Разрешить оплату картой</h3>
           <p class="mb-3 text-xs text-gray-500">
-            Аккаунт включается без даты окончания. Пока клиент не заходил в приложение, он хранится как
-            @username и привяжется к Telegram ID после первого входа.
+            Достаточно @username — стандартные лимиты (250 BYN/мес, 45 BYN на заказ и пауза 10 дней)
+            выдадутся автоматически. Клиент сможет поднять лимит заявкой на тариф.
+            Пока клиент не заходил в приложение, он хранится как @username и привяжется к Telegram ID после первого входа.
           </p>
-          <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <div class="flex gap-2">
             <input v-model="accountUsername" type="text" placeholder="@username" autocomplete="off"
-              class="col-span-2 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+              class="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
               :class="{ 'border-rose-400': accountError }"
               aria-label="Telegram username без собаки">
-            <input v-model.number="accountMonthlyLimit" type="number" min="0" step="0.01"
-              class="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
-              aria-label="Месячный лимит аккаунта BYN">
-            <input v-model.number="accountLimit" type="number" min="0.01" step="0.01"
-              class="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
-              aria-label="Лимит одного заказа BYN">
-          </div>
-          <div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-gray-500">
-            <span>@username · Лимит/мес BYN · Лимит заказа BYN</span>
-          </div>
-          <div class="mt-3 flex items-center gap-3">
             <CrmButton type="submit" variant="primary" size="sm" :loading="busyForm === 'account'">Разрешить</CrmButton>
-            <p v-if="accountError" class="text-xs font-medium text-rose-700">{{ accountError }}</p>
           </div>
+          <p v-if="accountError" class="mt-2 text-xs font-medium text-rose-700">{{ accountError }}</p>
         </form>
 
         <!-- Поиск -->
@@ -251,6 +241,20 @@
 
               <div class="mt-3 grid grid-cols-2 gap-2">
                 <label class="block">
+                  <span class="text-[11px] font-medium text-gray-500">Тариф</span>
+                  <select
+                    :value="account.tariff_id || ''"
+                    class="mt-0.5 w-full rounded-lg border border-gray-300 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                    :aria-label="`Тариф для ${account.telegram_username || account.telegram_id}`"
+                    @change="changeAccountTariff(account, ($event.target as HTMLSelectElement).value)"
+                  >
+                    <option value="">Стандарт (250/45 BYN)</option>
+                    <option v-for="tariff in activeTariffs" :key="tariff.id" :value="tariff.id">
+                      {{ tariff.title }} · {{ minorToMoney(tariff.monthly_limit_minor ?? tariff.limit_minor) }}/{{ minorToMoney(tariff.per_order_limit_minor ?? 4500) }} BYN
+                    </option>
+                  </select>
+                </label>
+                <label class="block">
                   <span class="text-[11px] font-medium text-gray-500">Лимит заказа, BYN</span>
                   <input
                     :value="draftAccountLimits[account.telegram_id] ?? minorToMoney(account.max_order_minor)"
@@ -267,7 +271,7 @@
                     </CrmButton>
                     <CrmButton variant="ghost" size="sm" @click="clearDraftLimit(account.telegram_id)">Отмена</CrmButton>
                   </div>
-                  <div v-else class="text-xs text-gray-400">Измените значение, чтобы сохранить</div>
+                  <div v-else class="text-xs text-gray-400">Смена тарифа обновит лимиты автоматически</div>
                 </div>
               </div>
             </div>
@@ -309,7 +313,12 @@
               <div class="min-w-0">
                 <div class="text-sm font-semibold text-gray-800">@{{ request.telegram_username || request.telegram_id }}</div>
                 <div class="mt-0.5 text-xs text-gray-600">
-                  {{ request.tariff_title || 'Тариф' }} · {{ money(request.current_limit_minor) }} → {{ money(request.requested_limit_minor) }}
+                  Тариф «{{ request.tariff_title || '—' }}»<span v-if="request.tariff_transition_cost_text"> · стоимость: {{ request.tariff_transition_cost_text }}</span>
+                </div>
+                <div class="mt-0.5 text-[11px] text-gray-500">
+                  Лимиты тарифа:
+                  {{ money(request.tariff_monthly_limit_minor ?? request.requested_limit_minor) }}/мес ·
+                  {{ money(request.tariff_per_order_limit_minor ?? 4500) }}/заказ
                 </div>
                 <div class="mt-0.5 text-[11px] text-gray-400">{{ dateLabel(request.created_at) }}</div>
               </div>
@@ -321,8 +330,8 @@
               </span>
             </div>
             <div v-if="request.status === 'new'" class="mt-2.5 flex flex-wrap gap-2">
-              <CrmButton variant="success" size="sm" :loading="busyRequest === request.id" @click="changeRequest(request.id, 'processed')">
-                Обработана
+              <CrmButton variant="primary" size="sm" :loading="busyRequest === request.id" title="Применить лимиты тарифа к аккаунту автоматически" @click="approveRequest(request)">
+                Одобрить
               </CrmButton>
               <CrmButton variant="danger" size="sm" :loading="busyRequest === request.id" @click="confirmRejectRequest = request">
                 Отклонить
@@ -332,6 +341,9 @@
                 class="ml-auto inline-flex items-center rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-50"
                 :href="`https://t.me/${request.telegram_username}`" target="_blank" rel="noopener noreferrer"
               >Написать</a>
+            </div>
+            <div v-if="request.status === 'processed' && request.resolution_note" class="mt-2 text-[11px] text-gray-400">
+              {{ request.resolution_note }}
             </div>
           </div>
           <p v-if="!snapshot.requests.length" class="py-2 text-xs text-gray-500">Заявок пока нет.</p>
@@ -351,12 +363,21 @@
         <form v-if="editingTariff" class="mb-3 grid grid-cols-1 gap-2 rounded-xl bg-gray-50 p-3 sm:grid-cols-2" @submit.prevent="saveTariff">
           <input v-model="editingTariff.title" required placeholder="Название тарифа" aria-label="Название тарифа"
             class="rounded-lg border border-gray-300 px-2.5 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100">
-          <input v-model.number="editingTariff.limit" required type="number" min="0.01" step="0.01" placeholder="Лимит BYN"
-            aria-label="Лимит тарифа BYN"
-            class="rounded-lg border border-gray-300 px-2.5 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100">
-          <input v-model="editingTariff.transition_cost_text" placeholder="Стоимость перехода (текст)"
+          <input v-model="editingTariff.transition_cost_text" placeholder="Стоимость перехода, например «50 BYN единоразово»"
             aria-label="Стоимость перехода, текст"
-            class="rounded-lg border border-gray-300 px-2.5 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 sm:col-span-2">
+            class="rounded-lg border border-gray-300 px-2.5 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100">
+          <label class="block">
+            <span class="text-[11px] font-medium text-gray-500">Лимит в месяц, BYN</span>
+            <input v-model.number="editingTariff.monthly_limit" required type="number" min="0.01" step="0.01"
+              aria-label="Месячный лимит тарифа BYN"
+              class="mt-0.5 w-full rounded-lg border border-gray-300 px-2.5 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100">
+          </label>
+          <label class="block">
+            <span class="text-[11px] font-medium text-gray-500">Лимит на заказ, BYN</span>
+            <input v-model.number="editingTariff.per_order_limit" required type="number" min="0.01" step="0.01"
+              aria-label="Лимит заказа тарифа BYN"
+              class="mt-0.5 w-full rounded-lg border border-gray-300 px-2.5 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100">
+          </label>
           <div class="flex gap-2 sm:col-span-2">
             <CrmButton type="submit" variant="primary" size="sm" :loading="busyForm === 'tariff'">Сохранить</CrmButton>
             <CrmButton variant="ghost" size="sm" @click="editingTariff = null">Отмена</CrmButton>
@@ -366,7 +387,7 @@
         <div class="space-y-2">
           <div v-for="tariff in snapshot.tariffs" :key="tariff.id" class="flex flex-wrap items-center gap-2 rounded-xl bg-gray-50 p-3">
             <div class="min-w-0 flex-1">
-              <div class="text-sm font-semibold text-gray-800">{{ tariff.title }} · {{ money(tariff.limit_minor) }}</div>
+              <div class="text-sm font-semibold text-gray-800">{{ tariff.title }} · {{ money(tariff.monthly_limit_minor ?? tariff.limit_minor) }}/мес · {{ money(tariff.per_order_limit_minor ?? 4500) }}/заказ</div>
               <div class="text-xs text-gray-500">{{ tariff.transition_cost_text || 'Без текста о стоимости' }}</div>
             </div>
             <CrmButton variant="soft" size="sm" @click="editTariff(tariff)">Изменить</CrmButton>
@@ -475,12 +496,10 @@ const dailyIncrease = ref<number | null>(null);
 const manualAmount = ref<number | null>(null);
 const manualNote = ref("");
 const accountUsername = ref("");
-const accountLimit = ref(45);
-const accountMonthlyLimit = ref(250);
 const accountError = ref("");
 const accountSearch = ref("");
 const draftAccountLimits = ref<Record<string, number>>({});
-const editingTariff = ref<{ id?: string; title: string; limit: number; transition_cost_text: string } | null>(null);
+const editingTariff = ref<{ id?: string; title: string; limit: number; monthly_limit: number; per_order_limit: number; transition_cost_text: string } | null>(null);
 const confirmRejectRequest = ref<Snapshot["requests"][number] | null>(null);
 const confirmTariffRemoval = ref<Snapshot["tariffs"][number] | null>(null);
 
@@ -501,6 +520,10 @@ const todayOperationsTotal = computed(() => {
   const total = todayOperations.value.reduce((sum, op) => sum + Number(op.amount_minor || 0), 0);
   return `${compactMoney(total)} за день`;
 });
+
+const activeTariffs = computed(
+  () => (snapshot.value?.tariffs || []).filter((tariff) => Number(tariff.active) === 1),
+);
 
 const filteredAccounts = computed(() => {
   const query = accountSearch.value.trim().toLowerCase().replace(/^@+/, "");
@@ -663,16 +686,12 @@ async function addAccount() {
     accountError.value = "Укажите @username клиента.";
     return;
   }
-  if (accountLimit.value == null || accountLimit.value <= 0) {
-    accountError.value = "Лимит заказа должен быть больше нуля.";
-    return;
-  }
+  // Лимиты не передаём: сервер выдаёт стандартные 250 BYN/мес и 45 BYN на заказ
+  // (setCardAccount в card-payment-service.js). Поднимаются клиентом через тариф.
   const ok = await run(
     () =>
       crm.saveCardAccount({
         telegram_username: username,
-        monthly_limit: accountMonthlyLimit.value,
-        max_order: accountLimit.value,
         enabled: true,
       }),
     "account",
@@ -720,19 +739,47 @@ async function changeRequest(id: string, status: "processed" | "rejected") {
   })();
 }
 
+// Одобрить: лимиты тарифа заявки применяются к аккаунту автоматически.
+async function approveRequest(request: Snapshot["requests"][number]) {
+  busyRequest.value = request.id;
+  try {
+    await crm.approveCardRequest(request.id);
+  } catch (error: any) {
+    errorText.value = error?.message || "Не удалось одобрить заявку";
+  } finally {
+    busyRequest.value = "";
+  }
+}
+
+// Смена тарифа аккаунта: лимиты обновятся автоматически на сервере.
+async function changeAccountTariff(account: Snapshot["accounts"][number], rawValue: string) {
+  const tariffId = rawValue || null;
+  busyAccount.value = account.telegram_id;
+  try {
+    await crm.applyCardTariff(account.telegram_id, tariffId);
+    clearDraftLimit(account.telegram_id);
+  } catch (error: any) {
+    errorText.value = error?.message || "Не удалось применить тариф";
+  } finally {
+    busyAccount.value = "";
+  }
+}
+
 async function rejectRequest(request: Snapshot["requests"][number]) {
   await changeRequest(request.id, "rejected");
   confirmRejectRequest.value = null;
 }
 
 function newTariff() {
-  editingTariff.value = { title: "", limit: 45, transition_cost_text: "" };
+  editingTariff.value = { title: "", limit: 250, monthly_limit: 250, per_order_limit: 45, transition_cost_text: "" };
 }
 function editTariff(tariff: Snapshot["tariffs"][number]) {
   editingTariff.value = {
     id: tariff.id,
     title: tariff.title,
     limit: Number(tariff.limit_minor) / 100,
+    monthly_limit: Number(tariff.monthly_limit_minor ?? tariff.limit_minor) / 100,
+    per_order_limit: Number(tariff.per_order_limit_minor ?? 4500) / 100,
     transition_cost_text: tariff.transition_cost_text || "",
   };
 }

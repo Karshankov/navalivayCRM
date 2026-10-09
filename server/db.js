@@ -52,6 +52,7 @@ import { migrateOrderItemCatalogPrice } from './migrations/add_order_item_catalo
 import { migrateLoyaltyTables, seedDefaultLoyaltyData } from './migrations/add_loyalty_tables.js';
 import { migrateCashPacingTables } from './migrations/add_cash_pacing_tables.js';
 import { migrateCardPaymentLimits } from './migrations/add_card_payment_limits.js';
+import { migrateCardPaymentTariffLimits } from './migrations/add_card_payment_tariff_limits.js';
 import { migrateWholesalePricing } from './migrations/add_wholesale_pricing.js';
 import { migrateCrmPerformanceIndexes } from './migrations/add_crm_performance_indexes.js';
 import { migrateOrderNumberSearch } from './migrations/add_order_number_search.js';
@@ -225,6 +226,7 @@ export function initDb() {
   migrateLoyaltyTables();
   migrateCashPacingTables();
   migrateCardPaymentLimits();
+  migrateCardPaymentTariffLimits();
   migrateWholesalePricing();
   migrateCrmPerformanceIndexes();
   migrateOrderNumberSearch();

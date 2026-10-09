@@ -461,41 +461,62 @@
           >Наличными</button>
           <button
             type="button"
-            :class="{ 'card-payment-choice--active': selectedPaymentMethod === 'card' }"
+            :class="{
+              'card-payment-choice--active': selectedPaymentMethod === 'card',
+              'card-payment-choice--disabled': isCardPaused,
+            }"
+            :disabled="isCardPaused"
+            :title="isCardPaused ? 'Оплата картой на паузе' : undefined"
             @click="selectCardPayment"
           >Картой</button>
         </div>
         <template v-if="selectedPaymentMethod === 'card'">
-          <p>
-            Использовано / зарезервировано по карте:
-            {{ ((cardPaymentStatus?.limits?.spent_today_minor || 0) + (cardPaymentStatus?.limits?.reserved_minor || 0)) / 100 }}
-            BYN из {{ (cardPaymentStatus?.limits?.daily_limit_minor || 0) / 100 }} BYN
-          </p>
-          <div class="card-payment-progress">
-            <span :style="{ width: `${Math.min(100, (((cardPaymentStatus?.limits?.spent_today_minor || 0) + (cardPaymentStatus?.limits?.reserved_minor || 0)) / Math.max(1, cardPaymentStatus?.limits?.daily_limit_minor || 1)) * 100)}%` }" />
-          </div>
-          <p
-            v-if="isSharedCardLimitExhausted"
-            class="card-payment-warning"
-            role="alert"
-          >
-            Лимит по карте на сегодня уже израсходован. Можно оплатить только наличными.
-          </p>
-          <p
-            v-else-if="cardPaymentStatus?.limits"
-            class="card-payment-availability"
+          <div
+            v-if="cardCooldownDaysLeft !== null"
+            class="card-status-card card-status-card--waiting"
             role="status"
           >
-            Остаток дневного лимита — {{ formatCardMoney(remainingDailyCardLimitMinor) }} BYN.
-            <template v-if="finalTotal * 100 > remainingDailyCardLimitMinor">
-              Сумма заказа — {{ formatCardMoney(Math.round(finalTotal * 100)) }} BYN.
-              Этот заказ можно оплатить картой полностью; после него лимит будет исчерпан.
-            </template>
-          </p>
-          <p>Лимит на заказ: {{ (cardPaymentStatus?.max_order_minor || 0) / 100 }} BYN</p>
-          <p v-if="cardPaymentStatus?.cooldown_until" class="card-payment-warning">
-            Карта будет доступна после {{ formatCardDate(cardPaymentStatus.cooldown_until) }}.
-          </p>
+            <span class="card-status-dot" aria-hidden="true" />
+            <div class="card-status-info">
+              <strong>Карта доступна через {{ cardCooldownDaysLeft }}</strong>
+              <span>Пауза после прошлой покупки</span>
+            </div>
+          </div>
+          <div
+            v-else-if="isSharedCardLimitExhausted"
+            class="card-status-card card-status-card--unavailable"
+            role="alert"
+          >
+            <span class="card-status-dot" aria-hidden="true" />
+            <div class="card-status-info">
+              <strong>Сегодня картой оплатить нельзя</strong>
+              <span>Можно оформить заказ за наличные</span>
+            </div>
+          </div>
+          <div
+            v-else-if="cardMonthlyRemainingMinor <= 0"
+            class="card-status-card card-status-card--unavailable"
+            role="status"
+          >
+            <span class="card-status-dot" aria-hidden="true" />
+            <div class="card-status-info">
+              <strong>Месячный лимит по карте исчерпан</strong>
+              <span>Обновится в следующем месяце</span>
+            </div>
+          </div>
+          <div v-else-if="cardPaymentStatus?.enabled" class="card-status-card" role="status">
+            <span class="card-status-dot card-status-dot--ok" aria-hidden="true" />
+            <div class="card-status-info">
+              <strong>Оплата картой доступна</strong>
+              <span>{{ formatCardMoney(cardMonthlyRemainingMinor) }} BYN осталось в этом месяце</span>
+            </div>
+            <div class="card-status-limit" :data-level="cardLimitLevel">
+              <div class="card-status-limit-bar">
+                <span :style="{ width: cardMonthlyProgressPercent + '%' }" :data-level="cardLimitLevel" />
+              </div>
+              <em>лимит {{ formatCardMoney(cardMonthlyLimitMinor) }} BYN</em>
+            </div>
+          </div>
         </template>
         <p v-if="submitError" class="card-payment-warning" role="alert">
           {{ submitError }}
@@ -790,6 +811,50 @@ const isSharedCardLimitExhausted = computed(
   () => Boolean(cardPaymentStatus.value?.limits)
     && remainingDailyCardLimitMinor.value <= 0,
 );
+// Персональный месячный лимит клиента — единственная цифра про деньги,
+// которую показываем в чекауте. Общая дневная механика магазина —
+// внутренняя информация, клиенту её не показываем.
+const cardMonthlyLimitMinor = computed(
+  () => Math.max(0, Number(cardPaymentStatus.value?.monthly_limit_minor || 0)),
+);
+const cardMonthlyRemainingMinor = computed(
+  () => Math.max(0, Number(cardPaymentStatus.value?.monthly_remaining_minor || 0)),
+);
+const cardMonthlyProgressPercent = computed(() => {
+  const limit = cardMonthlyLimitMinor.value;
+  if (limit <= 0) return 0;
+  const remainingPercent = (cardMonthlyRemainingMinor.value / limit) * 100;
+  return Math.min(100, Math.max(0, Math.round(remainingPercent)));
+});
+// Цвет прогресс-бара: >50% зелёный, 20–50% жёлтый, <20% красный.
+const cardLimitLevel = computed(() => {
+  const percent = cardMonthlyProgressPercent.value;
+  if (percent > 50) return "ok";
+  if (percent >= 20) return "warn";
+  return "low";
+});
+// Пауза активна прямо сейчас: кнопка «Картой» серая и неактивна.
+const isCardPaused = computed(
+  () => Boolean(cardPaymentStatus.value?.enabled)
+    && Boolean(cardPaymentStatus.value?.cooldown_until)
+    && new Date(cardPaymentStatus.value.cooldown_until).getTime() > Date.now(),
+);
+const cardCooldownDaysLeft = computed(() => {
+  const until = cardPaymentStatus.value?.cooldown_until;
+  if (!until) return null;
+  const milliseconds = new Date(until).getTime() - Date.now();
+  if (milliseconds <= 0) return null;
+  const days = Math.ceil(milliseconds / 86400000);
+  return `${days} ${pluralDays(days)}`;
+});
+
+function pluralDays(days: number) {
+  const mod10 = days % 10;
+  const mod100 = days % 100;
+  if (mod10 === 1 && mod100 !== 11) return "день";
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return "дня";
+  return "дней";
+}
 const showMixedPaymentNotice = ref(false);
 const mixedPaymentNotice = ref("");
 const showCardTariffsModal = ref(false);
@@ -1653,7 +1718,10 @@ async function beginCheckout() {
     return;
   }
   await loadCardPaymentStatus();
-  if (cardPaymentStatus.value?.enabled && cardPaymentStatus.value?.card_available && !isEditingOrder.value) {
+  // Показываем выбор оплаты, если карта вообще включена аккаунту — даже
+  // когда карта на паузе: кнопка «Картой» станет серой, а рядом будет
+  // написано, через сколько дней пауза снимется (запрос владельца 2026-10-09).
+  if (cardPaymentStatus.value?.enabled && !isEditingOrder.value) {
     selectedPaymentMethod.value = "cash";
     showCardPaymentModal.value = true;
     return;
@@ -1709,14 +1777,6 @@ async function submitCardLimitRequest() {
   } finally {
     cardRequestSending.value = false;
   }
-}
-
-function formatCardDate(value: string) {
-  return new Intl.DateTimeFormat("ru-BY", {
-    dateStyle: "short",
-    timeStyle: "short",
-    timeZone: "Europe/Minsk",
-  }).format(new Date(value));
 }
 
 async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
@@ -2895,7 +2955,7 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
 .checkout-modal-copy {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
   color: #191919;
   font-family: -apple-system, "SF Pro Display", sans-serif;
   font-weight: 500;
@@ -2956,18 +3016,118 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   background: linear-gradient(90deg, #f50302 0%, #a90f0e 100%) !important;
 }
 
-.card-payment-progress {
-  height: 8px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: #eceff3;
+.card-payment-choice--disabled {
+  color: #b3bcc7 !important;
+  background: #f1f3f6 !important;
+  border-color: #e5e7eb !important;
+  cursor: not-allowed;
 }
 
-.card-payment-progress span {
+/* Карточка статуса оплаты картой: одна цифра + прогресс-бар + бейдж.
+   Тон: спокоен, без «кричащего» красного (красный — только у бренда-CTA). */
+.card-status-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 15px;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  background: #f7f8fa;
+}
+
+.card-status-card--waiting,
+.card-status-card--unavailable {
+  background: #fff7ed;
+  border-color: #fed7aa;
+}
+
+.card-status-dot {
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #f59e0b;
+}
+
+.card-status-dot--ok {
+  background: #22c55e;
+}
+
+.card-status-info {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.card-status-info strong {
+  color: #1f2933;
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.2;
+}
+
+.card-status-info span {
+  color: #687582;
+  font-size: 12.5px;
+  line-height: 1.3;
+}
+
+.card-status-limit {
+  flex-shrink: 0;
+  width: 108px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.card-status-limit-bar {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e6e8ec;
+}
+
+.card-status-limit-bar span {
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: #f50302;
+  transition: width 0.25s ease;
+}
+
+/* Уровни остатка лимита: зелёный / жёлтый / красный */
+.card-status-limit-bar span[data-level="ok"] {
+  background: linear-gradient(90deg, #16a34a, #22c55e);
+}
+
+.card-status-limit-bar span[data-level="warn"] {
+  background: linear-gradient(90deg, #d97706, #f59e0b);
+}
+
+.card-status-limit-bar span[data-level="low"] {
+  background: linear-gradient(90deg, #dc2626, #ef4444);
+}
+
+.card-status-limit em {
+  color: #9aa5b1;
+  font-size: 10.5px;
+  font-style: normal;
+  text-align: right;
+}
+
+@media (max-width: 380px) {
+  .card-status-card {
+    flex-wrap: wrap;
+  }
+
+  .card-status-limit {
+    width: 100%;
+  }
+
+  .card-status-limit em {
+    text-align: left;
+  }
 }
 
 .card-payment-warning {
