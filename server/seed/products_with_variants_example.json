@@ -1,0 +1,80 @@
+[
+  {
+    "id": "p_pod_voopoo_drag_nano2",
+    "categoryId": "c_pods",
+    "groupId": "g_pods_voopoo",
+    "title": "VOOPOO Drag Nano 2",
+    "priceRub": 0,
+    "description": "Компактная POD-система с батареей 800 мАч, картриджами на 2 мл и быстрой зарядкой USB-C. Доступна в нескольких цветовых вариантах.",
+    "strength": null,
+    "costPrice": 1200,
+    "stock": 0,
+    "minStock": 5,
+    "useCategoryImage": false,
+    "hasVariants": true,
+    "variants": [
+      {
+        "name": "Черный",
+        "colorCode": "#000000",
+        "priceRub": 1990,
+        "stock": 25,
+        "position": 0,
+        "images": [
+          "https://placehold.co/400x533/000000/ffffff?text=Drag+Nano+2+Black",
+          "https://placehold.co/400x533/000000/ffffff?text=Black+Detail+1",
+          "https://placehold.co/400x533/000000/ffffff?text=Black+Detail+2"
+        ]
+      },
+      {
+        "name": "Синий градиент",
+        "colorCode": "#0ea5e9",
+        "priceRub": 1990,
+        "stock": 18,
+        "position": 1,
+        "images": [
+          "https://placehold.co/400x533/0ea5e9/ffffff?text=Drag+Nano+2+Blue",
+          "https://placehold.co/400x533/0ea5e9/ffffff?text=Blue+Detail+1"
+        ]
+      },
+      {
+        "name": "Красный",
+        "colorCode": "#ef4444",
+        "priceRub": 2090,
+        "stock": 12,
+        "position": 2,
+        "images": [
+          "https://placehold.co/400x533/ef4444/ffffff?text=Drag+Nano+2+Red",
+          "https://placehold.co/400x533/ef4444/ffffff?text=Red+Detail+1",
+          "https://placehold.co/400x533/ef4444/ffffff?text=Red+Detail+2"
+        ]
+      },
+      {
+        "name": "Радужный",
+        "colorCode": "#a855f7",
+        "priceRub": 2190,
+        "stock": 8,
+        "position": 3,
+        "images": [
+          "https://placehold.co/400x533/a855f7/ffffff?text=Drag+Nano+2+Rainbow"
+        ]
+      },
+      {
+        "name": "Серебристый",
+        "colorCode": "#94a3b8",
+        "priceRub": 1990,
+        "stock": 22,
+        "position": 4,
+        "images": [
+          "https://placehold.co/400x533/94a3b8/000000?text=Drag+Nano+2+Silver",
+          "https://placehold.co/400x533/94a3b8/000000?text=Silver+Detail+1"
+        ]
+      }
+    ],
+    "links": [
+      {
+        "label": "Официальный сайт",
+        "url": "https://voopoo.com/products/drag-nano-2"
+      }
+    ]
+  }
+]

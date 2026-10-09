@@ -1,0 +1,2 @@
+- [Code review до нуля нарушений](feedback_code_review_loop.md) — code-reviewer agent вызывается циклически после каждой правки, задача готова только при 0 замечаний
+- [UX-improver после UI-правок](feedback_ux_improver_after_ui.md) — после изменений user-facing текстов и компонентов обязательно прогон ux-improver до коммита

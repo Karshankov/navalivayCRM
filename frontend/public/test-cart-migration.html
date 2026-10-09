@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Cart Migration Test</title>
+</head>
+<body>
+  <h1>Cart Migration Debug</h1>
+  <button onclick="testMigration()">Test Migration</button>
+  <pre id="output"></pre>
+  
+  <script>
+    async function testMigration() {
+      const output = document.getElementById('output');
+      output.textContent = 'Testing...\n';
+      
+      // 1. Check localStorage
+      const stored = localStorage.getItem('navalivay_cart');
+      output.textContent += '\n=== LOCALSTORAGE ===\n';
+      output.textContent += stored ? JSON.stringify(JSON.parse(stored), null, 2) : 'Empty';
+      
+      // 2. Fetch allProducts
+      output.textContent += '\n\n=== FETCHING CATALOG ===\n';
+      const catalogRes = await fetch('/api/products?limit=1000');
+      const catalogData = await catalogRes.json();
+      output.textContent += `Total products: ${catalogData.products.length}\n`;
+      
+      // 3. Find specific products
+      const testProducts = ['Лимонные леденцы', 'Мохито с клубникой'];
+      output.textContent += '\n=== PRODUCTS IN CATALOG ===\n';
+      testProducts.forEach(title => {
+        const found = catalogData.products.filter(p => p.title.includes(title));
+        output.textContent += `\n"${title}": ${found.length} found\n`;
+        found.forEach(p => {
+          output.textContent += `  - ${p.id}: groupId=${p.groupId}, categoryId=${p.categoryId}\n`;
+        });
+      });
+      
+      // 4. Fetch group images
+      if (stored) {
+        const items = JSON.parse(stored);
+        output.textContent += '\n=== CART ITEMS ===\n';
+        for (const item of items) {
+          output.textContent += `\nItem: ${item.title}\n`;
+          output.textContent += `  productId: ${item.productId}\n`;
+          output.textContent += `  groupId: ${item.groupId || 'MISSING'}\n`;
+          output.textContent += `  categoryId: ${item.categoryId || 'MISSING'}\n`;
+          output.textContent += `  image: ${item.image ? item.image.substring(0, 50) + '...' : 'MISSING'}\n`;
+          
+          // Find in catalog
+          const product = catalogData.products.find(p => p.id === item.productId);
+          if (product) {
+            output.textContent += `  FOUND IN CATALOG:\n`;
+            output.textContent += `    groupId: ${product.groupId}\n`;
+            output.textContent += `    categoryId: ${product.categoryId}\n`;
+            
+            // Try to fetch group image
+            if (product.groupId) {
+              try {
+                const imgRes = await fetch(`/api/category-groups/${product.groupId}/image`);
+                const imgData = await imgRes.json();
+                output.textContent += `    group image: ${imgData.image ? imgData.image.substring(0, 50) + '...' : 'NONE'}\n`;
+              } catch (e) {
+                output.textContent += `    group image: ERROR ${e.message}\n`;
+              }
+            }
+          } else {
+            output.textContent += `  NOT FOUND IN CATALOG!\n`;
+          }
+        }
+      }
+    }
+  </script>
+</body>
+</html>

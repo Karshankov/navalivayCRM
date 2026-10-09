@@ -1,0 +1,47 @@
+[
+  {
+    "id": "c_liquids_salt",
+    "slug": "salt-liquids",
+    "name": "Солевые жидкости",
+    "order": 10,
+    "coverImage": "/uploads/categories/salt-liquids.jpg",
+    "hideEmpty": false,
+    "displayMode": "products"
+  },
+  {
+    "id": "c_liquids_freebase",
+    "slug": "freebase-liquids",
+    "name": "Обычные жидкости",
+    "order": 20,
+    "coverImage": "/uploads/categories/freebase-liquids.jpg",
+    "hideEmpty": false,
+    "displayMode": "products"
+  },
+  {
+    "id": "c_disposables",
+    "slug": "disposable-vapes",
+    "name": "Одноразовые PODы",
+    "order": 30,
+    "coverImage": "/uploads/categories/disposable-vapes.jpg",
+    "hideEmpty": false,
+    "displayMode": "products"
+  },
+  {
+    "id": "c_pods",
+    "slug": "pod-systems",
+    "name": "POD-системы",
+    "order": 40,
+    "coverImage": "/uploads/categories/pod-systems.jpg",
+    "hideEmpty": false,
+    "displayMode": "products"
+  },
+  {
+    "id": "c_accessories",
+    "slug": "accessories",
+    "name": "Расходники и аксессуары",
+    "order": 50,
+    "coverImage": "/uploads/categories/accessories.jpg",
+    "hideEmpty": false,
+    "displayMode": "products"
+  }
+]

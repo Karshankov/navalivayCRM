@@ -1,0 +1,158 @@
+[
+  {
+    "id": "p_pod_vaporesso_xros_3_mini",
+    "categoryId": "c_pods",
+    "groupId": "g_pods_vaporesso",
+    "title": "Vaporesso XROS 3 Mini",
+    "priceRub": 0,
+    "description": "Компактная POD-система с батареей 1000 мАч, картриджами на 2 мл и регулировкой мощности. Идеально подходит для солевых жидкостей.",
+    "strength": null,
+    "costPrice": 1100,
+    "stock": 0,
+    "minStock": 8,
+    "useCategoryImage": false,
+    "hasVariants": true,
+    "variants": [
+      {
+        "name": "Черный",
+        "colorCode": "#1a1a1a",
+        "priceRub": 1990,
+        "stock": 20,
+        "position": 0,
+        "images": [
+          "https://placehold.co/400x533/1a1a1a/ffffff?text=XROS+3+Mini+Black",
+          "https://placehold.co/400x533/1a1a1a/ffffff?text=Black+Detail"
+        ]
+      },
+      {
+        "name": "Серебристый",
+        "colorCode": "#c0c0c0",
+        "priceRub": 1990,
+        "stock": 15,
+        "position": 1,
+        "images": [
+          "https://placehold.co/400x533/c0c0c0/000000?text=XROS+3+Mini+Silver"
+        ]
+      },
+      {
+        "name": "Синий",
+        "colorCode": "#2563eb",
+        "priceRub": 2090,
+        "stock": 18,
+        "position": 2,
+        "images": [
+          "https://placehold.co/400x533/2563eb/ffffff?text=XROS+3+Mini+Blue"
+        ]
+      },
+      {
+        "name": "Розовое золото",
+        "colorCode": "#e0a896",
+        "priceRub": 2190,
+        "stock": 10,
+        "position": 3,
+        "images": [
+          "https://placehold.co/400x533/e0a896/000000?text=XROS+3+Mini+RoseGold"
+        ]
+      },
+      {
+        "name": "Зеленый",
+        "colorCode": "#16a34a",
+        "priceRub": 2090,
+        "stock": 12,
+        "position": 4,
+        "images": [
+          "https://placehold.co/400x533/16a34a/ffffff?text=XROS+3+Mini+Green"
+        ]
+      }
+    ],
+    "links": [
+      {
+        "label": "Официальный сайт",
+        "url": "https://vaporesso.com/xros-3-mini"
+      }
+    ]
+  },
+  {
+    "id": "p_pod_vaporesso_xros_4",
+    "categoryId": "c_pods",
+    "groupId": "g_pods_vaporesso",
+    "title": "Vaporesso XROS 4",
+    "priceRub": 0,
+    "description": "Новейшая POD-система с батареей 1000 мАч, улучшенными картриджами на 3 мл, OLED-дисплеем и функцией блокировки от детей. Премиальные материалы.",
+    "strength": null,
+    "costPrice": 1400,
+    "stock": 0,
+    "minStock": 10,
+    "useCategoryImage": false,
+    "hasVariants": true,
+    "variants": [
+      {
+        "name": "Матовый черный",
+        "colorCode": "#000000",
+        "priceRub": 2290,
+        "stock": 25,
+        "position": 0,
+        "images": [
+          "https://placehold.co/400x533/000000/ffffff?text=XROS+4+Black",
+          "https://placehold.co/400x533/000000/ffffff?text=XROS+4+Detail"
+        ]
+      },
+      {
+        "name": "Серый градиент",
+        "colorCode": "#6b7280",
+        "priceRub": 2390,
+        "stock": 18,
+        "position": 1,
+        "images": [
+          "https://placehold.co/400x533/6b7280/ffffff?text=XROS+4+Grey"
+        ]
+      },
+      {
+        "name": "Синий металлик",
+        "colorCode": "#1e40af",
+        "priceRub": 2490,
+        "stock": 22,
+        "position": 2,
+        "images": [
+          "https://placehold.co/400x533/1e40af/ffffff?text=XROS+4+Blue"
+        ]
+      },
+      {
+        "name": "Красный",
+        "colorCode": "#dc2626",
+        "priceRub": 2490,
+        "stock": 14,
+        "position": 3,
+        "images": [
+          "https://placehold.co/400x533/dc2626/ffffff?text=XROS+4+Red"
+        ]
+      },
+      {
+        "name": "Золотой",
+        "colorCode": "#f59e0b",
+        "priceRub": 2590,
+        "stock": 8,
+        "position": 4,
+        "images": [
+          "https://placehold.co/400x533/f59e0b/000000?text=XROS+4+Gold"
+        ]
+      },
+      {
+        "name": "Фиолетовый градиент",
+        "colorCode": "#9333ea",
+        "priceRub": 2590,
+        "stock": 10,
+        "position": 5,
+        "images": [
+          "https://placehold.co/400x533/9333ea/ffffff?text=XROS+4+Purple"
+        ]
+      }
+    ],
+    "links": [
+      {
+        "label": "Официальный сайт",
+        "url": "https://vaporesso.com/xros-4"
+      }
+    ]
+  }
+]

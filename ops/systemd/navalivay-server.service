@@ -1,0 +1,38 @@
+[Unit]
+Description=NAVALIVAY Mini App Server
+After=network.target
+# Window covers slow self-healing native rebuilds after a Node ABI change.
+StartLimitIntervalSec=900
+StartLimitBurst=5
+
+[Service]
+Type=simple
+WorkingDirectory=/var/www/NAVALIVAY/server
+# Никогда не убиваем неизвестный процесс. После штатной остановки порт обязан
+# быть свободен; иначе запуск прекращается и оператор видит PID владельца.
+ExecStartPre=/usr/bin/bash -lc 'pids=$$(/usr/bin/lsof -t -iTCP:8082 -sTCP:LISTEN 2>/dev/null || true); if [ -n "$$pids" ]; then echo "Порт 8082 уже занят PID: $$pids" >&2; exit 1; fi'
+# Self-heal native modules (e.g. better-sqlite3) when host Node ABI changes.
+# This is a fallback; primary defense is `apt-mark hold nodejs`.
+ExecStartPre=/usr/bin/bash -lc '/var/www/NAVALIVAY/ops/systemd/navalivay-rebuild-native.sh'
+ExecStart=/usr/bin/node index.js
+Restart=on-failure
+# Slightly longer than the native-rebuild can take, so systemd doesn't
+# burn the StartLimitBurst before the rebuild has a chance to finish.
+RestartSec=15
+TimeoutStartSec=300
+TimeoutStopSec=30
+# Keep the public storefront available even if .env is not deployed yet.
+EnvironmentFile=-/var/www/NAVALIVAY/server/.env
+
+# Безопасность (раскомментируйте после создания пользователя)
+# User=www-data
+# Group=www-data
+
+# Лимиты
+LimitNOFILE=65536
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=navalivay-server
+
+[Install]
+WantedBy=multi-user.target

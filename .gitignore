@@ -1,0 +1,105 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Testing
+coverage/
+
+# Production
+build/
+dist/
+
+# Misc
+.DS_Store
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+server/.env
+server/.env.*
+!server/.env.example
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+server/logs/
+server/.tmp-start-*.log
+
+# IDE
+.idea/
+.vscode/
+.codex/
+.cursor/debug.log
+.cursor/debug-*.log
+*.swp
+*.swo
+*~
+
+# OS
+Thumbs.db
+
+# Database
+server/navalivay.db
+server/navalivay.db-wal
+server/navalivay.db-shm
+server/data/*.db
+server/data/*.db-wal
+server/data/*.db-shm
+server/data/*.db.bak*
+*.db.old
+*.db.backup
+# Локальные снимки прод-БД для восстановления (содержат PII клиентов).
+*.before-prod-copy
+*.before-prod-copy-*
+
+# Uploaded files (raw folder too large)
+uploads/
+
+# Backup files
+*.backup
+
+# Userbot session — содержит токен Telegram-аккаунта менеджера, КРИТИЧЕСКИ
+# секретный. Никогда не коммитим. На сервере хранится с chmod 600.
+server/data/userbot.session
+server/data/admin.json
+# Временные файлы non-interactive login (SMS-код и 2FA-пароль). Скрипт их
+# удаляет после прочтения, но если процесс упал — могут остаться на диске.
+server/data/userbot.code
+server/data/userbot.password
+
+# Локальные настройки Claude Code (launch.json, скилы и т.п.)
+.claude/
+*.bak
+*.bak.*
+
+# Local test files
+test-*.js
+migrate_existing_orders.*
+# Временные SQLite из server/tests (если node:test упал до cleanup)
+server/tests/.tmp-*
+
+# Следы отладочных прогонов в браузере: скриншоты, дампы страниц и логи
+# консоли. Пишутся сотнями за сессию, в истории проекта не нужны.
+.playwright-cli/
+.playwright-mcp/
+output/playwright/
+# Скриншоты, которые кидают в корень на посмотреть.
+/*.png
+# Черновики агентских прогонов: логи, диффы на ревью, вложения.
+.codex-*.log
+.codex-*.diff
+.codex-remote-attachments/
+
+# Чистый старт 2026-10-09: тяжёлые и одноразовые артефакты прошлой разработки
+server/database.sqlite
+result.json
+uploads.tar.gz.part_*
+test-cart-migration.html
+test-delivered-orders.js
+check-db.js
+output/
+.playwright-cli/

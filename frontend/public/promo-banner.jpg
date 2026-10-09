@@ -1,0 +1,27 @@
+<svg width="800" height="200" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#e8e8e8;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#f5f5f5;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#e8e8e8;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <rect width="800" height="200" fill="url(#bgGrad)"/>
+  
+  <!-- Torn edges effect -->
+  <path d="M 0,10 Q 20,5 40,10 T 80,10 100,10 120,10 140,10 160,10 180,10 200,10 220,10 240,10 260,10 280,10 300,10 320,10 340,10 360,10 380,10 400,10 420,10 440,10 460,10 480,10 500,10 520,10 540,10 560,10 580,10 600,10 620,10 640,10 660,10 680,10 700,10 720,10 740,10 760,10 780,10 800,10 L 800,0 L 0,0 Z" fill="#1a1a1a" opacity="0.1"/>
+  <path d="M 0,190 Q 20,195 40,190 T 80,190 100,190 120,190 140,190 160,190 180,190 200,190 220,190 240,190 260,190 280,190 300,190 320,190 340,190 360,190 380,190 400,190 420,190 440,190 460,190 480,190 500,190 520,190 540,190 560,190 580,190 600,190 620,190 640,190 660,190 680,190 700,190 720,190 740,190 760,190 780,190 800,190 L 800,200 L 0,200 Z" fill="#1a1a1a" opacity="0.1"/>
+  
+  <!-- Placeholder text -->
+  <text x="400" y="80" font-family="'Bebas Neue', Impact, sans-serif" font-size="48" fill="#d32f2f" text-anchor="middle" font-weight="900">
+    PROTEST + TRAFFIC
+  </text>
+  <text x="400" y="130" font-family="'Bebas Neue', Impact, sans-serif" font-size="64" fill="#1a66ff" text-anchor="middle" font-weight="900">
+    20 РУБЛЕЙ
+  </text>
+  <text x="400" y="160" font-family="Arial, sans-serif" font-size="12" fill="#6b6b6b" text-anchor="middle" opacity="0.6">
+    Добавьте свой промо-баннер в /public/promo-banner.jpg
+  </text>
+</svg>

@@ -1,0 +1,29 @@
+[
+  {
+    "id": "b_main_salt_week",
+    "image": "/uploads/banners/salt-week.jpg",
+    "href": "https://vapeshop.example/promos/salt-week",
+    "active": true,
+    "order": 1,
+    "title": "Неделя солевых жидкостей",
+    "openInNewTab": true
+  },
+  {
+    "id": "b_main_new_devices",
+    "image": "/uploads/banners/new-devices.jpg",
+    "href": "https://vapeshop.example/catalog/pod-systems",
+    "active": true,
+    "order": 2,
+    "title": "Новые POD-системы",
+    "openInNewTab": false
+  },
+  {
+    "id": "b_main_disposable",
+    "image": "/uploads/banners/disposable.jpg",
+    "href": "https://vapeshop.example/catalog/disposable",
+    "active": true,
+    "order": 3,
+    "title": "Одноразовые до 8000 затяжек",
+    "openInNewTab": false
+  }
+]

@@ -1,0 +1,11 @@
+[
+  {
+    "id": "g_pods_vaporesso",
+    "categoryId": "c_pods",
+    "slug": "vaporesso-line",
+    "name": "VAPORESSO",
+    "order": 15,
+    "coverImage": "/uploads/groups/vaporesso.jpg",
+    "hideEmpty": false
+  }
+]

@@ -1,0 +1,1244 @@
+---
+description: 
+alwaysApply: true
+---
+
+# NAVALIVAY Project - AI Agent Guidelines
+
+## Project Overview
+E-commerce Telegram Mini App with admin panel (CRM). Stack: Vue 3 + Vite (frontend), Express + SQLite (backend).
+
+## Server Info
+- **Domain**: https://navalivay.store
+- **Hosting**: TimeWeb Cloud (SPB-3)
+- **IP**: 89.191.229.34
+- **OS**: Ubuntu 22.04 LTS
+- **RAM**: 4 GB
+- **Node.js**: 20.x
+- **SSL**: Let's Encrypt (auto-renew via certbot.timer)
+
+---
+
+## 🟢 Performance Optimizations (January 2026)
+
+The project has been optimized for performance. Key metrics:
+
+| API Endpoint | Response Time | Response Size |
+|--------------|---------------|---------------|
+| `/api/products` | ~10-20 ms | ~24 KB |
+| `/api/categories` | ~10-20 ms | ~18 KB |
+| `/api/categories/:id/image` | ~5 ms | ~100-140 KB |
+| `/api/product/:id` | ~3-5 ms | varies |
+| `/api/admin/crm/products/search` | ~50-100 ms | ~50-100 KB |
+
+**Architecture:**
+- Category/group cover images are NOT included in list responses
+- Images are loaded separately via dedicated endpoints and cached on frontend
+- Products with `needsCategoryImage: true` flag use category cover image
+- All images automatically converted to WebP format (800x800px, quality 80%, preserves transparency)
+- CRM product search does NOT return base64 images (only image URLs)
+
+---
+
+## 🔴 CRITICAL: Project Structure
+
+```
+/var/www/NAVALIVAY/
+├── frontend/           # Vue 3 + Vite + TypeScript
+│   ├── src/
+│   │   ├── views/      # Page components
+│   │   ├── components/ # Reusable components
+│   │   ├── stores/     # Pinia stores (state management)
+│   │   └── ...
+│   └── dist/           # Built production files
+├── server/             # Express.js backend (ES Modules)
+│   ├── index.js        # Main entry point
+│   ├── routes/         # API route handlers
+│   ├── db.js           # SQLite database connection
+│   └── bot.js          # Telegram bot
+└── data/               # SQLite database files
+```
+
+---
+
+## 🔴 CRITICAL: ES Modules in Backend
+
+**The backend uses ES Modules (ESM), NOT CommonJS!**
+
+✅ CORRECT:
+```javascript
+import express from 'express';
+import fs from 'fs';
+import { db } from '../db.js';
+```
+
+❌ WRONG (will cause `ReferenceError: require is not defined`):
+```javascript
+const express = require('express');
+const fs = require('fs');
+```
+
+**Always check file imports before adding new ones.**
+
+---
+
+## 🔴 CRITICAL: Production Management
+
+API `:8082` работает через systemd, Telegram-бот и userbot через PM2.
+Прямые команды запуска, рестарта и деплоя запрещены. Использовать только
+`ops/prod.sh`; единый регламент: `docs/DEPLOY_REBUILD_RESTART.md`.
+
+---
+
+## 🔴 CRITICAL: Frontend Build
+
+Production-сборку выполняет только `ops/prod.sh`. Локальные сборки не являются деплоем.
+
+---
+
+## API Structure
+
+### Base URLs:
+- Public API: `/api/...`
+- Admin API: `/api/admin/...`
+- CRM API: `/api/admin/crm/...`
+
+### Authentication:
+Admin routes use `authMiddleware` from `server/auth.js`. Token is passed via `Authorization` header.
+
+### Main CRM endpoints:
+- `GET /api/admin/crm/orders` - List orders
+- `GET /api/admin/crm/orders/:id` - Get single order
+- `PATCH /api/admin/crm/orders/:id` - Update order (status, items, etc.)
+- `POST /api/admin/crm/orders/:id/issue` - Issue order with payment
+- `DELETE /api/admin/crm/orders/:id/payment` - Remove payment
+
+---
+
+## Database
+
+### Connection:
+```javascript
+import { db } from '../db.js';
+
+// Query
+const row = db.prepare('SELECT * FROM orders WHERE id = ?').get(id);
+const rows = db.prepare('SELECT * FROM products').all();
+
+// Insert/Update
+db.prepare('UPDATE orders SET status = ? WHERE id = ?').run(status, id);
+
+// Transaction
+const tx = db.transaction(() => {
+  // multiple operations
+});
+tx();
+```
+
+### Main tables:
+- `orders` - Orders
+- `order_items` - Order line items
+- `products` - Products
+- `product_variants` - Product variants
+- `customers` - Customers
+- `categories` - Categories
+- `banners` - Promotional banners
+- `settings` - App settings
+
+---
+
+## Frontend State Management (Pinia)
+
+### Main stores:
+- `stores/crm.ts` - CRM data (orders, customers, products)
+- `stores/admin.ts` - Admin panel data
+- `stores/cart.ts` - Shopping cart
+- `stores/catalog.ts` - Product catalog
+
+### Using stores:
+```typescript
+import { useCrmStore } from '@/stores/crm'
+
+const crmStore = useCrmStore()
+await crmStore.updateOrder(orderId, { status: 'cancelled' })
+```
+
+---
+
+## Common Pitfalls
+
+### 1. SQL Parameter Count Mismatch
+When writing INSERT statements, ensure the number of `?` placeholders matches the number of values in `.run()`:
+```javascript
+// If SQL has 12 columns, .run() must have 12 values!
+db.prepare(`INSERT INTO table (col1, col2, ..., col12) VALUES (?, ?, ..., ?)`).run(
+  val1, val2, ..., val12  // Must be exactly 12 values
+);
+```
+
+### 2. Forgetting to Restart Server
+Backend changes require server restart. Frontend changes require rebuild.
+
+### 3. Memory Issues During Build
+With 4GB RAM, builds should work without issues. If needed, use `NODE_OPTIONS="--max-old-space-size=2048"`.
+
+### 4. Port Already in Use
+If server won't start with `EADDRINUSE`, kill the old process first:
+```bash
+kill -9 $(lsof -t -i:8082)
+```
+
+### 5. Products with Variants (Colors)
+Products can have variants (e.g., colors). Important:
+- `products` table has `has_variants` flag
+- `product_variants` table stores variants with their own `stock`
+- When checking stock for variant products, check `product_variants.stock`, NOT `products.stock`
+- Cart stores `variantId` - must be passed to backend as `variant_id`
+- When creating orders, update `product_variants.stock` for variant items
+
+```javascript
+// Check if product has variants
+if (item.variant_id) {
+  const variant = db.prepare('SELECT * FROM product_variants WHERE id = ?').get(item.variant_id);
+  stockToCheck = variant.stock;
+}
+```
+
+### 6. Low Memory Build Issues
+With 4GB RAM on TimeWeb, this is no longer an issue. Builds complete in ~25 seconds.
+
+### 7. Vue Reactivity with Arrays
+When updating items in Pinia store arrays, **replace the entire array** instead of mutating by index:
+```typescript
+// ❌ WRONG - Vue may not detect the change
+categories.value[index] = { ...categories.value[index], ...updates }
+
+// ✅ CORRECT - Replace array to trigger reactivity
+categories.value = categories.value.map(c => 
+  c.id === id ? { ...c, ...updates } : c
+)
+```
+
+### 8. Images in List APIs (Performance Optimization)
+List APIs do NOT return `cover_image` (base64) to save traffic — this saves ~100MB per request!
+
+**Public API:**
+- `GET /api/categories` — returns `hasCoverImage` flag, NOT the image itself
+- `GET /api/products` — returns `needsCategoryImage` flag for products without own images
+- `GET /api/categories/:id/image` — separate endpoint to fetch category cover image
+- `GET /api/category-groups/:id/image` — separate endpoint to fetch group cover image
+
+**Admin API:**
+- `GET /api/admin/categories` — returns `has_cover_image` flag
+- `GET /api/admin/category-groups` — returns `hasCoverImage` flag
+- Frontend loads images separately via `fetchCategoryImage()` / `fetchCategoryGroupImage()`
+
+**Frontend caching (catalog.ts):**
+```typescript
+// Images are cached in Pinia store
+categoryImageCache: Map<string, string>  // categoryId -> base64
+groupImageCache: Map<string, string>     // groupId -> base64
+
+// Fetch with caching
+await catalogStore.fetchCategoryImage(categoryId)
+await catalogStore.fetchGroupImage(groupId)
+
+// Get from cache (sync)
+catalogStore.getCategoryImage(categoryId)
+catalogStore.getGroupImage(groupId)
+```
+
+**Product images flow:**
+1. API returns product with `needsCategoryImage: true` if product has no images but uses category image
+2. Frontend checks this flag and fetches category image from cache or API
+3. Image is cached and reused for all products in same category
+
+### 9. Product Variants with colorImage
+Variants can have `colorImage` (base64) instead of `colorCode` (hex):
+- Backend: `color_image` column in `product_variants` table
+- API must SELECT `color_image AS colorImage` in product queries
+- Frontend `normalizeProductData()` must map `colorImage` field
+- Form must initialize `form.variants` from `props.product.variants`
+
+### 10. Image Conversion to WebP
+All category/group cover images are automatically converted to WebP format on upload.
+WebP provides ~90% compression with transparency support.
+
+If you need to re-convert existing images to WebP, run:
+```bash
+cd /var/www/NAVALIVAY/server
+node scripts/convert-to-webp.js
+```
+This script:
+- Converts all base64 images in `categories` and `category_groups` tables to WebP
+- Preserves transparency (unlike JPEG)
+- Resizes to max 800x800px, WebP quality 80%
+- Runs VACUUM to reclaim disk space
+- Typically achieves 90%+ compression (e.g., 1MB PNG → 100KB WebP)
+
+### 11. Search Results Limit in CRM
+When searching products in CRM (procurements, write-offs, orders), the `limit` parameter controls how many results are returned:
+- Default limit in API: 25
+- Procurements page uses: 100 (to show full product lines with 40-50 items)
+- Other pages may use: 12-20
+
+**If users report missing search results**, check the `limit` parameter in the frontend component calling `crmStore.searchCrmProducts()`.
+
+```typescript
+// Example: increase limit for large product lines
+productResults.value = await crmStore.searchCrmProducts({ search, limit: 100 })
+```
+
+### 12. CRM Products Search API
+The search endpoint `/api/admin/crm/products/search` searches by:
+- Product title (multiple case variants for Cyrillic)
+- Product description
+- Category group name (линейка)
+
+**Search logic: AND (all words must match)**
+- Query is split into words (min 2 chars each)
+- Each word must be found in title, description, OR group name
+- All words must match for product to appear in results
+
+**Examples:**
+| Query | Result |
+|-------|--------|
+| `сочный персик` | Products with "сочный" AND "персик" |
+| `Anima Love сочный персик` | Only "Сочный персик" from ANIMA LOVE line |
+| `Anima Love` | All products from ANIMA LOVE line |
+
+**Relevance sorting (when search query provided):**
+1. Exact title match → highest priority
+2. Title starts with query → second priority
+3. Title contains full query → third priority
+4. More matching words → higher priority
+5. Alphabetical → fallback
+
+**Performance optimization:**
+- API does NOT return base64 images (was causing 4-12 MB responses!)
+- Only returns `imageUrl` with product image URL (not group cover base64)
+- Response size: ~50-100 KB instead of 4-12 MB
+- Response time: <500ms instead of 10-28 seconds
+
+### 13. snake_case vs camelCase in API Responses
+SQLite returns column names as-is (usually snake_case). Frontend expects camelCase.
+
+**Backend:** When returning data, either:
+- Use SQL aliases: `SELECT group_name as groupName`
+- Or let frontend handle mapping
+
+**Frontend mapping pattern** (in Pinia stores):
+```typescript
+// Always check both variants when mapping API response
+return {
+  groupName: product.groupName ?? product.group_name ?? null,
+  costPrice: product.costPrice ?? product.cost_price ?? 0,
+  categoryId: product.categoryId ?? product.category_id ?? '',
+}
+```
+
+**Common fields that need mapping:**
+| Backend (snake_case) | Frontend (camelCase) |
+|---------------------|---------------------|
+| `group_name` | `groupName` |
+| `cost_price` | `costPrice` |
+| `category_id` | `categoryId` |
+| `group_id` | `groupId` |
+| `min_stock` | `minStock` |
+| `price_rub` | `priceRub` |
+| `is_variant` | `isVariant` |
+| `variant_name` | `variantName` |
+
+### 14. Product Lines (Category Groups)
+Products belong to **category groups** (линейки/бренды), not just categories.
+
+**Database structure:**
+- `categories` - top-level categories (e.g., "Жидкости", "Устройства")
+- `category_groups` - product lines within categories (e.g., "ANNIMA LOVE [70MG]", "PODONKI LIGHT [20MG]")
+- `products.groupId` - links product to a category group
+
+**Why this matters:**
+- Products with same name but different lines are different products
+- Line name helps identify the brand/strength (e.g., [70MG] vs [20MG])
+- In procurement forms, showing line name prevents confusion
+
+### 15. HTML5 Form Validation Blocking Vue Submit
+When using `<form @submit.prevent="handler">` with HTML5 validation attributes (`min`, `max`, `required`, `pattern`), the browser validates BEFORE Vue's handler is called.
+
+**Problem:** If validation fails, the submit event never fires and Vue handler is never called - appears as "button doesn't work".
+
+**Solutions:**
+1. Use `type="button"` with `@click` instead of `type="submit"`:
+```html
+<!-- Instead of -->
+<button type="submit">Submit</button>
+
+<!-- Use -->
+<button type="button" @click="submitHandler">Submit</button>
+```
+
+2. Or remove HTML5 validation attributes and handle validation in JavaScript:
+```html
+<!-- Instead of min="1" which blocks submit when value is 0 -->
+<input type="number" min="0" v-model="price" />
+
+<!-- Then validate in handler -->
+if (price <= 0) {
+  error.value = 'Price must be greater than 0'
+  return
+}
+```
+
+### 16. Checkbox in Label with Nested Divs
+When using `<label>` with checkbox and nested `<div>` elements, clicks on the div may not toggle the checkbox.
+
+**Problem:**
+```html
+<!-- This may not work reliably -->
+<label class="...">
+  <input type="checkbox" v-model="checked" />
+  <div>  <!-- Clicks here may not reach checkbox -->
+    <span>Label text</span>
+  </div>
+</label>
+```
+
+**Solution:** Use a wrapper div with explicit `@click` handler:
+```html
+<div class="cursor-pointer" @click="checked = !checked">
+  <input type="checkbox" :checked="checked" class="pointer-events-none" />
+  <div>
+    <span>Label text</span>
+  </div>
+</div>
+```
+
+### 17. Quick Product Creation in Procurements
+The procurement form has a "quick create product" modal (`CrmProcurements.vue`).
+
+**Key features:**
+- `useCategoryImage` option - allows creating products without uploading photos
+- When enabled, product uses category/group cover image
+- Validation only requires photos if `useCategoryImage` is false
+
+**API call:**
+```typescript
+await adminStore.createProduct({
+  categoryId: quickProduct.categoryId,
+  groupId: quickProduct.groupId || null,
+  title: quickProduct.title,
+  priceRub: quickProduct.priceRub,
+  images: quickProduct.useCategoryImage ? [] : [...images],
+  useCategoryImage: quickProduct.useCategoryImage,
+  // ... other fields
+})
+```
+
+### 18. Products vs AllProducts in Catalog Store
+The catalog store has TWO product arrays:
+- `products` - paginated list (default 20 items), filtered by active category/group
+- `allProducts` - full list (up to 1000 items), loaded via `fetchAllProducts()`
+
+**When to use which:**
+```typescript
+// ❌ WRONG - for building category group trees (will be incomplete)
+const categoryProducts = catalogStore.products.filter(p => p.categoryId === catId)
+
+// ✅ CORRECT - use allProducts for complete data
+const productsPool = catalogStore.allProducts.length ? catalogStore.allProducts : catalogStore.products
+const categoryProducts = productsPool.filter(p => p.categoryId === catId)
+```
+
+**Key files:**
+- `frontend/src/stores/catalog.ts` - defines both arrays
+- `frontend/src/views/HomeView.vue` - uses allProducts for group trees
+
+### 19. API Pagination Limits
+Public API `/api/products` has configurable limits:
+- Default: 50 items per request
+- Maximum: 1000 items (hardcoded in `server/routes/public.js`)
+- Frontend `fetchAllProducts()` requests with `limit=1000`
+
+**If products are missing from frontend:**
+1. Check total count vs returned count: `curl "http://localhost:8082/api/products?limit=1000" | jq '{total, returned: .products|length}'`
+2. If `returned < total`, increase the limit in `public.js`
+
+### 20. Stock = 0 Hides Products from Public API
+Products with `stock = 0` (or variants with all `stock = 0`) are **intentionally hidden** from public API.
+
+**This is NOT a bug** - it's expected behavior for e-commerce (don't show out-of-stock items).
+
+**SQL filter in public.js:**
+```sql
+WHERE (
+  (p.has_variants = 0 AND (p.stock IS NULL OR p.stock > 0))
+  OR
+  (p.has_variants = 1 AND EXISTS (
+    SELECT 1 FROM product_variants pv 
+    WHERE pv.product_id = p.id AND (pv.stock IS NULL OR pv.stock > 0)
+  ))
+)
+```
+
+**If user reports "products not showing":**
+1. First check stock in DB: `sqlite3 data/navalivay.db "SELECT id, title, stock FROM products WHERE title LIKE '%keyword%'"`
+2. If stock = 0, products need to be restocked via CRM procurements
+
+### 21. Admin Products Search - Search by Group Name
+The admin products table (`/admin?tab=products`) searches by:
+- Product title (`p.title`)
+- Product description (`p.description`)
+- **Group/line name (`g.name`)** - e.g., "ANNIMA LOVE [70MG]"
+
+**Important:** Both backend AND frontend filter by these fields:
+- Backend: `server/routes/admin.js` - SQL WHERE clause
+- Frontend: `AdminProductsTable.vue` - `filteredProducts` computed
+
+**If search returns 0 results but products exist:**
+1. Check if searching by group name (e.g., "Annima love")
+2. Verify backend returns results: check debug logs or curl API
+3. If API returns data but UI shows 0 → frontend `filteredProducts` is filtering them out
+4. Ensure frontend filter includes `groupName`:
+```javascript
+const bySearch = !s || 
+  (p.title || '').toLowerCase().includes(s) || 
+  (p.groupName || '').toLowerCase().includes(s)
+```
+
+---
+
+## Debugging Tips
+
+### Backend debugging:
+1. Add `console.log()` or `console.error()` statements
+2. Restart server
+3. Check `/tmp/server.log`
+
+### Frontend debugging:
+1. Add `console.log()` statements
+2. Rebuild frontend
+3. Check browser DevTools console
+
+### Debug Mode (AI Agent Instrumentation)
+When using Cursor's debug mode with NDJSON logging:
+
+**For JavaScript/TypeScript (frontend):**
+```javascript
+// Use fetch to send logs to debug server
+fetch('http://localhost:7255/ingest/SESSION_ID',{
+  method:'POST',
+  headers:{'Content-Type':'application/json'},
+  body:JSON.stringify({
+    location:'file.js:LINE',
+    message:'description',
+    data:{key:value},
+    timestamp:Date.now(),
+    sessionId:'debug-session'
+  })
+}).catch(()=>{});
+```
+
+**⚠️ Frontend fetch works**, but if function is never called (e.g., due to HTML5 validation blocking form submit), no logs will appear. Check browser DevTools console for errors first!
+
+**For Backend (Node.js) - USE SYNC FILE LOGGING:**
+⚠️ **IMPORTANT:** `fetch()` in Node.js backend often fails to write logs (async issues, request completes before fetch finishes). Use synchronous file logging instead:
+
+```javascript
+import fs from 'fs';
+
+// Add at top of route file
+const DEBUG_LOG_PATH = '/var/www/NAVALIVAY/.cursor/debug.log';
+function debugLog(data) { 
+  try { fs.appendFileSync(DEBUG_LOG_PATH, JSON.stringify(data) + '\n'); } catch(e) {} 
+}
+
+// Use in code (wrap in #region for easy removal)
+// #region agent log
+debugLog({location:'crm-finance.js:search',message:'Search params',data:{search,limit},timestamp:Date.now()});
+// #endregion
+```
+
+**Important:** After adding instrumentation, remember to:
+1. На production применить изменения только через `ops/prod.sh`
+2. Проверить нужный компонент через `./ops/prod.sh doctor`
+3. Clear debug log before each test run: `echo "" > /var/www/NAVALIVAY/.cursor/debug.log`
+4. Remove instrumentation after debugging is complete (search for `#region agent log`)
+
+### CSS Animation Debugging
+When animations appear "jumpy" or don't work as expected:
+
+**1. Log CSS computed styles at intervals:**
+```javascript
+// Log CSS state at different moments during animation
+[0, 100, 200, 400].forEach(delay => {
+  setTimeout(() => {
+    const el = document.querySelector('.animated-element');
+    const styles = window.getComputedStyle(el);
+    fetch('http://localhost:7255/ingest/SESSION_ID',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        location:`animation:${delay}ms`,
+        data:{
+          opacity: styles.opacity,
+          transform: styles.transform,
+          maxHeight: styles.maxHeight,
+          gridTemplateRows: styles.gridTemplateRows
+        },
+        timestamp:Date.now()
+      })
+    }).catch(()=>{});
+  }, delay);
+});
+```
+
+**2. Common CSS animation issues:**
+- `transition: none` on enter state → element appears instantly
+- Missing `overflow: hidden` on container → content visible during collapse
+- Missing `min-height: 0` for CSS Grid animations → grid won't collapse
+- Wrong timing function → animation feels unnatural
+
+**3. CSS Grid expand/collapse pattern:**
+```css
+/* Container */
+.wrapper {
+  display: grid;
+  grid-template-rows: 0fr;
+  overflow: hidden;
+  transition: grid-template-rows 400ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.wrapper.expanded {
+  grid-template-rows: 1fr;
+}
+
+/* Inner content - MUST have min-height: 0 */
+.wrapper > .content {
+  min-height: 0;
+  overflow: hidden;
+}
+```
+
+**4. Vue Transition component tips:**
+- `mode="out-in"` waits for leave animation before enter
+- Both `-enter-active` and `-leave-active` need transitions
+- Use `max-height` for height animations (not `height`)
+
+### Database inspection:
+```bash
+cd /var/www/NAVALIVAY/server/data
+sqlite3 navalivay.db
+.tables
+.schema orders
+SELECT * FROM orders LIMIT 5;
+```
+
+### Useful SQL queries for debugging:
+```sql
+-- Count products in each category group (линейка)
+SELECT g.name, COUNT(*) as count 
+FROM products p 
+JOIN category_groups g ON g.id = p.groupId 
+GROUP BY g.id ORDER BY count DESC;
+
+-- Find products by group name (e.g., LAST HAP)
+SELECT p.id, p.title, g.name as group_name 
+FROM products p 
+LEFT JOIN category_groups g ON g.id = p.groupId 
+WHERE g.name LIKE '%LAST HAP%';
+
+-- Check product variants stock
+SELECT p.title, v.name, v.stock 
+FROM product_variants v 
+JOIN products p ON p.id = v.product_id 
+WHERE p.has_variants = 1;
+
+-- Products without category group
+SELECT id, title FROM products WHERE groupId IS NULL OR groupId = '';
+```
+
+### Checking API responses without auth:
+For admin APIs that require authentication, test directly in browser DevTools Network tab, or check database directly:
+```bash
+# Example: check if products have group_name
+sqlite3 navalivay.db "SELECT p.id, p.title, g.name as group_name FROM products p LEFT JOIN category_groups g ON g.id = p.groupId LIMIT 10"
+```
+
+---
+
+## File Locations Quick Reference
+
+| What | Where |
+|------|-------|
+| Order update API | `server/routes/crm-operations.js` |
+| Order create (public) | `server/routes/public.js` |
+| Order detail page | `frontend/src/views/admin/crm/CrmOrderDetail.vue` |
+| Orders list page | `frontend/src/views/admin/crm/CrmOrders.vue` |
+| Checkout page | `frontend/src/views/CheckoutView.vue` |
+| Telegram Mini App, wholesale `t.me` links | `docs/telegram-mini-app.md`, `frontend/src/utils/telegramMiniAppContext.ts` |
+| Cart store | `frontend/src/stores/cart.ts` |
+| CRM store | `frontend/src/stores/crm.ts` |
+| Admin store | `frontend/src/stores/admin.ts` |
+| Catalog store (with image cache) | `frontend/src/stores/catalog.ts` |
+| Database | `server/data/navalivay.db` |
+| Server entry | `server/index.js` |
+| Auth middleware | `server/auth.js` |
+| Admin credentials | `server/data/admin.json` |
+| Public API routes | `server/routes/public.js` |
+| Admin API routes | `server/routes/admin.js` |
+| Admin products search | `server/routes/admin.js` (GET `/api/admin/products`) |
+| Product variants card | `frontend/src/components/product/ProductVariantCard.vue` |
+| Product form (variants) | `frontend/src/components/admin/AdminProductForm.vue` |
+| Products table | `frontend/src/components/admin/AdminProductsTable.vue` |
+| Category form | `frontend/src/components/admin/AdminCategoryForm.vue` |
+| Image sorter (variants) | `frontend/src/components/admin/AdminProductImagesSorter.vue` |
+| Image conversion script | `server/scripts/convert-to-webp.js` |
+| Image utils (auto WebP) | `server/utils/imageUtils.js` |
+| CRM Products search API | `server/routes/crm-finance.js` (endpoint `/api/admin/crm/products/search`) |
+| Procurements page | `frontend/src/views/admin/crm/CrmProcurements.vue` |
+| Write-offs page | `frontend/src/views/admin/crm/CrmWriteOffs.vue` |
+| Home page (category groups) | `frontend/src/views/HomeView.vue` |
+| Group line item component | `frontend/src/components/product/GroupLineItem.vue` |
+| Liquid line tree component | `frontend/src/components/product/liquid/LiquidLineTree.vue` |
+| Product compact card | `frontend/src/components/product/ProductCompactCard.vue` |
+| Single product card | `frontend/src/components/product/SingleProductCard.vue` |
+
+---
+
+## 🟡 CRM Procurements (Закупки)
+
+### Product Search in Procurements
+The `/api/admin/crm/products/search` endpoint returns products with:
+- `group_name` - product line/brand name (e.g., "ANNIMA LOVE [70MG]")
+- `imageUrl` - product image URL only (NO base64 to keep response small)
+
+**Frontend mapping** (`stores/crm.ts`):
+```typescript
+// API returns snake_case, frontend uses camelCase
+groupName: product.groupName ?? product.group_name ?? null
+```
+
+**Display in CrmProcurements.vue:**
+- Product title (bold)
+- Group/line name (blue, semibold) - helps identify product brand
+- Stock and cost info (gray, small)
+
+### Products Without Group
+Some products may not have `groupId` set in database. These will show without a line name.
+To fix: edit product in admin panel and assign it to a category group (line).
+
+**Check products without group:**
+```sql
+SELECT id, title FROM products WHERE groupId IS NULL OR groupId = '';
+```
+
+### Search Performance Issue (January 2026 - FIXED)
+**Problem:** Search took 10-28 seconds and showed irrelevant results.
+
+**Root causes found via debug logging:**
+1. API returned base64 images in `imageUrl` field (4-12 MB responses!)
+2. Search used OR logic (any word) instead of AND (all words)
+3. No relevance sorting
+
+**Fix applied:**
+1. Removed `group_cover_image` from SQL queries
+2. Changed word conditions from `OR` to `AND`
+3. Added relevance-based sorting
+
+**Lesson:** Always check API response size in server logs:
+```bash
+# Look for response size (last number in bytes)
+cat /tmp/server.log | grep "products/search"
+# Example: GET /api/admin/crm/products/search 200 82.508 ms - 4167324
+#                                                            ^^^^^^^ 4MB is too big!
+```
+
+---
+
+## 🤖 AI Agent Tips & Lessons Learned
+
+### Accessing Remote Servers
+If you need to access another server (e.g., for data migration):
+```bash
+# Install sshpass if not available
+apt-get install -y sshpass
+
+# Connect with password
+sshpass -p 'PASSWORD' ssh -o StrictHostKeyChecking=no root@IP_ADDRESS "command"
+
+# Export data from remote DB
+sshpass -p 'PASSWORD' ssh root@IP "sqlite3 /path/to/db.db \"SELECT * FROM table\"" > /tmp/export.txt
+```
+
+### Image Format Issues - CRITICAL LESSON
+**Problem encountered:** PNG images with transparency were converted to JPEG, losing transparency and showing black/white backgrounds.
+
+**Root cause:** Using `sharp().jpeg()` without handling alpha channel.
+
+**Solution:** Always use WebP for images that may have transparency:
+```javascript
+import sharp from 'sharp';
+
+// ✅ CORRECT - WebP preserves transparency
+await sharp(buffer)
+  .resize(800, 800, { fit: 'inside', withoutEnlargement: true })
+  .webp({ quality: 80, alphaQuality: 90 })
+  .toBuffer();
+
+// ❌ WRONG - JPEG loses transparency (becomes black)
+await sharp(buffer).jpeg({ quality: 80 }).toBuffer();
+
+// ⚠️ ACCEPTABLE - JPEG with white background (if transparency not needed)
+await sharp(buffer)
+  .flatten({ background: { r: 255, g: 255, b: 255 } })
+  .jpeg({ quality: 80 })
+  .toBuffer();
+```
+
+### Making Express Routes Async
+When adding async operations (like image conversion) to Express routes:
+```javascript
+// ❌ WRONG - sync handler can't use await
+adminRouter.post('/api/endpoint', authMiddleware, (req, res) => {
+  const result = await asyncFunction(); // SyntaxError!
+});
+
+// ✅ CORRECT - async handler
+adminRouter.post('/api/endpoint', authMiddleware, async (req, res) => {
+  const result = await asyncFunction(); // Works!
+});
+```
+
+### Database Size Optimization
+SQLite database can grow large with base64 images. After deleting/updating data:
+```javascript
+db.exec('VACUUM'); // Reclaims unused space
+```
+
+Or via CLI:
+```bash
+sqlite3 database.db "VACUUM"
+```
+
+### Checking Image Format in Database
+```bash
+# Check what format images are stored as
+sqlite3 data/navalivay.db "SELECT id, substr(cover_image, 1, 30) FROM categories LIMIT 3"
+
+# Expected output for WebP:
+# id|data:image/webp;base64,UklGR...
+
+# If you see data:image/jpeg or data:image/png, conversion may be needed
+```
+
+### Common Debug Workflow
+1. **Identify the problem** - get user description, screenshots
+2. **Form hypotheses** - list 3-5 possible causes
+3. **Check database state** - use sqlite3 to inspect actual data
+4. **Check server logs** - `cat /tmp/server.log | tail -50`
+5. **Add instrumentation** - use sync file logging for backend
+6. **Test and verify** - always verify fix with runtime evidence
+
+### Restoring Data from Another Server
+If data was corrupted and you need to restore from backup/another server:
+```bash
+# 1. Export from source
+sshpass -p 'PASS' ssh root@SOURCE_IP "sqlite3 /path/db.db \"SELECT id, data FROM table\"" > /tmp/export.txt
+
+# 2. Create restore script that reads export and updates local DB
+# 3. Run restore script
+# 4. Verify data format is correct
+```
+
+### WebP Browser Support
+WebP is supported by all modern browsers (Chrome, Firefox, Safari 14+, Edge).
+No fallback needed for this project's target audience (Telegram Mini App users).
+
+### Debugging Performance Issues - Key Lesson
+When users report "slow" operations, check BOTH:
+1. **Backend time** - SQL query execution (usually fast, <100ms)
+2. **Response size** - bytes transferred (check server logs)
+
+**Common pattern:** Backend is fast but response is huge due to base64 images.
+
+```bash
+# Check response size in server logs
+cat /tmp/server.log | grep "GET /api" | tail -10
+# Format: METHOD PATH STATUS TIME - SIZE
+# Example: GET /api/admin/crm/products/search 200 82ms - 4167324
+#                                                        ^^^^^^^ bytes
+```
+
+**Size guidelines:**
+| Response Size | Status |
+|---------------|--------|
+| < 100 KB | ✅ Good |
+| 100 KB - 1 MB | ⚠️ Check if images included |
+| > 1 MB | ❌ Too big - remove base64 images |
+
+### Debug Mode Import Location - CRITICAL
+When adding `fs` import for debug logging in route files:
+
+```javascript
+// ✅ CORRECT - import at TOP of file, BEFORE router definition
+import express from 'express';
+import { db } from '../db.js';
+import fs from 'fs';  // <-- HERE
+
+const DEBUG_LOG_PATH = '/var/www/NAVALIVAY/.cursor/debug.log';
+function debugLog(data) { 
+  try { fs.appendFileSync(DEBUG_LOG_PATH, JSON.stringify(data) + '\n'); } catch(e) {} 
+}
+
+export const router = express.Router();
+
+// ❌ WRONG - import inside route handler (won't work in ESM)
+router.get('/api/endpoint', (req, res) => {
+  import fs from 'fs';  // SyntaxError!
+});
+```
+
+### Comparing Frontend vs Backend Time
+When debugging slow operations, instrument BOTH sides:
+
+**Backend log:**
+```javascript
+debugLog({location:'api:start', timestamp:Date.now()});
+// ... do work ...
+debugLog({location:'api:done', data:{timeMs: Date.now()-start}});
+```
+
+**Frontend log:**
+```javascript
+const start = Date.now();
+fetch('http://localhost:7255/ingest/SESSION',{method:'POST',body:JSON.stringify({
+  location:'frontend:start', timestamp:start
+})});
+const result = await api.call();
+fetch('http://localhost:7255/ingest/SESSION',{method:'POST',body:JSON.stringify({
+  location:'frontend:done', data:{timeMs: Date.now()-start}
+})});
+```
+
+**Analysis pattern:**
+- If backend shows 50ms but frontend shows 10000ms → network/response size issue
+- If both show similar high times → actual slow code
+- If frontend never logs → code path not reached (check HTML5 validation, etc.)
+
+### Debugging "Products Not Showing" Issues
+When users report products exist but don't display:
+
+**Step 1: Check stock in database**
+```bash
+sqlite3 server/data/navalivay.db "SELECT id, title, stock, has_variants FROM products WHERE title LIKE '%keyword%' LIMIT 10"
+# If stock = 0, that's why they're hidden (expected behavior)
+```
+
+**Step 2: Check API response**
+```bash
+# Check how many products API returns
+curl -s "http://localhost:8082/api/products?limit=1000" | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'Total: {d[\"total\"]}, Returned: {len(d[\"products\"])}')"
+
+# If Returned < Total, there's a limit issue
+```
+
+**Step 3: Add backend instrumentation**
+```javascript
+// In server/routes/public.js, add at top:
+import fs from 'fs';
+const DEBUG_LOG_PATH = '/var/www/NAVALIVAY/.cursor/debug.log';
+function debugLog(data) { try { fs.appendFileSync(DEBUG_LOG_PATH, JSON.stringify({...data, timestamp: Date.now()}) + '\n'); } catch(e) {} }
+
+// Then in the route:
+debugLog({location:'public.js:products', message:'Query params', data:{category, group, limit, offset}});
+```
+
+**Step 4: Check frontend store**
+In browser DevTools console:
+```javascript
+// Check what's loaded
+console.log('products:', catalogStore.products.length)
+console.log('allProducts:', catalogStore.allProducts.length)
+
+// Check specific category
+const catProducts = catalogStore.allProducts.filter(p => p.categoryId === 'c_liquids_salt')
+console.log('Category products:', catProducts.length)
+```
+
+### Verifying API Limits
+```bash
+# Test current max limit
+curl -s "http://localhost:8082/api/products?limit=9999" | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'Requested 9999, got {len(d[\"products\"])}')"
+
+# If you get less than total, check server/routes/public.js for Math.min limit
+```
+
+### Testing Admin API with Authentication
+Admin APIs require JWT token. To test manually:
+
+```bash
+# 1. Temporarily set plain password for testing
+cat > /var/www/NAVALIVAY/server/data/admin.json << 'EOF'
+{"username": "admin", "passwordHash": "PLAIN:test123", "updatedAt": "2026-01-10T00:00:00.000Z"}
+EOF
+
+# 2. Get token
+TOKEN=$(curl -s -X POST "http://localhost:8082/api/admin/login" \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"test123"}' | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+
+# 3. Test API with token
+curl -s "http://localhost:8082/api/admin/products?search=Annima%20love" \
+  -H "Authorization: Bearer $TOKEN"
+
+# 4. IMPORTANT: Restore original password after testing!
+# (keep backup before changing)
+```
+
+### SQL JOIN Errors in Search Queries
+When adding search by related table columns (e.g., `g.name` for group name):
+
+**Common mistake:** Adding column to WHERE but forgetting JOIN in COUNT query.
+
+```javascript
+// ❌ WRONG - causes "no such column: g.name"
+const total = db.prepare(`SELECT COUNT(*) FROM products p ${where}`).get(...params).total;
+
+// ✅ CORRECT - include same JOINs as main query
+const total = db.prepare(`
+  SELECT COUNT(*) FROM products p 
+  LEFT JOIN category_groups g ON p.groupId = g.id 
+  ${where}
+`).get(...params).total;
+```
+
+### Frontend Double-Filtering Anti-Pattern
+**Problem:** API returns correct results, but UI shows 0 items.
+
+**Cause:** Frontend has local `computed` that re-filters API results with stricter criteria.
+
+**How to detect:**
+1. Add backend logging → see API returns N items
+2. UI shows 0 → frontend is filtering them out
+3. Check `filteredProducts` or similar computed properties
+
+**Example fix:**
+```javascript
+// AdminProductsTable.vue - filteredProducts computed
+// If API searches by groupName, local filter must too!
+const bySearch = !s || 
+  (p.title || '').toLowerCase().includes(s) || 
+  (p.groupName || '').toLowerCase().includes(s)  // ← Add this!
+```
+
+### Debug Log File Location
+Always use absolute path for debug logs:
+```javascript
+const DEBUG_LOG_PATH = '/var/www/NAVALIVAY/.cursor/debug.log';
+```
+
+To clear logs before testing:
+```bash
+echo "" > /var/www/NAVALIVAY/.cursor/debug.log
+```
+
+Note: `delete_file` tool may fail on `.cursor/debug.log` as it's a protected config file. Use `echo ""` instead.
+
+---
+
+## 📚 Documentation Files
+
+| File | Description |
+|------|-------------|
+| `.cursorrules` | This file - AI agent guidelines |
+| `docs/IMAGE_PROCESSING.md` | Image handling architecture |
+| `docs/PRODUCT_VARIANTS.md` | Product variants (colors) system |
+| `docs/VARIANT_STOCK_UPDATE.md` | Stock management for variants |
+| `docs/CRM_PRODUCT_SEARCH.md` | CRM product search API & optimization |
+| `docs/CATEGORY_GROUPS_DISPLAY.md` | Category groups (линейки) display logic |
+| `docs/CSS_ANIMATIONS.md` | CSS animations patterns (expand/collapse, transitions) |
+| `docs/PRODUCT_CARD_LAYOUT.md` | Product card image areas, padding/sizing, for AI agents |
+
+---
+
+## 🔧 Recent Fixes & Changes Log
+
+### January 9, 2026 - CRM Product Search Optimization
+**Problem:** Search in procurements took 10-28 seconds, showed irrelevant results.
+
+**Root causes:**
+1. API returned base64 `group_cover_image` in response (4-12 MB!)
+2. Search used OR logic (any word matches)
+3. No relevance sorting
+
+**Fixes applied:**
+1. Removed `group_cover_image` and `variant_color_image` from SQL queries
+2. Changed search logic from OR to AND (all words must match)
+3. Added relevance sorting (exact match → starts with → contains → word count)
+
+**Files changed:**
+- `server/routes/crm-finance.js` - search endpoint optimization
+
+**Result:**
+- Response time: 10-28s → <500ms (20-100x faster)
+- Response size: 4-12 MB → 50-100 KB (100x smaller)
+- Search accuracy: finds exact products when multiple words used
+
+### January 9, 2026 - Products Not Showing in Category Groups (Lines)
+**Problem:** Products existed in admin panel but didn't show when expanding category groups (линейки) in the public storefront. Groups appeared but were empty when clicked.
+
+**Root causes (found via debug logging):**
+1. Frontend `HomeView.vue` used `catalogStore.products` (paginated, max 20 items) instead of `catalogStore.allProducts` for building group trees
+2. API `/api/products` had hard limit of 100 items max, even when requesting 1000
+3. Products with `stock = 0` are correctly hidden from public API (expected behavior)
+
+**Fixes applied:**
+1. Changed `HomeView.vue` to use `allProducts` in three places:
+   - `groupCards` computed (~line 422)
+   - `liquidStructure` computed (~line 470)  
+   - `nicaBoosterProduct` computed (~line 558)
+2. Increased API max limit from 100 to 1000 in `server/routes/public.js`
+
+**Files changed:**
+- `frontend/src/views/HomeView.vue` - use allProducts instead of products
+- `server/routes/public.js` - increase max limit to 1000
+
+**Key lesson:** When products exist in DB but don't show on frontend:
+1. Check if `stock = 0` (products hidden by design)
+2. Check API pagination limits
+3. Check which store property frontend uses (`products` vs `allProducts`)
+
+### January 10, 2026 - Admin Products Table Search by Group Name
+**Problem:** Search in admin products table (`/admin?tab=products`) returned 0 results when searching by product line name (e.g., "Annima love"), even though 35 products existed in that line.
+
+**Root causes (found via debug logging):**
+1. **Backend** (`server/routes/admin.js`): SQL query searched only `p.title` and `p.description`, not `g.name` (group/line name)
+2. **Backend**: COUNT query was missing `LEFT JOIN category_groups g` - caused SQL error `no such column: g.name`
+3. **Frontend** (`AdminProductsTable.vue`): Local `filteredProducts` computed also filtered only by `p.title`, discarding API results that matched by group name
+
+**Fixes applied:**
+1. Backend - Added search by group name in WHERE clause:
+```javascript
+// Before: only title and description
+where += '(p.title LIKE ? OR p.description LIKE ?)'
+
+// After: also searches group name
+where += '(p.title LIKE ? OR p.description LIKE ? OR g.name LIKE ?)'
+```
+
+2. Backend - Added JOIN to COUNT query:
+```javascript
+// Before (caused error):
+SELECT COUNT(*) FROM products p ${where}
+
+// After:
+SELECT COUNT(*) FROM products p LEFT JOIN category_groups g ON p.groupId = g.id ${where}
+```
+
+3. Frontend - Added groupName to local filter:
+```javascript
+// Before:
+const bySearch = !s || (p.title || '').toLowerCase().includes(s)
+
+// After:
+const bySearch = !s || (p.title || '').toLowerCase().includes(s) || (p.groupName || '').toLowerCase().includes(s)
+```
+
+**Files changed:**
+- `server/routes/admin.js` - search endpoint (lines ~720-745)
+- `frontend/src/components/admin/AdminProductsTable.vue` - filteredProducts computed (~line 1678)
+
+**Key lesson - Double Filtering Pattern:**
+When search doesn't work, check BOTH:
+1. **API returns correct data** - verify with curl/logs that backend finds results
+2. **Frontend displays data** - check if local filtering discards API results
+
+**Debug approach that worked:**
+```bash
+# 1. Add backend instrumentation
+debugLog({location:'admin.js:products:response', data:{total, productsCount}});
+
+# 2. Check logs after user reproduces
+cat /var/www/NAVALIVAY/.cursor/debug.log
+
+# 3. If API returns data but UI shows 0 → problem is frontend filtering
+# 4. If API returns 0 → problem is backend SQL
+```
+
+### January 10, 2026 - Smooth Expand/Collapse Animations for Product Lines
+**Problem:** When expanding product lines (линейки) and product cards with variants, there was a visual "jump" - content appeared abruptly without smooth animation.
+
+**Root causes (found via CSS state logging at different time intervals):**
+1. **Line expansion:** CSS Grid `grid-template-rows: 0fr → 1fr` worked, but inner content `opacity` and `transform` were not synchronized with grid expansion
+2. **Product card switching:** CSS class `product-card-fade-enter-active` had `transition: none` - new card (`ProductVariantCard`) appeared instantly without animation
+
+**Fixes applied:**
+1. Line expansion - Added synchronized CSS transitions with `cubic-bezier(0.4, 0, 0.2, 1)` timing and 50ms delay for inner content:
+```css
+.group-line-content-wrapper {
+  display: grid;
+  grid-template-rows: 0fr;
+  overflow: hidden;
+  transition: grid-template-rows 400ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.group-line-content-wrapper.is-expanded > .group-line-content {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  transition: opacity 350ms cubic-bezier(0.4, 0, 0.2, 1) 50ms, 
+              transform 350ms cubic-bezier(0.4, 0, 0.2, 1) 50ms;
+}
+```
+
+2. Product card switching - Added full transitions for enter/leave states:
+```css
+.product-card-fade-enter-active {
+  transition: opacity 0.35s cubic-bezier(0.4, 0, 0.2, 1), 
+              transform 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+              max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.product-card-fade-enter-from {
+  opacity: 0;
+  transform: translateY(-12px) scale(0.98);
+  max-height: 0;
+}
+```
+
+**Files changed:**
+- `frontend/src/components/product/GroupLineItem.vue` - CSS animations for lines and product cards
+
+**Key lesson - Debugging CSS Animations:**
+Log CSS computed styles at different time intervals (0ms, 100ms, 200ms, 400ms) to see actual animation progress:
+```javascript
+setTimeout(() => {
+  const styles = window.getComputedStyle(element);
+  logDebug('CSS after 200ms', { 
+    gridTemplateRows: styles.gridTemplateRows,
+    opacity: styles.opacity,
+    transform: styles.transform
+  });
+}, 200);
+```
+
+**CSS Grid Animation Pattern:**
+- `grid-template-rows: 0fr → 1fr` animates smoothly in modern browsers
+- Inner content MUST have `min-height: 0` and `overflow: hidden`
+- Use `cubic-bezier(0.4, 0, 0.2, 1)` (Material Design easing) for natural feel
+- Add small delay (50ms) to inner content transition to sync with container
+
+### January 2026 - Product Card Image Padding ("Less Air")
+**Problem:** In cards on the "Жидкости" (Liquids) category and in group lines, product images had a lot of empty space inside their containers. Goal: less padding, images feel larger inside the same box.
+
+**Fixes applied:**
+1. **LiquidLineCard.vue** - `.liquid-line-image`, `.liquid-subline-image`: padding 12px → 6px; `img` from fixed `max-width: 65px; max-height: 66px` to `max-width: 100%; max-height: 100%`. Media queries use 6px or 4px padding and img 100%.
+2. **GroupLineItem.vue** - `.group-line-image`: padding 12px → 6px; `img` to 100%. Some breakpoints had `padding: 0`; set to 6px/4px for consistency with liquid cards.
+3. **SingleProductCard.vue** - `.single-product-image`: added `padding: 6px`; `img` from 90% to 100%. In media queries added 4px or 2px padding and `img { max-width: 100%; max-height: 100% }`.
+
+**Files changed:**
+- `frontend/src/components/product/liquid/LiquidLineCard.vue`
+- `frontend/src/components/product/GroupLineItem.vue`
+- `frontend/src/components/product/SingleProductCard.vue`
+
+**Docs added:** `docs/PRODUCT_CARD_LAYOUT.md` - image areas, padding/sizing convention, pitfalls for AI agents.
+
+**For AI agents:** Scope of "photo area" = product image container in list/card views (liquid lines, group lines, single product cards). Not: variant color circles, full-page product view. GroupLineItem had mixed padding 0/12px; normalizing to 6px/4px avoided inconsistent look. SingleProductCard had no padding and 90% img; adding 6px/4px/2px and 100% aligned it with others. Pre-existing CSS warning ("Expected identifier but found '&'" in scrollbar-hide) is unrelated to image layout; no need to change it.

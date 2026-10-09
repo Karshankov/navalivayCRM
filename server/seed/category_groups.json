@@ -1,0 +1,123 @@
+[
+  {
+    "id": "g_salt_cyber",
+    "categoryId": "c_liquids_salt",
+    "slug": "cyber-salt",
+    "name": "Cyber Salt",
+    "order": 10,
+    "coverImage": "/uploads/groups/cyber-salt.jpg",
+    "hideEmpty": false
+  },
+  {
+    "id": "g_salt_cyber_fruit",
+    "categoryId": "c_liquids_salt",
+    "slug": "cyber-salt-fruit",
+    "name": "Фруктовая серия",
+    "order": 20,
+    "coverImage": "/uploads/groups/cyber-fruit.jpg",
+    "hideEmpty": false,
+    "parentGroupId": "g_salt_cyber"
+  },
+  {
+    "id": "g_salt_nord",
+    "categoryId": "c_liquids_salt",
+    "slug": "nord-salt",
+    "name": "Nord Salt",
+    "order": 30,
+    "coverImage": "/uploads/groups/nord-salt.jpg",
+    "hideEmpty": false
+  },
+  {
+    "id": "g_salt_nord_cool",
+    "categoryId": "c_liquids_salt",
+    "slug": "nord-salt-cool",
+    "name": "Ледяная серия",
+    "order": 40,
+    "coverImage": "/uploads/groups/nord-cool.jpg",
+    "hideEmpty": false,
+    "parentGroupId": "g_salt_nord"
+  },
+  {
+    "id": "g_freebase_cloud",
+    "categoryId": "c_liquids_freebase",
+    "slug": "cloud-base",
+    "name": "Cloud Base",
+    "order": 10,
+    "coverImage": "/uploads/groups/cloud-base.jpg",
+    "hideEmpty": false
+  },
+  {
+    "id": "g_freebase_cloud_classic",
+    "categoryId": "c_liquids_freebase",
+    "slug": "cloud-base-classic",
+    "name": "Классика",
+    "order": 20,
+    "coverImage": "/uploads/groups/cloud-classic.jpg",
+    "hideEmpty": false,
+    "parentGroupId": "g_freebase_cloud"
+  },
+  {
+    "id": "g_freebase_dessert",
+    "categoryId": "c_liquids_freebase",
+    "slug": "dessert-line",
+    "name": "Dessert Line",
+    "order": 30,
+    "coverImage": "/uploads/groups/dessert-line.jpg",
+    "hideEmpty": false
+  },
+  {
+    "id": "g_disposable_air",
+    "categoryId": "c_disposables",
+    "slug": "air-series",
+    "name": "AIR Series",
+    "order": 10,
+    "coverImage": "/uploads/groups/air-series.jpg",
+    "hideEmpty": false
+  },
+  {
+    "id": "g_disposable_air_ultra",
+    "categoryId": "c_disposables",
+    "slug": "air-series-ultra",
+    "name": "AIR Ultra",
+    "order": 20,
+    "coverImage": "/uploads/groups/air-ultra.jpg",
+    "hideEmpty": false,
+    "parentGroupId": "g_disposable_air"
+  },
+  {
+    "id": "g_pods_uwell",
+    "categoryId": "c_pods",
+    "slug": "uwell-line",
+    "name": "UWELL",
+    "order": 10,
+    "coverImage": "/uploads/groups/uwell.jpg",
+    "hideEmpty": false
+  },
+  {
+    "id": "g_pods_voopoo",
+    "categoryId": "c_pods",
+    "slug": "voopoo-line",
+    "name": "VOOPOO",
+    "order": 20,
+    "coverImage": "/uploads/groups/voopoo.jpg",
+    "hideEmpty": false
+  },
+  {
+    "id": "g_acc_coils",
+    "categoryId": "c_accessories",
+    "slug": "coil-packs",
+    "name": "Coil Packs",
+    "order": 10,
+    "coverImage": "/uploads/groups/coil-packs.jpg",
+    "hideEmpty": false
+  },
+  {
+    "id": "g_acc_pods",
+    "categoryId": "c_accessories",
+    "slug": "replacement-pods",
+    "name": "Replacement Pods",
+    "order": 20,
+    "coverImage": "/uploads/groups/replacement-pods.jpg",
+    "hideEmpty": false
+  }
+]

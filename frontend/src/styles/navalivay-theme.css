@@ -1,0 +1,572 @@
+/* ============================================
+   НАВАЛИВАЙ - Глобальная тема и переменные
+   ============================================ */
+
+/* Google Fonts - Bebas Neue */
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Roboto:wght@400;500;700;900&display=swap');
+
+:root {
+  /* ===== Цветовая палитра НАВАЛИВАЙ ===== */
+  
+  /* Основные цвета */
+  --navalivay-black: #1a1a1a;          /* Темно-серый вместо черного */
+  --navalivay-dark-gray: #2b2b2b;      /* Темно-серый с патиной */
+  --navalivay-gray: #6b6b6b;           /* Серый для карточек */
+  --navalivay-light-gray: #c0c0c0;     /* Светло-серый для текста */
+  --navalivay-bg-gray: #e8e8e8;        /* Фоновый серый */
+  --navalivay-white: #f0f0f0;          /* Не чисто белый */
+  
+  /* Красные акценты */
+  --navalivay-red: #d32f2f;            /* Основной красный */
+  --navalivay-red-dark: #c62828;       /* Темно-красный */
+  --navalivay-red-light: #ef5350;      /* Светло-красный */
+  --navalivay-burgundy: #3d1f1f;       /* Бордовый для текста */
+  
+  /* Эффекты */
+  --navalivay-shadow: 8px 8px 0 rgba(26, 26, 26, 0.3);
+  --navalivay-shadow-hover: 12px 12px 0 rgba(211, 47, 47, 0.4);
+  --navalivay-glow-red: 0 0 20px rgba(211, 47, 47, 0.5);
+  
+  /* ===== Типографика ===== */
+  --font-display: 'Roboto', 'Arial', sans-serif;
+  --font-body: 'Roboto', 'Arial', sans-serif;
+  
+  /* Размеры шрифтов */
+  --text-xs: 0.75rem;     /* 12px */
+  --text-sm: 0.875rem;    /* 14px */
+  --text-base: 1rem;      /* 16px */
+  --text-lg: 1.125rem;    /* 18px */
+  --text-xl: 1.25rem;     /* 20px */
+  --text-2xl: 1.5rem;     /* 24px */
+  --text-3xl: 1.875rem;   /* 30px */
+  --text-4xl: 2.25rem;    /* 36px */
+  --text-5xl: 3rem;       /* 48px */
+  --text-6xl: 3.75rem;    /* 60px */
+  --text-7xl: 4.5rem;     /* 72px */
+}
+
+/* ===== Глобальные стили ===== */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* Remove blue focus outline globally */
+*:focus {
+  outline: none;
+}
+
+/* Remove tap highlight on mobile */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/*
+ * Браузер не должен сам дорисовывать серые прямоугольники вокруг действий.
+ * Компонентные и utility-классы ниже по специфичности задают нужный дизайн
+ * обычным кнопкам, а текстовые действия остаются чистым текстом.
+ */
+button {
+  appearance: none;
+  -webkit-appearance: none;
+  margin: 0;
+  padding: 0;
+  border-width: 0;
+  border-style: solid;
+  border-color: #e5e7eb;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: inherit;
+  font: inherit;
+}
+
+body {
+  font-family: var(--font-body);
+  background: var(--navalivay-bg-gray);
+  color: var(--navalivay-black);
+  overflow-x: hidden;
+}
+
+/* ===== Типографические классы ===== */
+.navalivay-title {
+  font-family: var(--font-body);
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--navalivay-burgundy);
+  line-height: 1.1;
+}
+
+.navalivay-subtitle {
+  font-family: var(--font-body);
+  font-weight: 500;
+  color: var(--navalivay-gray);
+  letter-spacing: 0.05em;
+  text-transform: lowercase;
+}
+
+.navalivay-text-bold {
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.navalivay-text-red {
+  color: var(--navalivay-red);
+}
+
+/* ===== Brutal Button Styles ===== */
+.btn-navalivay {
+  background: var(--navalivay-black);
+  color: var(--navalivay-white);
+  border: none;
+  padding: 1rem 2.5rem;
+  font-family: var(--font-body);
+  font-size: var(--text-lg);
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: var(--navalivay-shadow);
+}
+
+.btn-navalivay::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: var(--navalivay-red);
+  transition: left 0.3s ease;
+  z-index: 0;
+}
+
+.btn-navalivay:hover {
+  box-shadow: var(--navalivay-shadow-hover);
+  transform: translate(-2px, -2px);
+}
+
+.btn-navalivay:hover::before {
+  left: 0;
+}
+
+.btn-navalivay span {
+  position: relative;
+  z-index: 1;
+}
+
+.btn-navalivay:active {
+  transform: translate(2px, 2px);
+  box-shadow: 4px 4px 0 rgba(26, 26, 26, 0.3);
+}
+
+/* ===== Card Styles ===== */
+.card-navalivay {
+  background: var(--navalivay-white);
+  border: 4px solid var(--navalivay-black);
+  border-radius: 0;
+  box-shadow: var(--navalivay-shadow);
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.card-navalivay:hover {
+  transform: translate(-4px, -4px);
+  box-shadow: var(--navalivay-shadow-hover);
+}
+
+.card-navalivay-dark {
+  background: var(--navalivay-gray);
+  color: var(--navalivay-white);
+  border: none;
+  border-radius: 20px;
+  padding: 2rem;
+}
+
+/* ===== Badge Styles ===== */
+.badge-navalivay {
+  background: var(--navalivay-red);
+  color: white;
+  padding: 0.5rem 1rem;
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  position: absolute;
+  top: 0;
+  left: 0;
+  clip-path: polygon(0 0, 100% 0, 90% 100%, 0% 100%);
+}
+
+/* ===== Input Styles ===== */
+.input-navalivay {
+  width: 100%;
+  padding: 1rem 1.5rem;
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: var(--navalivay-white);
+  border: 4px solid var(--navalivay-black);
+  border-radius: 0;
+  box-shadow: var(--navalivay-shadow);
+  transition: all 0.3s ease;
+}
+
+.input-navalivay:focus {
+  outline: none;
+  border-color: var(--navalivay-red);
+  box-shadow: var(--navalivay-shadow-hover), var(--navalivay-glow-red);
+}
+
+.input-navalivay::placeholder {
+  color: var(--navalivay-light-gray);
+}
+
+/* ===== Section Header ===== */
+.section-header-navalivay {
+  background: var(--navalivay-black);
+  color: var(--navalivay-white);
+  padding: 1rem 2rem;
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  position: relative;
+  overflow: hidden;
+}
+
+.section-header-navalivay::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: url("data:image/svg+xml,%3Csvg width='100' height='100' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence baseFrequency='0.9' numOctaves='4'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.05'/%3E%3C/svg%3E");
+  pointer-events: none;
+}
+
+/* ===== Torn Paper Effect ===== */
+.torn-edge-realistic {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 150px;
+  background: var(--navalivay-black);
+  z-index: 1;
+}
+
+.torn-edge-realistic::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 100%;
+  background: inherit;
+  filter: url(#torn-filter);
+}
+
+/* ===== Smoke Animation ===== */
+@keyframes smoke-rise {
+  0% {
+    opacity: 0.3;
+    transform: translateY(0) scale(1) rotate(0deg);
+  }
+  50% {
+    opacity: 0.5;
+    transform: translateY(-30px) scale(1.2) rotate(5deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-60px) scale(1.5) rotate(10deg);
+  }
+}
+
+.smoke-particle {
+  position: absolute;
+  width: 100px;
+  height: 100px;
+  background: radial-gradient(
+    circle,
+    rgba(255, 255, 255, 0.3) 0%,
+    rgba(255, 255, 255, 0.1) 50%,
+    transparent 70%
+  );
+  border-radius: 50%;
+  pointer-events: none;
+  animation: smoke-rise 4s ease-out infinite;
+}
+
+/* ===== Red Glow Effect ===== */
+.glow-red {
+  box-shadow: var(--navalivay-glow-red);
+  transition: box-shadow 0.3s ease;
+}
+
+.glow-red:hover {
+  box-shadow: 0 0 30px rgba(211, 47, 47, 0.8), 0 0 60px rgba(211, 47, 47, 0.4);
+}
+
+/* ===== Paper Texture ===== */
+.paper-texture-navalivay {
+  position: relative;
+}
+
+.paper-texture-navalivay::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: 
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='paperNoise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' seed='1'/%3E%3CfeColorMatrix values='0 0 0 0 0, 0 0 0 0 0, 0 0 0 0 0, 0 0 0 0.03 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23paperNoise)'/%3E%3C/svg%3E");
+  opacity: 0.5;
+  pointer-events: none;
+  mix-blend-mode: multiply;
+}
+
+/* ===== Grunge Texture for Dark Areas ===== */
+.grunge-texture {
+  position: relative;
+}
+
+.grunge-texture::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='grunge'%3E%3CfeTurbulence baseFrequency='0.5' numOctaves='3'/%3E%3CfeColorMatrix values='0 0 0 0 1, 0 0 0 0 1, 0 0 0 0 1, 0 0 0 0.08 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23grunge)'/%3E%3C/svg%3E");
+  opacity: 0.4;
+  pointer-events: none;
+  mix-blend-mode: overlay;
+}
+
+/* ===== Utilities ===== */
+.uppercase {
+  text-transform: uppercase;
+}
+
+.tracking-wide {
+  letter-spacing: 0.05em;
+}
+
+.tracking-wider {
+  letter-spacing: 0.1em;
+}
+
+.tracking-widest {
+  letter-spacing: 0.15em;
+}
+
+/* ===== Admin action buttons ===== */
+.admin-link-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.38rem 0.95rem;
+  border-radius: 0.875rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.1;
+  border: 1px solid transparent;
+  text-decoration: none;
+  transition: transform 180ms ease, box-shadow 180ms ease, background-color 180ms ease, color 180ms ease;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
+  backdrop-filter: blur(6px);
+}
+
+.admin-link-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 16px 30px rgba(15, 23, 42, 0.18);
+}
+
+.admin-link-button:focus-visible {
+  outline: none;
+}
+
+.admin-link-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+  box-shadow: none;
+  transform: none;
+}
+
+.admin-link-button--info {
+  color: #ffffff;
+  border-color: rgba(59, 130, 246, 0.65);
+  background: linear-gradient(135deg, rgba(96, 165, 250, 0.95), rgba(37, 99, 235, 0.92));
+  box-shadow: 0 10px 28px rgba(37, 99, 235, 0.18);
+}
+
+.admin-link-button--info:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(147, 197, 253, 1), rgba(29, 78, 216, 0.96));
+  border-color: rgba(37, 99, 235, 0.85);
+}
+
+.admin-link-button--info:focus-visible {
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.65), 0 0 0 6px rgba(96, 165, 250, 0.4);
+}
+
+.admin-link-button--danger {
+  color: #be123c;
+  border-color: rgba(244, 63, 94, 0.4);
+  background: linear-gradient(135deg, rgba(254, 226, 226, 0.92), rgba(244, 63, 94, 0.18));
+}
+
+.admin-link-button--danger:hover:not(:disabled) {
+  color: #9f1239;
+  background: linear-gradient(135deg, rgba(254, 215, 215, 0.96), rgba(239, 68, 68, 0.3));
+}
+
+.admin-link-button--danger:focus-visible {
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.75), 0 0 0 6px rgba(239, 68, 68, 0.45);
+}
+
+.admin-link-button--compact {
+  padding: 0.3rem 0.55rem;
+  font-size: 0.75rem;
+}
+
+.admin-link-button--edit {
+  color: #2563eb;
+  border-color: rgba(147, 197, 253, 0.9);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(219, 234, 254, 0.68));
+}
+
+.admin-link-button--edit:hover:not(:disabled) {
+  color: #1d4ed8;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 1), rgba(191, 219, 254, 0.92));
+  border-color: rgba(96, 165, 250, 0.95);
+}
+
+.admin-link-button--edit:focus-visible {
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.8), 0 0 0 6px rgba(59, 130, 246, 0.35);
+}
+
+.admin-link-button--primary {
+  color: #ffffff;
+  border-color: rgba(59, 130, 246, 0.6);
+  background: linear-gradient(135deg, rgba(96, 165, 250, 0.95), rgba(37, 99, 235, 0.92));
+  box-shadow: 0 10px 28px rgba(37, 99, 235, 0.2);
+}
+
+.admin-link-button--primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(147, 197, 253, 1), rgba(29, 78, 216, 0.95));
+  border-color: rgba(37, 99, 235, 0.9);
+}
+
+.admin-link-button--primary:focus-visible {
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.65), 0 0 0 6px rgba(96, 165, 250, 0.45);
+}
+
+.admin-link-button--success {
+  color: #ffffff;
+  border-color: rgba(16, 185, 129, 0.55);
+  background: linear-gradient(135deg, rgba(52, 211, 153, 0.95), rgba(5, 150, 105, 0.9));
+  box-shadow: 0 10px 28px rgba(16, 185, 129, 0.22);
+}
+
+.admin-link-button--success:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(110, 231, 183, 0.98), rgba(4, 120, 87, 0.95));
+  border-color: rgba(5, 150, 105, 0.9);
+}
+
+.admin-link-button--success:focus-visible {
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.65), 0 0 0 6px rgba(16, 185, 129, 0.45);
+}
+
+.admin-link-button--muted {
+  color: #94a3b8;
+  border-color: rgba(148, 163, 184, 0.35);
+  background: linear-gradient(135deg, rgba(241, 245, 249, 0.95), rgba(226, 232, 240, 0.85));
+}
+
+.admin-link-button--muted:hover:not(:disabled) {
+  color: #64748b;
+  border-color: rgba(148, 163, 184, 0.55);
+}
+
+.admin-link-button--muted:focus-visible {
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.7), 0 0 0 6px rgba(148, 163, 184, 0.35);
+}
+
+.admin-link-button--block {
+  color: #dc2626;
+  border-color: rgba(252, 165, 165, 0.8);
+  background: linear-gradient(135deg, rgba(254, 226, 226, 0.95), rgba(254, 202, 202, 0.7));
+  box-shadow: 0 10px 24px rgba(225, 29, 72, 0.15);
+}
+
+.admin-link-button--block:hover:not(:disabled) {
+  color: #b91c1c;
+  background: linear-gradient(135deg, rgba(254, 215, 215, 0.98), rgba(248, 150, 150, 0.82));
+  border-color: rgba(248, 113, 113, 0.85);
+}
+
+.admin-link-button--block:focus-visible {
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.7), 0 0 0 6px rgba(248, 113, 113, 0.4);
+}
+
+.admin-link-button--unblock {
+  color: #0f766e;
+  border-color: rgba(45, 212, 191, 0.6);
+  background: linear-gradient(135deg, rgba(240, 253, 250, 0.98), rgba(167, 243, 208, 0.78));
+  box-shadow: 0 10px 28px rgba(45, 212, 191, 0.18);
+}
+
+.admin-link-button--unblock:hover:not(:disabled) {
+  color: #0d9488;
+  background: linear-gradient(135deg, rgba(204, 251, 241, 1), rgba(110, 231, 183, 0.9));
+  border-color: rgba(13, 148, 136, 0.7);
+}
+
+.admin-link-button--unblock:focus-visible {
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.7), 0 0 0 6px rgba(45, 212, 191, 0.35);
+}
+
+.admin-link-button--block {
+  color: #b91c1c;
+  border-color: rgba(239, 68, 68, 0.55);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(254, 226, 226, 0.72));
+}
+
+.admin-link-button--block:hover:not(:disabled) {
+  color: #991b1b;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 1), rgba(254, 202, 202, 0.9));
+  border-color: rgba(248, 113, 113, 0.7);
+}
+
+.admin-link-button--block:focus-visible {
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.8), 0 0 0 6px rgba(248, 113, 113, 0.35);
+}
+
+.admin-link-button--unblock {
+  color: #047857;
+  border-color: rgba(16, 185, 129, 0.45);
+  background: linear-gradient(135deg, rgba(236, 253, 245, 0.95), rgba(110, 231, 183, 0.5));
+}
+
+.admin-link-button--unblock:hover:not(:disabled) {
+  color: #065f46;
+  background: linear-gradient(135deg, rgba(236, 253, 245, 1), rgba(16, 185, 129, 0.32));
+  border-color: rgba(52, 211, 153, 0.65);
+}
+
+.admin-link-button--unblock:focus-visible {
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.8), 0 0 0 6px rgba(16, 185, 129, 0.35);
+}
+/* Hide Telegram Debug Panel */
+.debug-panel {
+  display: none !important;
+}
+
+/* Disable double-tap zoom on iOS */
+* {
+  touch-action: manipulation;
+}

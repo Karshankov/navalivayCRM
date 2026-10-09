@@ -1,0 +1,21 @@
+# Default: let Git handle line endings, but keep them sane in the repo.
+* text=auto eol=lf
+
+# Anything that ends up running on the Linux host MUST be LF, otherwise
+# /usr/bin/env reads `bash\r` and systemd ExecStart fails with status 127.
+*.sh        text eol=lf
+*.service   text eol=lf
+ops/**      text eol=lf
+
+# Binary assets — never touch.
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.webp      binary
+*.ico       binary
+*.pdf       binary
+*.zip       binary
+*.db        binary
+*.sqlite    binary
+*.node      binary

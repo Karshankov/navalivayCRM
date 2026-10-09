@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>NAVALIVAY — тест отзывов (dev)</title>
+  <style>
+    :root { font-family: system-ui, sans-serif; color: #0f172a; background: #f8fafc; }
+    body { max-width: 720px; margin: 0 auto; padding: 24px 16px 48px; }
+    h1 { font-size: 1.35rem; margin: 0 0 4px; }
+    .sub { color: #64748b; font-size: 0.9rem; margin-bottom: 24px; }
+    section { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+    h2 { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; color: #94a3b8; margin: 0 0 12px; }
+    a.row {
+      display: flex; flex-direction: column; gap: 2px;
+      padding: 10px 12px; margin-bottom: 8px;
+      border-radius: 8px; background: #f1f5f9; text-decoration: none; color: inherit;
+    }
+    a.row:hover { background: #e2e8f0; }
+    a.row strong { color: #4f46e5; }
+    a.row span { font-size: 0.82rem; color: #64748b; }
+    .crm { background: #faf5ff; border-color: #e9d5ff; }
+    .crm a.row { background: #f3e8ff; }
+    .crm a.row:hover { background: #ede9fe; }
+    .hint { font-size: 0.82rem; color: #64748b; margin-top: 8px; }
+    code { background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-size: 0.85em; }
+    button {
+      margin-top: 8px; padding: 8px 12px; border-radius: 8px; border: 1px solid #c4b5fd;
+      background: #ede9fe; color: #5b21b6; cursor: pointer; font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+  <h1>Тест отзывов — dev mock</h1>
+  <p class="sub">Данные засеяны. Клик по ссылке — откроется сценарий (мок сохранится в sessionStorage).</p>
+
+  <section>
+    <h2>Клиент</h2>
+    <a class="row" href="/?telegram_id=900000001&username=review_demo&first_name=Review%20Demo">
+      <strong>A. Новый отзыв + dock</strong>
+      <span>Заказ #7615 · 4 линейки · форма отзыва</span>
+    </a>
+    <a class="row" href="/?telegram_id=900000002&username=review_pending&first_name=Pending%20User">
+      <strong>B. На модерации + вторая линейка</strong>
+      <span>Заказ #7616</span>
+    </a>
+    <a class="row" href="/?telegram_id=900000003&username=review_cooldown&first_name=Cooldown%20User">
+      <strong>C. Кулдаун / вторая линейка открыта</strong>
+      <span>Заказ #7618</span>
+    </a>
+    <a class="row" href="/?telegram_id=900000004&username=review_optout&first_name=Opt%20Out%20User">
+      <strong>D. Opt-out — dock скрыт</strong>
+      <span>reviews_opt_out включён</span>
+    </a>
+    <a class="row" href="/">
+      <strong>E. Каталог — ★ и модалка отзывов</strong>
+      <span>Линейка PODONKI PODGON · ответ менеджера</span>
+    </a>
+  </section>
+
+  <section class="crm">
+    <h2>CRM · admin / 998811</h2>
+    <a class="row" href="/admin/crm/orders">
+      <strong>F. Заказы — плашка розыгрыша</strong>
+      <span>4 pending · 5 победителей</span>
+    </a>
+    <a class="row" href="/admin/crm/reviews">
+      <strong>G. Отзывы — модерация и розыгрыш</strong>
+      <span>@winner_anna … @winner_elena</span>
+    </a>
+    <p class="hint">Если плашка розыгрыша не видна:</p>
+    <button type="button" id="reset-draw-banner">Сбросить скрытие плашки (localStorage)</button>
+  </section>
+
+  <script>
+    document.getElementById('reset-draw-banner')?.addEventListener('click', () => {
+      localStorage.removeItem('crm_ack_draw_id');
+      alert('crm_ack_draw_id удалён. Обнови страницу CRM «Заказы».');
+    });
+  </script>
+</body>
+</html>
