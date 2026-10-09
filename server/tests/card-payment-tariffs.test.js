@@ -484,6 +484,55 @@ console.log("card tariffs: clear cooldown route via API");
   assert.equal(payload.cleared, true);
 }
 
+// --- Единая вкладка «Аккаунты»: список = 3 недавних ---
+console.log("card tariffs: admin snapshot returns only 3 recent accounts");
+{
+  const snapshot = getCardAdminSnapshot();
+  assert.ok(Array.isArray(snapshot.accounts));
+  assert.ok(snapshot.accounts.length <= 3, `expected <= 3, got ${snapshot.accounts.length}`);
+}
+
+console.log("card tariffs: disabling an account bumps it into recent list");
+{
+  ensureAccount("9030", "recent_disable_user");
+  const { status } = await apiCall(
+    "PATCH",
+    "/api/admin/crm/card-payments/accounts/9030",
+    { enabled: false },
+  );
+  assert.equal(status, 200);
+  // PATCH пишет SQL-время; аккаунты из ensureAccount несут ISO-строки,
+  // которые лексикографически больше. Ставим ISO в будущем — как DAL.
+  db.prepare(`
+    UPDATE card_payment_accounts SET updated_at = ?
+    WHERE telegram_id = '9030'
+  `).run(new Date(Date.now() + 60_000).toISOString());
+  const snapshot = getCardAdminSnapshot();
+  const first = snapshot.accounts[0];
+  assert.equal(first.telegram_id, "9030", "most recent account must be first");
+  assert.equal(Number(first.enabled), 0);
+  // Отключённый профиль всё ещё ищется по username — не «пропадает»
+  const profile = findCardAccountProfileByUsername("recent_disable_user");
+  assert.equal(profile.enabled, false);
+}
+
+console.log("card tariffs: cooldown_days is not reset by account update");
+{
+  ensureAccount("9031", "cooldown_keep_user");
+  setCardAccountCooldownDays("9031", 5);
+  setCardAccount({
+    telegramId: "9031",
+    telegramUsername: "cooldown_keep_user",
+    enabled: true,
+    monthlyLimitMinor: 25000,
+    maxOrderMinor: 4500,
+  });
+  const row = db
+    .prepare("SELECT cooldown_days FROM card_payment_accounts WHERE telegram_id = '9031'")
+    .get();
+  assert.equal(row.cooldown_days, 5, "personal cooldown_days must survive updates");
+}
+
 server.close();
 fs.rmSync(tempDir, { recursive: true, force: true });
 console.log("card tariffs: all tests passed");

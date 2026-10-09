@@ -689,7 +689,7 @@ export interface CashTransaction {
 }
 
 export interface CardAccountProfile {
-  source: "linked" | "pending";
+  source: "linked" | "pending" | "new";
   telegram_id: string | null;
   telegram_username: string | null;
   enabled: boolean;

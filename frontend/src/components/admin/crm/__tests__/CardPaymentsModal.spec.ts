@@ -217,6 +217,8 @@ beforeEach(() => {
   crmStoreMock.loadingCardPaymentAdmin = false;
 });
 
+const defaultSearchProfile = crmStoreMock.searchCardProfile;
+
 describe("CardPaymentsModal — вкладки и сводка", () => {
   it("показывает четыре вкладки и открывается на «Лимиты»", async () => {
     const wrapper = mountModal();
@@ -260,39 +262,40 @@ describe("CardPaymentsModal — аккаунты", () => {
     await nextTick();
   }
 
-  it("показывает активную паузу аккаунта и дату окончания", async () => {
+  it("показывает недавние разрешения как быстрые ссылки, клик открывает карточку", async () => {
     const wrapper = mountModal();
     await openAccounts(wrapper);
-    expect(wrapper.text()).toContain("Пауза до");
-    expect(wrapper.text()).toContain("alice");
-    expect(wrapper.text()).toContain("bob");
-    expect(wrapper.text()).toContain("Откл.");
+    // Список отдаёт сервер: 3 недавних. Полного списка больше нет.
+    expect(wrapper.text()).toContain("Последние разрешения");
+    const recent = wrapper
+      .findAll("button")
+      .find((b) => b.attributes("aria-label") === "Открыть карточку @alice");
+    expect(recent).toBeTruthy();
+    await recent!.trigger("click");
+    expect(crmStoreMock.searchCardProfile).toHaveBeenCalledWith("alice");
   });
 
-  it("поиск фильтрует аккаунты и ожидающих привязки", async () => {
+  it("новый клиент: 404 от поиска превращается в карточку создания разрешения", async () => {
+    crmStoreMock.searchCardProfile = vi.fn(async () => {
+      const error = new Error("not found") as Error & { status?: number };
+      error.status = 404;
+      throw error;
+    });
     const wrapper = mountModal();
     await openAccounts(wrapper);
-    await wrapper.find('input[aria-label="Поиск аккаунтов"]').setValue("ali");
-    expect(wrapper.text()).toContain("alice");
-    expect(wrapper.text()).not.toContain("@bob");
-    expect(wrapper.text()).toContain("Ожидают первого входа");
-    await wrapper.find('input[aria-label="Поиск аккаунтов"]').setValue("carol");
-    expect(wrapper.text()).toContain("carol");
-    expect(wrapper.text()).not.toContain("alice");
-    await wrapper.find('input[aria-label="Поиск аккаунтов"]').setValue("zzz");
-    expect(wrapper.text()).toContain("Ничего не найдено.");
-  });
-
-  it("черновик лимита не сохраняется, пока менеджер не нажал «Сохранить»", async () => {
-    const wrapper = mountModal();
-    await openAccounts(wrapper);
-    const input = wrapper.find('input[aria-label="Лимит заказа для alice"]');
-    await input.setValue("60");
-    expect(crmStoreMock.updateCardAccount).not.toHaveBeenCalled();
-    const saveButton = wrapper.findAll("button").find((b) => b.text() === "Сохранить");
-    expect(saveButton).toBeTruthy();
-    await saveButton!.trigger("click");
-    expect(crmStoreMock.updateCardAccount).toHaveBeenCalledWith("100001", { max_order: 60 });
+    await wrapper.find('input[aria-label="Telegram username без собаки"]').setValue("@newbie");
+    await wrapper.find("form").trigger("submit");
+    expect(wrapper.text()).toContain("Новый клиент");
+    const allow = wrapper.findAll("button").find((b) => b.text() === "Разрешить оплату картой");
+    expect(allow).toBeTruthy();
+    await allow!.trigger("click");
+    // Разрешение новому выдаётся по username
+    expect(crmStoreMock.saveCardAccount).toHaveBeenCalledWith({
+      telegram_username: "newbie",
+      enabled: true,
+    });
+    wrapper.unmount();
+    crmStoreMock.searchCardProfile = defaultSearchProfile;
   });
 
   it("поиск по @username загружает карточку клиента и разрешение в один клик", async () => {
@@ -311,32 +314,17 @@ describe("CardPaymentsModal — аккаунты", () => {
     expect(crmStoreMock.updateCardAccount).toHaveBeenCalledWith("100001", { enabled: false });
   });
 
-  it("профиль не найден — понятная подсказка", async () => {
+  it("серверная ошибка поиска показывает понятное сообщение", async () => {
     crmStoreMock.searchCardProfile = vi.fn(async () => {
-      const error = new Error("not found") as Error & { status?: number };
-      error.status = 404;
-      throw error;
+      throw new Error("Network failure");
     });
     const wrapper = mountModal();
     await openAccounts(wrapper);
     await wrapper.find('input[aria-label="Telegram username без собаки"]').setValue("@ghost");
     await wrapper.find("form").trigger("submit");
-    expect(wrapper.text()).toContain("ещё не разрешали оплату картой");
+    expect(wrapper.text()).toContain("Network failure");
     wrapper.unmount();
-    crmStoreMock.searchCardProfile = vi.fn(async () => ({
-      source: "linked",
-      telegram_id: "100001",
-      telegram_username: "alice",
-      enabled: true,
-      monthly_limit_minor: 25000,
-      max_order_minor: 4500,
-      tariff_id: "t1",
-      tariff_title: "Максимум",
-      cooldown_started_at: null,
-      cooldown_until: null,
-      cooldown_days_left: 0,
-      last_issued_at: null,
-    }));
+    crmStoreMock.searchCardProfile = defaultSearchProfile;
   });
 
   it("в форме нет полей ручного ввода лимитов", async () => {
@@ -353,6 +341,9 @@ describe("CardPaymentsModal — тарифы и заявки", () => {
     const wrapper = mountModal();
     const tab = wrapper.findAll("nav button").find((b) => b.text().includes("Аккаунты"))!;
     await tab.trigger("click");
+    await wrapper.find('input[aria-label="Telegram username без собаки"]').setValue("@alice");
+    await wrapper.find("form").trigger("submit");
+    await new Promise((r) => setTimeout(r, 0));
     const select = wrapper.find('select[aria-label="Тариф для alice"]');
     expect(select.exists()).toBe(true);
     expect(select.element.value).toBe("t1");
@@ -369,6 +360,9 @@ describe("CardPaymentsModal — тарифы и заявки", () => {
     const wrapper = mountModal();
     const tab = wrapper.findAll("nav button").find((b) => b.text().includes("Аккаунты"))!;
     await tab.trigger("click");
+    await wrapper.find('input[aria-label="Telegram username без собаки"]').setValue("@alice");
+    await wrapper.find("form").trigger("submit");
+    await new Promise((r) => setTimeout(r, 0));
     const select = wrapper.find('select[aria-label="Тариф для alice"]');
     await select.setValue("");
     expect(crmStoreMock.applyCardTariff).toHaveBeenCalledWith("100001", null);

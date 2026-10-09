@@ -247,11 +247,14 @@
                   class="rounded-full px-2.5 py-0.5 text-[11px] font-bold"
                   :class="foundProfile.enabled ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-200 text-gray-600'"
                 >
-                  {{ foundProfile.enabled ? 'карта разрешена' : 'карта запрещена' }}
+                  {{ foundProfile.enabled ? 'карта разрешена' : foundProfile.source === 'new' ? 'новый клиент' : 'карта запрещена' }}
                 </span>
               </div>
               <div class="mt-0.5 text-[11px] text-gray-500">
-                <template v-if="foundProfile.source === 'pending'">
+                <template v-if="foundProfile.source === 'new'">
+                  Новый клиент: карта ещё не разрешена — выдадутся стандартные лимиты
+                </template>
+                <template v-else-if="foundProfile.source === 'pending'">
                   Ждёт первого входа: привяжется к Telegram ID при визите
                 </template>
                 <template v-else>
@@ -364,115 +367,44 @@
           </div>
         </section>
 
-        <!-- Поиск -->
-        <div class="relative">
-          <MagnifyingGlassIcon class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-          <input v-model="accountSearch" type="search" placeholder="Поиск по username или Telegram ID…"
-            class="w-full rounded-lg border border-gray-300 bg-white py-2 pl-9 pr-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
-            aria-label="Поиск аккаунтов">
-        </div>
-
+        <!-- Последние разрешения: клик открывает карточку в поиске выше.
+             Список отдаёт сервер: 3 последних по updated_at (включая отключённых). -->
         <section class="rounded-xl border border-gray-200 bg-white p-4">
-          <div class="mb-3 flex items-center justify-between">
-            <h3 class="text-sm font-bold text-gray-900">Аккаунты с разрешением</h3>
-            <span class="text-xs text-gray-500">{{ filteredAccounts.length }} из {{ snapshot.accounts.length }}</span>
+          <div class="mb-2.5 flex items-center justify-between">
+            <h3 class="text-sm font-bold text-gray-900">Последние разрешения</h3>
+            <span class="text-[11px] text-gray-400">{{ snapshot.accounts.length }}</span>
           </div>
-          <div class="max-h-80 space-y-2 overflow-auto">
-            <div
-              v-for="account in filteredAccounts"
+          <div class="space-y-1.5">
+            <button
+              v-for="account in snapshot.accounts"
               :key="account.telegram_id"
-              class="rounded-xl border p-3"
-              :class="account.enabled ? 'border-gray-200 bg-white' : 'border-gray-200 bg-gray-50 opacity-80'"
+              type="button"
+              class="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-gray-50 focus-visible:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+              :aria-label="`Открыть карточку @${account.telegram_username || account.telegram_id}`"
+              @click="openRecentAccount(account)"
             >
-              <div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
-                <div class="min-w-0">
-                  <div class="flex flex-wrap items-center gap-1.5">
-                    <span class="truncate text-sm font-semibold text-gray-800">@{{ account.telegram_username || account.telegram_id }}</span>
-                    <span
-                      class="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide"
-                      :class="account.enabled ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-200 text-gray-600'"
-                    >
-                      {{ account.enabled ? 'Разрешено' : 'Откл.' }}
-                    </span>
-                    <span
-                      v-if="cooldownUntil(account)"
-                      class="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800"
-                      :title="`Последняя выдача ${account.last_issued_at ? dateLabel(account.last_issued_at) : '—'}; пауза 10 дней`"
-                    >
-                      Пауза до {{ dateShort(cooldownUntil(account)!) }}
-                    </span>
-                  </div>
-                  <div class="mt-0.5 text-[11px] text-gray-500">
-                    TG ID {{ account.telegram_id }}<span v-if="account.last_issued_at"> · выдача {{ dateShort(account.last_issued_at) }}</span>
-                  </div>
-                </div>
-                <CrmButton
-                  :variant="account.enabled ? 'danger' : 'success'"
-                  size="sm"
-                  class="w-full sm:!w-auto"
-                  :loading="busyAccount === account.telegram_id"
-                  @click="editAccount(account.telegram_id, { enabled: !account.enabled })"
-                >
-                  {{ account.enabled ? 'Отключить' : 'Включить' }}
-                </CrmButton>
-              </div>
-
-              <div class="mt-3 grid gap-2 sm:grid-cols-2">
-                <label class="block">
-                  <span class="text-[11px] font-medium text-gray-500">Тариф</span>
-                  <select
-                    :value="account.tariff_id || ''"
-                    class="mt-0.5 w-full rounded-lg border border-gray-300 px-2.5 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
-                    :aria-label="`Тариф для ${account.telegram_username || account.telegram_id}`"
-                    @change="changeAccountTariff(account, ($event.target as HTMLSelectElement).value)"
-                  >
-                    <option value="">Стандарт (250/45 BYN)</option>
-                    <option v-for="tariff in activeTariffs" :key="tariff.id" :value="tariff.id">
-                      {{ tariff.title }} · {{ minorToMoney(tariff.monthly_limit_minor ?? tariff.limit_minor) }}/{{ minorToMoney(tariff.per_order_limit_minor ?? 4500) }} BYN
-                    </option>
-                  </select>
-                </label>
-                <label class="block">
-                  <span class="text-[11px] font-medium text-gray-500">Лимит заказа, BYN</span>
-                  <input
-                    :value="draftAccountLimits[account.telegram_id] ?? minorToMoney(account.max_order_minor)"
-                    @input="setDraftLimit(account.telegram_id, ($event.target as HTMLInputElement).value)"
-                    type="number" min="0.01" step="0.01"
-                    class="mt-0.5 w-full rounded-lg border px-2.5 py-1.5 text-sm"
-                    :class="hasDraftLimit(account.telegram_id) ? 'border-blue-400 ring-1 ring-blue-100' : 'border-gray-300'"
-                    :aria-label="`Лимит заказа для ${account.telegram_username || account.telegram_id}`">
-                </label>
-                <div class="flex items-end">
-                  <div v-if="hasDraftLimit(account.telegram_id)" class="flex w-full gap-2">
-                    <CrmButton variant="success" size="sm" :loading="busyAccount === account.telegram_id" @click="saveDraftLimit(account)">
-                      Сохранить
-                    </CrmButton>
-                    <CrmButton variant="ghost" size="sm" @click="clearDraftLimit(account.telegram_id)">Отмена</CrmButton>
-                  </div>
-                  <div v-else class="text-xs text-gray-400">Смена тарифа обновит лимиты автоматически</div>
-                </div>
-              </div>
-            </div>
-            <p v-if="!snapshot.accounts.length" class="py-2 text-xs text-gray-500">Пока нет аккаунтов, привязанных к Telegram ID.</p>
-            <p v-if="snapshot.accounts.length && !filteredAccounts.length" class="py-2 text-xs text-gray-500">Ничего не найдено.</p>
-          </div>
-
-          <div v-if="snapshot.pending_accounts.length" class="mt-3 border-t border-gray-100 pt-3">
-            <div class="mb-2 flex items-center gap-1.5 text-xs font-semibold text-gray-600">
-              <ClockIcon class="h-4 w-4 text-amber-500" />
-              Ожидают первого входа для привязки Telegram ID
-            </div>
-            <div
-              v-for="pending in filteredPendingAccounts"
-              :key="pending.telegram_username"
-              class="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-amber-50/60 px-3 py-2 text-sm"
-            >
-              <span class="text-gray-800">@{{ pending.telegram_username }}</span>
-              <span class="w-full text-right text-xs text-gray-500 sm:w-auto">
-                {{ money(pending.monthly_limit_minor) }}/мес · {{ money(pending.max_order_minor) }}/заказ ·
-                {{ pending.enabled ? 'разрешено' : 'отключено' }}
+              <span
+                class="h-2 w-2 shrink-0 rounded-full"
+                :class="account.enabled ? 'bg-emerald-500' : 'bg-gray-300'"
+                aria-hidden="true"
+              />
+              <span class="min-w-0 flex-1 truncate text-sm font-medium text-gray-800">
+                @{{ account.telegram_username || account.telegram_id }}
               </span>
-            </div>
+              <span
+                v-if="cooldownUntil(account)"
+                class="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800"
+              >пауза</span>
+              <span
+                class="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold"
+                :class="account.enabled ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-200 text-gray-600'"
+              >
+                {{ account.enabled ? 'разрешено' : 'откл.' }}
+              </span>
+            </button>
+            <p v-if="!snapshot.accounts.length" class="py-1.5 text-xs text-gray-500">
+              Пока никого. Разрешите оплату картой через поиск выше.
+            </p>
           </div>
         </section>
       </div>
@@ -688,7 +620,6 @@ const tabs = [
 const activeTab = ref<TabId>("limits");
 const errorText = ref("");
 const busyForm = ref("");
-const busyAccount = ref("");
 const busyRequest = ref("");
 const busyTariffId = ref("");
 
@@ -706,8 +637,6 @@ const manualAmount = ref<number | null>(null);
 const manualNote = ref("");
 const accountUsername = ref("");
 const accountError = ref("");
-const accountSearch = ref("");
-const draftAccountLimits = ref<Record<string, number>>({});
 const editingTariff = ref<{ id?: string; title: string; limit: number; monthly_limit: number; per_order_limit: number; transition_cost_text: string } | null>(null);
 const confirmRejectRequest = ref<Snapshot["requests"][number] | null>(null);
 const confirmTariffRemoval = ref<Snapshot["tariffs"][number] | null>(null);
@@ -734,23 +663,9 @@ const activeTariffs = computed(
   () => (snapshot.value?.tariffs || []).filter((tariff) => Number(tariff.active) === 1),
 );
 
-const filteredAccounts = computed(() => {
-  const query = accountSearch.value.trim().toLowerCase().replace(/^@+/, "");
-  const accounts = snapshot.value?.accounts || [];
-  if (!query) return accounts;
-  return accounts.filter(
-    (account) =>
-      String(account.telegram_username || "").toLowerCase().includes(query) ||
-      String(account.telegram_id).includes(query),
-  );
-});
 
-const filteredPendingAccounts = computed(() => {
-  const query = accountSearch.value.trim().toLowerCase().replace(/^@+/, "");
-  const pending = snapshot.value?.pending_accounts || [];
-  if (!query) return pending;
-  return pending.filter((account) => account.telegram_username.toLowerCase().includes(query));
-});
+
+
 
 watch(
   () => props.isOpen,
@@ -760,8 +675,6 @@ watch(
       accountError.value = "";
       void load();
     } else {
-      draftAccountLimits.value = {};
-      accountSearch.value = "";
       foundProfile.value = null;
       profileSearching.value = false;
       profileToggling.value = false;
@@ -817,26 +730,6 @@ function requestStatusLabel(status: string) {
   if (status === "new") return "Новая";
   if (status === "processed") return "Обработана";
   return "Отклонена";
-}
-function hasDraftLimit(telegramId: string) {
-  return telegramId in draftAccountLimits.value;
-}
-function setDraftLimit(telegramId: string, rawValue: string) {
-  const parsed = Number(rawValue);
-  if (!Number.isFinite(parsed) || parsed <= 0) return;
-  const current = minorToMoney(
-    snapshot.value?.accounts.find((account) => account.telegram_id === telegramId)?.max_order_minor || 0,
-  );
-  if (Math.abs(parsed - current) < 0.005) {
-    delete draftAccountLimits.value[telegramId];
-    draftAccountLimits.value = { ...draftAccountLimits.value };
-    return;
-  }
-  draftAccountLimits.value = { ...draftAccountLimits.value, [telegramId]: parsed };
-}
-function clearDraftLimit(telegramId: string) {
-  delete draftAccountLimits.value[telegramId];
-  draftAccountLimits.value = { ...draftAccountLimits.value };
 }
 
 function requestClose() {
@@ -915,13 +808,37 @@ async function searchProfile() {
     profileCooldownDays.value = Number(profile.cooldown_days ?? 10);
   } catch (error: any) {
     if (error?.status === 404 || String(error?.message || "").includes("не найден")) {
-      accountError.value = `@${username} ещё не разрешали оплату картой — добавьте его кнопкой «Разрешить» ниже или сразу в списке аккаунтов.`;
+      // Новый клиент: сразу показываем карточку создания разрешения —
+      // выдаём стандарт (250/45/10) в одно нажатие.
+      foundProfile.value = {
+        source: "new",
+        telegram_id: null,
+        telegram_username: username,
+        enabled: false,
+        monthly_limit_minor: 25000,
+        max_order_minor: 4500,
+        tariff_id: null,
+        tariff_title: null,
+        cooldown_started_at: null,
+        cooldown_until: null,
+        cooldown_days_left: 0,
+        cooldown_days: 10,
+        last_issued_at: null,
+      };
+      profileOrderLimit.value = 45;
+      profileTariffId.value = "";
+      profileCooldownDays.value = 10;
     } else {
       accountError.value = error?.message || "Не удалось загрузить профиль";
     }
   } finally {
     profileSearching.value = false;
   }
+}
+
+function openRecentAccount(account: { telegram_id: string; telegram_username: string | null }) {
+  accountUsername.value = account.telegram_username || account.telegram_id;
+  void searchProfile();
 }
 
 async function toggleProfileEnabled() {
@@ -934,12 +851,15 @@ async function toggleProfileEnabled() {
         enabled: !foundProfile.value.enabled,
       });
     } else {
+      // Новый или pending-клиент: разрешение выдаётся по @username.
       await crm.saveCardAccount({
         telegram_username: foundProfile.value.telegram_username || "",
         enabled: !foundProfile.value.enabled,
       });
     }
     await refreshProfile();
+    // Появится в «Последних разрешениях» сразу.
+    void load();
   } catch (error: any) {
     errorText.value = error?.message || "Не удалось изменить разрешение";
   } finally {
@@ -1074,33 +994,6 @@ async function addAccount() {
   if (ok) accountUsername.value = "";
 }
 
-async function editAccount(telegramId: string, patch: { max_order?: number; enabled?: boolean }) {
-  await (async () => {
-    busyAccount.value = telegramId;
-    try {
-      await crm.updateCardAccount(telegramId, patch);
-    } catch (error: any) {
-      errorText.value = error?.message || "Не удалось сохранить изменения";
-    } finally {
-      busyAccount.value = "";
-    }
-  })();
-}
-
-async function saveDraftLimit(account: Snapshot["accounts"][number]) {
-  const draft = draftAccountLimits.value[account.telegram_id];
-  if (draft == null) return;
-  busyAccount.value = account.telegram_id;
-  try {
-    await crm.updateCardAccount(account.telegram_id, { max_order: draft });
-    clearDraftLimit(account.telegram_id);
-  } catch (error: any) {
-    errorText.value = error?.message || "Не удалось сохранить изменения";
-  } finally {
-    busyAccount.value = "";
-  }
-}
-
 async function changeRequest(id: string, status: "processed" | "rejected") {
   await (async () => {
     busyRequest.value = id;
@@ -1123,20 +1016,6 @@ async function approveRequest(request: Snapshot["requests"][number]) {
     errorText.value = error?.message || "Не удалось одобрить заявку";
   } finally {
     busyRequest.value = "";
-  }
-}
-
-// Смена тарифа аккаунта: лимиты обновятся автоматически на сервере.
-async function changeAccountTariff(account: Snapshot["accounts"][number], rawValue: string) {
-  const tariffId = rawValue || null;
-  busyAccount.value = account.telegram_id;
-  try {
-    await crm.applyCardTariff(account.telegram_id, tariffId);
-    clearDraftLimit(account.telegram_id);
-  } catch (error: any) {
-    errorText.value = error?.message || "Не удалось применить тариф";
-  } finally {
-    busyAccount.value = "";
   }
 }
 

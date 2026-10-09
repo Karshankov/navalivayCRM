@@ -107,7 +107,7 @@ export function getCardAdminSnapshot(referenceDate = new Date()) {
   const limits = getCardLimitSnapshot(referenceDate);
   const accounts = db.prepare(`
     SELECT a.telegram_id, a.telegram_username, a.enabled, a.monthly_limit_minor,
-      a.max_order_minor, a.cooldown_started_at, a.tariff_id,
+      a.max_order_minor, a.cooldown_started_at, a.tariff_id, a.updated_at,
       tariff.title AS tariff_title,
       tariff.monthly_limit_minor AS tariff_monthly_limit_minor,
       tariff.per_order_limit_minor AS tariff_per_order_limit_minor,
@@ -118,8 +118,12 @@ export function getCardAdminSnapshot(referenceDate = new Date()) {
          AND o.operation_type = 'order' AND o.operation_status = 'spent') AS last_issued_at
     FROM card_payment_accounts a
     LEFT JOIN card_payment_tariffs tariff ON tariff.id = a.tariff_id
-    ORDER BY lower(COALESCE(a.telegram_username, a.telegram_id))
+    ORDER BY a.updated_at DESC, a.telegram_id
+    LIMIT 3
   `).all();
+  // Список в окне — только недавние разрешения (updated_at, 3 шт):
+  // полный поиск клиента делает поле @username сверху. Отключённые аккаунты
+  // не пропадают: они остаются в недавних и всегда находятся поиском.
   const pendingAccounts = db.prepare(`
     SELECT telegram_username, enabled, monthly_limit_minor, max_order_minor
     FROM card_payment_pending_accounts
@@ -323,7 +327,7 @@ export function setCardAccount({
         enabled = excluded.enabled,
         monthly_limit_minor = excluded.monthly_limit_minor,
         max_order_minor = excluded.max_order_minor,
-        cooldown_days = 10,
+        cooldown_days = card_payment_accounts.cooldown_days,
         updated_at = DATETIME('now')
     `).run(id, username || null, enabled ? 1 : 0, monthlyLimitMinor, maxOrderMinor, 10);
     return id;
