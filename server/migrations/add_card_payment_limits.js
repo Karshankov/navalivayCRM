@@ -125,4 +125,92 @@ export function migrateCardPaymentLimits() {
       "ALTER TABLE orders ADD COLUMN cash_due_minor INTEGER NOT NULL DEFAULT 0",
     );
   }
+
+  // Дневные корректировки: кто и зачем менял лимит дня (добавлено 2026-10-09,
+  // часть работы по «Оплата картой 0.3»). Живые БД могли получить колонки
+  // вручную — добавляем идемпотентно.
+  const adjustmentColumns = db.prepare(
+    "PRAGMA table_info(card_payment_day_adjustments)",
+  ).all();
+  if (!adjustmentColumns.some((column) => column.name === "actor_username")) {
+    db.exec("ALTER TABLE card_payment_day_adjustments ADD COLUMN actor_username TEXT;");
+  }
+  if (!adjustmentColumns.some((column) => column.name === "reason")) {
+    db.exec("ALTER TABLE card_payment_day_adjustments ADD COLUMN reason TEXT;");
+  }
+
+  // cooldown_days = 0 теперь допустим (пауза выключена) — CHECK >= 1 мешает.
+  // SQLite не умеет менять CHECK: пересоздаём таблицу, если констрейнт старый.
+  const accountsSql = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'card_payment_accounts'")
+    .get();
+  if (accountsSql?.sql && accountsSql.sql.includes("cooldown_days >= 1")) {
+    db.exec("ALTER TABLE card_payment_accounts RENAME TO card_payment_accounts_old;");
+    db.exec(`
+      CREATE TABLE card_payment_accounts (
+        telegram_id TEXT PRIMARY KEY,
+        telegram_username TEXT,
+        enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+        monthly_limit_minor INTEGER NOT NULL DEFAULT 25000 CHECK (monthly_limit_minor >= 0),
+        max_order_minor INTEGER NOT NULL DEFAULT 4500 CHECK (max_order_minor >= 0),
+        cooldown_days INTEGER NOT NULL DEFAULT 10 CHECK (cooldown_days >= 0),
+        cooldown_started_at TEXT,
+        tariff_id TEXT REFERENCES card_payment_tariffs(id) ON DELETE SET NULL,
+        created_at TEXT NOT NULL DEFAULT (DATETIME('now')),
+        updated_at TEXT NOT NULL DEFAULT (DATETIME('now'))
+      );
+    `);
+    // tariff_id добавляется отдельной миграцией тарифов — здесь его может
+    // ещё не быть в старой таблице, копируем условно.
+    const oldAccountsColumns = new Set(
+      db.prepare("PRAGMA table_info(card_payment_accounts_old)").all().map((c) => c.name),
+    );
+    if (oldAccountsColumns.has("tariff_id")) {
+      db.exec(`
+        INSERT INTO card_payment_accounts
+          (telegram_id, telegram_username, enabled, monthly_limit_minor, max_order_minor,
+           cooldown_days, cooldown_started_at, tariff_id, created_at, updated_at)
+        SELECT telegram_id, telegram_username, enabled, monthly_limit_minor, max_order_minor,
+               MAX(cooldown_days, 0), cooldown_started_at, tariff_id, created_at, updated_at
+        FROM card_payment_accounts_old
+      `);
+    } else {
+      db.exec(`
+        INSERT INTO card_payment_accounts
+          (telegram_id, telegram_username, enabled, monthly_limit_minor, max_order_minor,
+           cooldown_days, cooldown_started_at, created_at, updated_at)
+        SELECT telegram_id, telegram_username, enabled, monthly_limit_minor, max_order_minor,
+               MAX(cooldown_days, 0), cooldown_started_at, created_at, updated_at
+        FROM card_payment_accounts_old
+      `);
+    }
+    db.exec("DROP TABLE card_payment_accounts_old");
+    db.exec("CREATE INDEX IF NOT EXISTS idx_card_payment_accounts_tariff ON card_payment_accounts(tariff_id);");
+  }
+
+  const pendingSql = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'card_payment_pending_accounts'")
+    .get();
+  if (pendingSql?.sql && pendingSql.sql.includes("cooldown_days >= 1")) {
+    db.exec("ALTER TABLE card_payment_pending_accounts RENAME TO card_payment_pending_accounts_old;");
+    db.exec(`
+      CREATE TABLE card_payment_pending_accounts (
+        telegram_username TEXT PRIMARY KEY,
+        enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+        monthly_limit_minor INTEGER NOT NULL DEFAULT 25000 CHECK (monthly_limit_minor >= 0),
+        max_order_minor INTEGER NOT NULL DEFAULT 4500 CHECK (max_order_minor >= 0),
+        cooldown_days INTEGER NOT NULL DEFAULT 10 CHECK (cooldown_days >= 0),
+        created_at TEXT NOT NULL DEFAULT (DATETIME('now')),
+        updated_at TEXT NOT NULL DEFAULT (DATETIME('now'))
+      );
+    `);
+    db.exec(`
+      INSERT INTO card_payment_pending_accounts
+        (telegram_username, enabled, monthly_limit_minor, max_order_minor, cooldown_days, created_at, updated_at)
+      SELECT telegram_username, enabled, monthly_limit_minor, max_order_minor,
+             MAX(cooldown_days, 0), created_at, updated_at
+      FROM card_payment_pending_accounts_old
+    `);
+    db.exec("DROP TABLE card_payment_pending_accounts_old");
+  }
 }

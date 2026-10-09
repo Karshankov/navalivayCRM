@@ -463,12 +463,28 @@
             type="button"
             :class="{
               'card-payment-choice--active': selectedPaymentMethod === 'card',
-              'card-payment-choice--disabled': isCardPaused,
+              'card-payment-choice--disabled': isCardPaused || cardOrderExceedsDailyMinor,
             }"
-            :disabled="isCardPaused"
-            :title="isCardPaused ? 'Оплата картой на паузе' : undefined"
+            :disabled="isCardPaused || cardOrderExceedsDailyMinor"
+            :title="isCardPaused ? 'Оплата картой на паузе'
+              : cardOrderExceedsDailyMinor ? 'Заказ превышает дневной лимит оплаты картой' : undefined"
             @click="selectCardPayment"
           >Картой</button>
+        </div>
+        <div
+          v-if="cardOrderExceedsDailyMinor"
+          class="card-status-card card-status-card--unavailable"
+          role="alert"
+        >
+          <span class="card-status-dot" aria-hidden="true" />
+          <div class="card-status-info">
+            <strong>Заказ больше дневного лимита по карте</strong>
+            <span>
+              Остаток на сегодня — {{ formatCardMoney(remainingDailyCardLimitMinor) }} BYN,
+              заказ превышает его на {{ formatCardMoney(cardOrderExceededByMinor) }} BYN.
+              Оплатите заказ наличными или уменьшите корзину.
+            </span>
+          </div>
         </div>
         <template v-if="selectedPaymentMethod === 'card'">
           <div
@@ -489,8 +505,8 @@
           >
             <span class="card-status-dot" aria-hidden="true" />
             <div class="card-status-info">
-              <strong>Сегодня картой оплатить нельзя</strong>
-              <span>Можно оформить заказ за наличные</span>
+              <strong>Общий лимит на день по карте исчерпан</strong>
+              <span>Заказ можно оплатить наличными</span>
             </div>
           </div>
           <div
@@ -533,7 +549,7 @@
           <button
             type="button"
             class="checkout-modal-cta"
-            :disabled="isSubmitting || isCheckingCardPaymentStatus || (selectedPaymentMethod === 'card' && isSharedCardLimitExhausted)"
+            :disabled="isSubmitting || isCheckingCardPaymentStatus || (selectedPaymentMethod === 'card' && (isSharedCardLimitExhausted || cardOrderExceedsDailyMinor))"
             @click="submitOrder(selectedPaymentMethod)"
           >Оформить заказ</button>
         </div>
@@ -810,6 +826,20 @@ const remainingDailyCardLimitMinor = computed(() => {
 const isSharedCardLimitExhausted = computed(
   () => Boolean(cardPaymentStatus.value?.limits)
     && remainingDailyCardLimitMinor.value <= 0,
+);
+// Общий дневной лимит — жёсткий потолок: если корзина дороже остатка дня,
+// картой этот заказ оплатить нельзя (сервер тоже отклонит).
+const cardOrderTotalMinor = computed(() => {
+  const amount = Number(cartStore.totalAmount || 0);
+  return Number.isFinite(amount) ? Math.round(amount * 100) : 0;
+});
+const cardOrderExceedsDailyMinor = computed(() => {
+  if (!cardPaymentStatus.value?.limits) return false;
+  const remaining = remainingDailyCardLimitMinor.value;
+  return remaining > 0 && cardOrderTotalMinor.value > remaining;
+});
+const cardOrderExceededByMinor = computed(() =>
+  Math.max(0, cardOrderTotalMinor.value - remainingDailyCardLimitMinor.value),
 );
 // Персональный месячный лимит клиента — единственная цифра про деньги,
 // которую показываем в чекауте. Общая дневная механика магазина —
@@ -1894,13 +1924,16 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
       }
       if (
         result?.error === "daily_limit_exhausted" ||
+        result?.error === "daily_limit_exceeded_by_order" ||
         result?.error === "card_payment_not_allowed"
       ) {
         showCardPaymentModal.value = true;
         selectedPaymentMethod.value = "cash";
         submitError.value = result?.error === "daily_limit_exhausted"
           ? (result?.message || "Лимит оплаты по карте на сегодня уже занят другим заказом. Вы можете оформить этот заказ только за наличные.")
-          : "Оплата картой больше недоступна для вашего аккаунта. Вы можете оформить этот заказ наличными.";
+          : result?.error === "daily_limit_exceeded_by_order"
+            ? (result?.message || "Заказ превышает дневной лимит оплаты картой. Оформите его за наличные или уменьшите корзину.")
+            : "Оплата картой больше недоступна для вашего аккаунта. Вы можете оформить этот заказ наличными.";
         await loadCardPaymentStatus();
         return;
       }

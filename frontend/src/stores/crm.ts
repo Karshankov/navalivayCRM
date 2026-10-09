@@ -688,6 +688,22 @@ export interface CashTransaction {
   created_at: string;
 }
 
+export interface CardAccountProfile {
+  source: "linked" | "pending";
+  telegram_id: string | null;
+  telegram_username: string | null;
+  enabled: boolean;
+  monthly_limit_minor: number;
+  max_order_minor: number;
+  tariff_id: string | null;
+  tariff_title: string | null;
+  cooldown_started_at: string | null;
+  cooldown_until: string | null;
+  cooldown_days_left: number;
+  cooldown_days: number;
+  last_issued_at: string | null;
+}
+
 export interface CardPaymentAdminSnapshot {
   limits: {
     business_date: string;
@@ -703,7 +719,14 @@ export interface CardPaymentAdminSnapshot {
     committed_today_minor: number;
     remaining_today_minor: number;
     can_start_order: boolean;
+    exceeded_today_minor: number;
   };
+  months?: Array<{
+    month_key: string;
+    limit_minor: number;
+    updated_at: string | null;
+    is_current: boolean;
+  }>;
   accounts: Array<{
     telegram_id: string;
     telegram_username: string | null;
@@ -4375,6 +4398,17 @@ export const useCrmStore = defineStore("crm", () => {
 
   const cardPaymentAdminSnapshot = ref<CardPaymentAdminSnapshot | null>(null);
   const loadingCardPaymentAdmin = ref(false);
+  // Последний найденный профиль клиента (окно «Оплата картой и лимиты»).
+  // Обновляется поиском и action'ами cooldown, чтобы карточка была живой.
+  const foundCardProfileRef = ref<CardAccountProfile | null>(null);
+
+  async function searchCardProfile(username: string) {
+    const profile = await fetchAPI<CardAccountProfile>(
+      `${API_BASE}/card-payments/profile/${encodeURIComponent(username)}`,
+    );
+    foundCardProfileRef.value = profile;
+    return profile;
+  }
 
   async function fetchCardPaymentAdmin() {
     loadingCardPaymentAdmin.value = true;
@@ -4396,10 +4430,10 @@ export const useCrmStore = defineStore("crm", () => {
     return cardPaymentAdminSnapshot.value;
   }
 
-  async function increaseCardDailyLimit(amount: number) {
+  async function adjustCardDailyLimit(delta: number) {
     cardPaymentAdminSnapshot.value = await fetchAPI<CardPaymentAdminSnapshot>(
-      `${API_BASE}/card-payments/daily-increase`,
-      { method: "POST", body: JSON.stringify({ amount }) },
+      `${API_BASE}/card-payments/daily-adjust`,
+      { method: "POST", body: JSON.stringify({ delta }) },
     );
     return cardPaymentAdminSnapshot.value;
   }
@@ -4502,6 +4536,30 @@ export const useCrmStore = defineStore("crm", () => {
       { method: "PUT", body: JSON.stringify({ tariff_id: tariffId }) },
     );
     return cardPaymentAdminSnapshot.value;
+  }
+
+  // Длительность паузы после выдачи (0 = паузы нет).
+  async function setCardAccountCooldownDays(telegramId: string, days: number) {
+    const response = await fetchAPI<{ ok: boolean; profile: CardAccountProfile }>(
+      `${API_BASE}/card-payments/accounts/${encodeURIComponent(telegramId)}/cooldown-days`,
+      { method: "PUT", body: JSON.stringify({ days }) },
+    );
+    if (response.profile) {
+      foundCardProfileRef.value = response.profile;
+    }
+    return response;
+  }
+
+  // Принудительно снять активную паузу.
+  async function clearCardAccountCooldown(telegramId: string) {
+    const response = await fetchAPI<{ cleared: boolean; profile: CardAccountProfile | null }>(
+      `${API_BASE}/card-payments/accounts/${encodeURIComponent(telegramId)}/clear-cooldown`,
+      { method: "POST" },
+    );
+    if (response.profile) {
+      foundCardProfileRef.value = response.profile;
+    }
+    return response;
   }
 
   // Одобрить заявку: лимиты тарифа применяются к аккаунту автоматически.
@@ -5468,7 +5526,10 @@ export const useCrmStore = defineStore("crm", () => {
     loadingCardPaymentAdmin,
     fetchCardPaymentAdmin,
     setCardMonthlyLimit,
-    increaseCardDailyLimit,
+    adjustCardDailyLimit,
+    searchCardProfile,
+    setCardAccountCooldownDays,
+    clearCardAccountCooldown,
     addManualCardPayment,
     saveCardAccount,
     updateCardAccount,

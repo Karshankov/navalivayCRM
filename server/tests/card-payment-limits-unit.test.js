@@ -34,21 +34,32 @@ test("manual overage decreases future monthly remainder; its day is excluded fro
   }), 3913);
 });
 
-test("the last card order may cross the shared daily limit, but later orders are rejected", () => {
-  const lastOrder = resolveCardOrderAmount({
+test("a card order above the shared daily remainder is rejected with exceeded_by", () => {
+  // Общий дневной лимит — жёсткий потолок: заказ 45 BYN при остатке 30 BYN
+  // не проходит картой, клиенту сразу понятна сумма превышения.
+  const decision = resolveCardOrderAmount({
     orderAmountMinor: 4500,
     personalLimitMinor: 4500,
     dailyLimitMinor: 25000,
-    spentTodayMinor: 23000,
+    spentTodayMinor: 22000,
     reservedMinor: 0,
   });
-  assert.equal(lastOrder.ok, true);
-  assert.equal(lastOrder.cardAmountMinor, 4500);
-  assert.equal(computeCardAvailability({
+  assert.equal(decision.ok, false);
+  assert.equal(decision.reason, "daily_limit_exceeded_by_order");
+  assert.equal(decision.exceededByMinor, 1500);
+  assert.equal(decision.remainingMinor, 3000);
+});
+
+test("an order equal to the daily remainder passes in full", () => {
+  const decision = resolveCardOrderAmount({
+    orderAmountMinor: 3000,
+    personalLimitMinor: 4500,
     dailyLimitMinor: 25000,
-    spentTodayMinor: 27500,
+    spentTodayMinor: 22000,
     reservedMinor: 0,
-  }).canStartOrder, false);
+  });
+  assert.equal(decision.ok, true);
+  assert.equal(decision.cardAmountMinor, 3000);
 });
 
 test("normal orders must fit personal amount; edited orders split the excess to cash", () => {

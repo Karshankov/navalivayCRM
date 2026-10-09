@@ -488,7 +488,7 @@ describe("CheckoutView order flows", () => {
     catalogStore.categories = [];
   });
 
-  it("shows remaining shared card limit when the order exceeds it but some remains", async () => {
+  it("shows warning and blocks card when the order exceeds the shared daily remainder", async () => {
     const cartStore = useCartStore();
     cartStore.replaceItemsFromOrder([
       {
@@ -566,13 +566,15 @@ describe("CheckoutView order flows", () => {
     expect(fetchMock.mock.calls.some(([input]) => String(input) === "/api/orders")).toBe(false);
     await wrapper.findAll(".payment-modal button")[1].trigger("click");
     await flushPromises();
-    // Клиент видит только свой месячный остаток, без дневной механики магазина.
-    expect(wrapper.find(".payment-modal").text()).toContain("Оплата картой доступна");
-    expect(wrapper.find(".payment-modal").text()).toContain("105.00 BYN осталось в этом месяце");
-    expect(wrapper.find(".payment-modal").text()).not.toContain("дневного лимита");
-    expect(wrapper.find(".payment-modal").text()).not.toContain("Лимит на заказ");
-    // 105 из 250 BYN = 42% — жёлтый уровень
-    expect(wrapper.find(".card-status-limit-bar span").attributes("data-level")).toBe("warn");
+    // Заказ 45 BYN при дневном остатке 15.00 BYN: картой нельзя, предупреждение
+    // показывает сумму превышения (45 − 15.00 = 30.00 BYN).
+    expect(wrapper.find(".payment-modal").text()).toContain(
+      "Заказ больше дневного лимита по карте",
+    );
+    expect(wrapper.find(".payment-modal").text()).toContain("30.00 BYN");
+    const cardBtn = wrapper.findAll(".payment-modal button")[1];
+    expect(cardBtn.attributes("disabled")).toBeDefined();
+    expect(fetchMock.mock.calls.some(([input]) => String(input) === "/api/orders")).toBe(false);
     expect(wrapper.find(".payment-modal button.checkout-modal-cta").attributes("disabled")).toBeUndefined();
 
     wrapper.unmount();
@@ -648,10 +650,10 @@ describe("CheckoutView order flows", () => {
     await flushPromises();
 
     expect(wrapper.find(".payment-modal").text()).toContain(
-      "Сегодня картой оплатить нельзя",
+      "Общий лимит на день по карте исчерпан",
     );
     expect(wrapper.find(".payment-modal").text()).toContain(
-      "Можно оформить заказ за наличные",
+      "Заказ можно оплатить наличными",
     );
     expect(wrapper.find(".payment-modal button.checkout-modal-cta:not(.checkout-modal-cta--dark)").attributes("disabled")).toBeDefined();
 

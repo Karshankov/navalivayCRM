@@ -74,13 +74,17 @@ import { createStaffAccessMiddleware } from '../utils/staff-service.js';
 import {
   addCardDailyIncrease,
   addManualCardOperation,
+  adjustCardDailyLimit,
   applyCardTariffToAccount,
   approveCardLimitRequest,
+  clearCardAccountCooldown,
+  findCardAccountProfileByUsername,
   fromMinorUnits,
   getCardAdminSnapshot,
   getCardCustomerSnapshot,
   normalizeTelegramUsername,
   setCardAccount,
+  setCardAccountCooldownDays,
   setCardMonthlyLimit,
   toMinorUnits,
 } from '../utils/card-payment-service.js';
@@ -165,15 +169,33 @@ crmRouter.put('/api/admin/crm/card-payments/monthly-limit', authMiddleware, (req
   }
 });
 
-crmRouter.post('/api/admin/crm/card-payments/daily-increase', authMiddleware, (req, res) => {
+// Корректировка дневного лимита дельтой: положительная = увеличить,
+// отрицательная = уменьшить. Месячный лимит не меняется напрямую, но план
+// будущих дней пересчитывается из остатка месяца автоматически.
+crmRouter.post('/api/admin/crm/card-payments/daily-adjust', authMiddleware, (req, res) => {
   try {
-    const amountMinor = toMinorUnits(req.body?.amount);
-    if (amountMinor <= 0) return res.status(400).json({ error: 'invalid_amount' });
-    const date = getCardAdminSnapshot().limits.business_date;
-    addCardDailyIncrease(date, amountMinor);
+    // Дельта может быть отрицательной (уменьшение) — валидируем знак сами,
+    // toMinorUnits rejects < 0.
+    const raw = Number(req.body?.delta);
+    if (!Number.isFinite(raw) || raw === 0) {
+      return res.status(400).json({ error: 'invalid_amount' });
+    }
+    const deltaMinor = Math.round((Math.abs(raw) + Number.EPSILON) * 100) * Math.sign(raw);
+    adjustCardDailyLimit(deltaMinor, req.user?.u || 'admin');
     return res.json(getCardAdminSnapshot());
   } catch (error) {
-    return res.status(400).json({ error: error.message || 'daily_increase_failed' });
+    return res.status(400).json({ error: error.message || 'daily_adjust_failed' });
+  }
+});
+
+// Поиск карточного профиля клиента по @username (для быстрой карточки в CRM).
+crmRouter.get('/api/admin/crm/card-payments/profile/:username', authMiddleware, (req, res) => {
+  try {
+    const profile = findCardAccountProfileByUsername(req.params.username);
+    if (!profile) return res.status(404).json({ error: 'card_profile_not_found' });
+    return res.json(profile);
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'card_profile_search_failed' });
   }
 });
 
@@ -267,6 +289,34 @@ crmRouter.put('/api/admin/crm/card-payments/accounts/:telegramId/tariff', authMi
     return res.json(getCardAdminSnapshot());
   } catch (error) {
     return res.status(400).json({ error: error.message || 'card_tariff_apply_failed' });
+  }
+});
+
+// Длительность паузы после выдачи для аккаунта (0 = паузы нет).
+crmRouter.put('/api/admin/crm/card-payments/accounts/:telegramId/cooldown-days', authMiddleware, (req, res) => {
+  try {
+    const telegramId = String(req.params.telegramId || '').trim();
+    if (!telegramId) return res.status(400).json({ error: 'invalid_telegram_id' });
+    setCardAccountCooldownDays(telegramId, req.body?.days);
+    const account = db.prepare('SELECT telegram_username FROM card_payment_accounts WHERE telegram_id = ?').get(telegramId);
+    const profile = findCardAccountProfileByUsername(account?.telegram_username || telegramId);
+    return res.json({ ok: true, profile });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'card_cooldown_days_failed' });
+  }
+});
+
+// Принудительно снять активную паузу (как будто срок прошёл).
+crmRouter.post('/api/admin/crm/card-payments/accounts/:telegramId/clear-cooldown', authMiddleware, (req, res) => {
+  try {
+    const telegramId = String(req.params.telegramId || '').trim();
+    if (!telegramId) return res.status(400).json({ error: 'invalid_telegram_id' });
+    clearCardAccountCooldown(telegramId, req.user?.u || 'admin');
+    const account = db.prepare('SELECT telegram_username FROM card_payment_accounts WHERE telegram_id = ?').get(telegramId);
+    const profile = findCardAccountProfileByUsername(account?.telegram_username || telegramId);
+    return res.json({ cleared: true, profile });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'card_cooldown_clear_failed' });
   }
 });
 

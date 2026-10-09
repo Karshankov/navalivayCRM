@@ -108,8 +108,20 @@ export function resolveCardOrderAmount({
     };
   }
 
-  // A daily limit is a gate to begin the last order, not a per-order cap:
-  // the order that crosses the shared limit is allowed in full.
+  // Общий дневной лимит — жёсткий потолок, а не ворота на вход:
+  // заказ не может пройти картой целиком, если превышает остаток дня.
+  // (В split-режиме карта берёт сколько влезает, остальное — наличными.)
+  if (!allowSplit && orderAmount > availability.remainingMinor) {
+    return {
+      ok: false,
+      reason: "daily_limit_exceeded_by_order",
+      orderAmountMinor: orderAmount,
+      personalLimitMinor: personalLimit,
+      exceededByMinor: orderAmount - availability.remainingMinor,
+      ...availability,
+    };
+  }
+
   const cardAmountMinor = allowSplit
     ? Math.min(orderAmount, personalLimit, monthlyRemaining)
     : orderAmount;

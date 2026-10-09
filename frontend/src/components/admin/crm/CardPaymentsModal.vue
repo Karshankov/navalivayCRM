@@ -32,14 +32,14 @@
 
       <!-- Вкладки -->
       <nav
-        class="mb-4 flex gap-1.5 overflow-x-auto rounded-xl border border-slate-200 bg-slate-50 p-1.5"
+        class="mb-4 grid grid-cols-4 gap-1 rounded-xl border border-slate-200 bg-slate-50 p-1 sm:flex sm:gap-1.5"
         aria-label="Разделы окна"
       >
         <button
           v-for="tab in tabs"
           :key="tab.id"
           type="button"
-          class="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+          class="inline-flex min-w-0 items-center justify-center gap-1 rounded-lg px-1.5 py-2 text-xs font-medium transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 sm:shrink-0 sm:gap-1.5 sm:px-3.5 sm:text-sm"
           :class="activeTab === tab.id
             ? 'bg-white text-slate-800 shadow-sm'
             : 'text-slate-500 hover:bg-white/60 hover:text-slate-700'"
@@ -78,7 +78,8 @@
             <div class="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-blue-800/80">
               <span>Выдано: {{ money(limits.spent_today_minor) }}</span>
               <span>Резервы: {{ money(limits.reserved_minor) }}</span>
-              <span>Добавлено сегодня: {{ money(limits.daily_increase_minor) }}</span>
+              <span v-if="limits.daily_increase_minor > 0">Добавлено сегодня: +{{ money(limits.daily_increase_minor) }}</span>
+              <span v-else-if="limits.daily_increase_minor < 0">Уменьшено сегодня: {{ money(limits.daily_increase_minor) }}</span>
             </div>
           </div>
 
@@ -102,40 +103,84 @@
           </div>
         </div>
 
+        <!-- Превышение дневного лимита -->
+        <div
+          v-if="limits.exceeded_today_minor > 0"
+          role="alert"
+          class="flex items-center gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3"
+        >
+          <ExclamationTriangleIcon class="h-5 w-5 shrink-0 text-rose-600" aria-hidden="true" />
+          <div class="min-w-0 flex-1 text-sm font-semibold text-rose-800">
+            Лимит на сегодня превышен на {{ money(limits.exceeded_today_minor) }}.
+            Новые карточные заказы отклоняются до конца дня; новые карточные лимиты клиенту не выдаются.
+          </div>
+        </div>
+
         <!-- Действия с лимитами -->
         <div class="grid gap-3 lg:grid-cols-3">
-          <form class="rounded-xl border border-gray-200 bg-white p-4" @submit.prevent="saveMonthly">
-            <label class="block text-sm font-semibold text-gray-800" for="card-monthly-input">Месячный лимит · {{ limits.month_key }}</label>
-            <div class="mt-2 flex gap-2">
-              <input id="card-monthly-input" v-model.number="monthlyAmount" type="number" min="0" step="0.01"
-                class="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
-                :aria-label="`Месячный лимит BYN, текущий ${money(limits.monthly_limit_minor)}`">
-              <CrmButton type="submit" variant="muted" size="sm" :loading="busyForm === 'monthly'">Сохранить</CrmButton>
+          <!-- Месяцы списком -->
+          <section class="rounded-xl border border-gray-200 bg-white p-4">
+            <label class="block text-sm font-semibold text-gray-800">Месячные лимиты</label>
+            <p class="mt-0.5 text-xs text-gray-500">Текущий и следующий месяц; план дня пересчитывается сразу.</p>
+            <div class="mt-3 space-y-2">
+              <div
+                v-for="month in snapshot.months || []"
+                :key="month.month_key"
+                class="rounded-lg border p-3"
+                :class="month.is_current ? 'border-violet-300 bg-violet-50/60' : 'border-gray-200 bg-white'"
+              >
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <div class="min-w-0">
+                    <div class="text-sm font-semibold text-gray-800">
+                      {{ monthName(month.month_key) }}
+                      <span
+                        v-if="month.is_current"
+                        class="ml-1 rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-violet-700"
+                      >текущий</span>
+                    </div>
+                    <div class="text-xs text-gray-500">Лимит: {{ money(month.limit_minor) }}</div>
+                  </div>
+                  <CrmButton
+                    variant="soft" size="sm" class="w-full sm:!w-auto"
+                    @click="startEditMonth(month)"
+                  >Изменить</CrmButton>
+                </div>
+                <form v-if="editingMonthKey === month.month_key" class="mt-2 flex flex-wrap gap-2" @submit.prevent="saveMonth">
+                  <input v-model.number="editingMonthLimit" type="number" min="0" step="0.01" inputmode="decimal"
+                    class="w-full rounded-lg border border-violet-300 px-3 py-2 text-sm focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-100 sm:min-w-0 sm:flex-1 sm:py-1.5"
+                    :aria-label="`Лимит месяца ${monthName(month.month_key)} BYN`">
+                  <CrmButton type="submit" variant="muted" size="sm" class="w-full sm:!w-auto" :loading="busyForm === 'monthly'">Сохранить</CrmButton>
+                  <CrmButton variant="ghost" size="sm" class="w-full sm:!w-auto" @click="editingMonthKey = ''">Отмена</CrmButton>
+                </form>
+              </div>
             </div>
-            <p class="mt-2 text-xs text-gray-500">Дневной план пересчитывается из остатка месяца.</p>
-          </form>
+          </section>
 
-          <form class="rounded-xl border border-gray-200 bg-white p-4" @submit.prevent="increaseDaily">
-            <label class="block text-sm font-semibold text-gray-800" for="card-daily-input">Увеличить лимит сегодня</label>
+          <!-- День: ± -->
+          <form class="rounded-xl border border-gray-200 bg-white p-4" @submit.prevent="adjustDaily">
+            <label class="block text-sm font-semibold text-gray-800" for="card-daily-input">Лимит на сегодня · {{ money(limits.daily_limit_minor) }}</label>
             <div class="mt-2 flex gap-2">
-              <input id="card-daily-input" v-model.number="dailyIncrease" type="number" min="0.01" step="0.01" placeholder="Сумма"
+              <input id="card-daily-input" v-model.number="dailyDelta" type="number" step="0.01" inputmode="decimal" placeholder="± Сумма"
                 class="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
-                aria-label="Увеличение дневного лимита BYN">
-              <CrmButton type="submit" variant="soft" size="sm" :loading="busyForm === 'daily'">Добавить</CrmButton>
+                aria-label="Изменение дневного лимита BYN, минус для уменьшения">
+              <CrmButton type="submit" variant="soft" size="sm" :loading="busyForm === 'daily'">Применить</CrmButton>
             </div>
-            <p class="mt-2 text-xs text-gray-500">Действует только {{ limits.business_date }}; месяц не меняет.</p>
+            <p class="mt-2 text-xs text-gray-500">
+              Увеличьте или уменьшите (минус) лимит сегодняшнего дня. Месяц не меняется: план будущих дней
+              пересчитается из остатка месяца — пробили больше, завтра план ниже; не выбили — выше.
+            </p>
           </form>
 
           <form class="rounded-xl border border-gray-200 bg-white p-4" @submit.prevent="addManual">
             <label class="block text-sm font-semibold text-gray-800" for="card-manual-input">Ручное пробитие · проходящий клиент</label>
-            <div class="mt-2 flex gap-2">
-              <input id="card-manual-input" v-model.number="manualAmount" type="number" min="0.01" step="0.01" placeholder="Сумма"
-                class="w-28 min-w-0 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+            <div class="mt-2 flex flex-wrap gap-2">
+              <input id="card-manual-input" v-model.number="manualAmount" type="number" min="0.01" step="0.01" inputmode="decimal" placeholder="Сумма"
+                class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 sm:w-28 sm:min-w-0"
                 aria-label="Сумма ручного пробития BYN">
               <input v-model="manualNote" type="text" placeholder="Комментарий (необязательно)"
-                class="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                class="w-full min-w-0 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 sm:flex-1"
                 aria-label="Комментарий к пробитию">
-              <CrmButton type="submit" variant="success" size="sm" :loading="busyForm === 'manual'">Внести</CrmButton>
+              <CrmButton type="submit" variant="success" size="sm" class="w-full sm:!w-auto" :loading="busyForm === 'manual'">Внести</CrmButton>
             </div>
             <p class="mt-2 text-xs text-gray-500">Разрешено сверх дневного плана; уменьшает остаток месяца.</p>
           </form>
@@ -170,22 +215,154 @@
 
       <!-- ======================= ВКЛАДКА: АККАУНТЫ ======================= -->
       <div v-else-if="activeTab === 'accounts'" class="space-y-4">
-        <form class="rounded-xl border border-gray-200 bg-white p-4" @submit.prevent="addAccount">
-          <h3 class="mb-1 text-sm font-bold text-gray-900">Разрешить оплату картой</h3>
+        <form class="rounded-xl border border-gray-200 bg-white p-4" @submit.prevent="searchProfile">
+          <h3 class="mb-1 text-sm font-bold text-gray-900">Проверить и настроить клиента</h3>
           <p class="mb-3 text-xs text-gray-500">
-            Достаточно @username — стандартные лимиты (250 BYN/мес, 45 BYN на заказ и пауза 10 дней)
-            выдадутся автоматически. Клиент сможет поднять лимит заявкой на тариф.
-            Пока клиент не заходил в приложение, он хранится как @username и привяжется к Telegram ID после первого входа.
+            Введите @username — увидите статус оплаты картой, лимиты, тариф и паузу.
+            Разрешение и запрет — в одно нажатие. Новому клиенту выйдут стандартные
+            лимиты (250 BYN/мес, 45 BYN/заказ, пауза 10 дней).
           </p>
           <div class="flex gap-2">
-            <input v-model="accountUsername" type="text" placeholder="@username" autocomplete="off"
+            <input v-model="accountUsername" type="text" placeholder="@username, например @ppofic" autocomplete="off"
               class="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
               :class="{ 'border-rose-400': accountError }"
               aria-label="Telegram username без собаки">
-            <CrmButton type="submit" variant="primary" size="sm" :loading="busyForm === 'account'">Разрешить</CrmButton>
+            <CrmButton type="submit" variant="primary" size="sm" :loading="profileSearching">Найти</CrmButton>
           </div>
           <p v-if="accountError" class="mt-2 text-xs font-medium text-rose-700">{{ accountError }}</p>
         </form>
+
+        <!-- Карточка найденного клиента -->
+        <section
+          v-if="foundProfile"
+          class="rounded-xl border p-4"
+          :class="foundProfile.enabled ? 'border-emerald-200 bg-emerald-50/50' : 'border-gray-200 bg-gray-50'"
+          aria-live="polite"
+        >
+          <div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+            <div class="min-w-0">
+              <div class="flex flex-wrap items-center gap-1.5">
+                <span class="truncate text-base font-bold text-gray-900">@{{ foundProfile.telegram_username }}</span>
+                <span
+                  class="rounded-full px-2.5 py-0.5 text-[11px] font-bold"
+                  :class="foundProfile.enabled ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-200 text-gray-600'"
+                >
+                  {{ foundProfile.enabled ? 'карта разрешена' : 'карта запрещена' }}
+                </span>
+              </div>
+              <div class="mt-0.5 text-[11px] text-gray-500">
+                <template v-if="foundProfile.source === 'pending'">
+                  Ждёт первого входа: привяжется к Telegram ID при визите
+                </template>
+                <template v-else>
+                  TG ID {{ foundProfile.telegram_id }}<span v-if="foundProfile.last_issued_at"> · выдача {{ dateShort(foundProfile.last_issued_at) }}</span>
+                </template>
+              </div>
+            </div>
+            <!-- Разрешение/запрет в одно нажатие: на телефоне на всю ширину -->
+            <CrmButton
+              :variant="foundProfile.enabled ? 'danger' : 'success'"
+              size="sm"
+              block
+              class="sm:!w-auto sm:!block"
+              :loading="profileToggling"
+              @click="toggleProfileEnabled"
+            >
+              {{ foundProfile.enabled ? 'Запретить оплату картой' : 'Разрешить оплату картой' }}
+            </CrmButton>
+          </div>
+
+          <!-- Показатели клиента -->
+          <div class="mt-3 grid gap-2 sm:grid-cols-3">
+            <div class="flex items-baseline justify-between gap-2 rounded-lg bg-white px-3 py-2 sm:flex-col sm:items-center sm:justify-start sm:p-2.5 sm:text-center">
+              <span class="text-[11px] font-medium text-gray-500 sm:mt-0">Лимит / месяц</span>
+              <span class="text-sm font-bold text-gray-900">{{ money(foundProfile.monthly_limit_minor) }}</span>
+            </div>
+            <div class="flex items-baseline justify-between gap-2 rounded-lg bg-white px-3 py-2 sm:flex-col sm:items-center sm:justify-start sm:p-2.5 sm:text-center">
+              <span class="text-[11px] font-medium text-gray-500">Лимит / заказ</span>
+              <span class="text-sm font-bold text-gray-900">{{ money(foundProfile.max_order_minor) }}</span>
+            </div>
+            <div class="flex items-baseline justify-between gap-2 rounded-lg bg-white px-3 py-2 sm:flex-col sm:items-center sm:justify-start sm:p-2.5 sm:text-center">
+              <span class="text-[11px] font-medium text-gray-500">Тариф</span>
+              <span class="text-sm font-bold text-gray-900">{{ foundProfile.tariff_title || 'Стандарт' }}</span>
+            </div>
+          </div>
+
+          <!-- Пауза: активная с принудительным снятием -->
+          <div
+            v-if="foundProfile.cooldown_until"
+            class="mt-3 flex flex-col gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 sm:flex-row sm:items-center"
+          >
+            <div class="flex min-w-0 flex-1 items-center gap-2 text-sm">
+              <ClockIcon class="h-4 w-4 shrink-0 text-amber-600" aria-hidden="true" />
+              <span class="text-amber-900">
+                Пауза после выдачи — <strong>{{ pluralDays(foundProfile.cooldown_days_left) }}</strong> до {{ dateShort(foundProfile.cooldown_until) }}
+              </span>
+            </div>
+            <CrmButton
+              variant="soft" size="sm"
+              class="w-full sm:!w-auto"
+              :loading="profileToggling"
+              title="Снять паузу, как будто срок уже прошёл. После следующей выдачи пауза вернётся."
+              @click="confirmCooldownClear = true"
+            >Снять паузу принудительно</CrmButton>
+          </div>
+
+          <!-- Длительность паузы для будущих выдач -->
+          <div class="mt-3 rounded-lg border border-gray-200 bg-white px-3 py-2.5">
+            <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <label class="flex min-w-0 flex-1 items-center gap-2">
+                <span class="shrink-0 text-xs font-medium text-gray-600">Пауза после выдачи</span>
+                <input
+                  v-model.number="profileCooldownDays"
+                  type="number" min="0" max="365" step="1" inputmode="numeric"
+                  class="w-16 min-w-0 rounded-lg border border-gray-300 px-2 py-1.5 text-center text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                  :class="{ 'border-blue-400 ring-1 ring-blue-100': cooldownDaysChanged }"
+                  :aria-label="`Длительность паузы в днях для ${foundProfile.telegram_username}, 0 — без паузы`">
+                <span class="shrink-0 text-xs text-gray-500">дней · 0 = без паузы</span>
+              </label>
+              <div v-if="cooldownDaysChanged" class="flex gap-2 sm:shrink-0">
+                <CrmButton variant="success" size="sm" class="flex-1 sm:!w-auto" :loading="profileToggling" @click="saveCooldownDays">
+                  Сохранить
+                </CrmButton>
+                <CrmButton variant="ghost" size="sm" class="flex-1 sm:!w-auto" @click="resetCooldownDays">Отмена</CrmButton>
+              </div>
+              <div v-else class="text-[11px] text-gray-400">
+                {{ foundProfile.cooldown_days === 0 ? 'Пауза отключена' : `Сейчас ${pluralDays(foundProfile.cooldown_days)} после каждой выдачи` }}
+              </div>
+            </div>
+            <p class="mt-1.5 text-[11px] text-gray-400">
+              Начнёт действовать со следующей выдачи заказа по карте.
+            </p>
+          </div>
+
+          <!-- Быстрое редактирование -->
+          <div class="mt-3 grid gap-2 sm:grid-cols-2">
+            <label class="block">
+              <span class="text-[11px] font-medium text-gray-500">Лимит заказа, BYN</span>
+              <input v-model.number="profileOrderLimit" type="number" min="0.01" step="0.01" inputmode="decimal"
+                class="mt-0.5 w-full rounded-lg border border-gray-300 bg-white px-2.5 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                :aria-label="`Лимит заказа для ${foundProfile.telegram_username}`">
+            </label>
+            <label class="block">
+              <span class="text-[11px] font-medium text-gray-500">Тариф</span>
+              <select
+                v-model="profileTariffId"
+                class="mt-0.5 w-full rounded-lg border border-gray-300 bg-white px-2.5 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                :aria-label="`Тариф для ${foundProfile.telegram_username}`"
+                @change="applyProfileTariff"
+              >
+                <option value="">Стандарт (250/45 BYN)</option>
+                <option v-for="tariff in activeTariffs" :key="tariff.id" :value="tariff.id">
+                  {{ tariff.title }} · {{ minorToMoney(tariff.monthly_limit_minor ?? tariff.limit_minor) }}/{{ minorToMoney(tariff.per_order_limit_minor ?? 4500) }} BYN
+                </option>
+              </select>
+            </label>
+          </div>
+          <div class="mt-2 flex sm:justify-end">
+            <CrmButton variant="muted" size="sm" class="w-full sm:!w-auto" :loading="profileToggling" @click="saveProfileOrderLimit">Сохранить лимит заказа</CrmButton>
+          </div>
+        </section>
 
         <!-- Поиск -->
         <div class="relative">
@@ -207,31 +384,32 @@
               class="rounded-xl border p-3"
               :class="account.enabled ? 'border-gray-200 bg-white' : 'border-gray-200 bg-gray-50 opacity-80'"
             >
-              <div class="flex flex-wrap items-center justify-between gap-2">
+              <div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
                 <div class="min-w-0">
-                  <div class="flex items-center gap-1.5">
+                  <div class="flex flex-wrap items-center gap-1.5">
                     <span class="truncate text-sm font-semibold text-gray-800">@{{ account.telegram_username || account.telegram_id }}</span>
                     <span
-                      class="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide"
+                      class="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide"
                       :class="account.enabled ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-200 text-gray-600'"
                     >
-                      {{ account.enabled ? 'Разрешено' : 'Отключено' }}
+                      {{ account.enabled ? 'Разрешено' : 'Откл.' }}
                     </span>
                     <span
                       v-if="cooldownUntil(account)"
-                      class="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800"
+                      class="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800"
                       :title="`Последняя выдача ${account.last_issued_at ? dateLabel(account.last_issued_at) : '—'}; пауза 10 дней`"
                     >
                       Пауза до {{ dateShort(cooldownUntil(account)!) }}
                     </span>
                   </div>
                   <div class="mt-0.5 text-[11px] text-gray-500">
-                    TG ID {{ account.telegram_id }}<span v-if="account.last_issued_at"> · последняя выдача {{ dateShort(account.last_issued_at) }}</span>
+                    TG ID {{ account.telegram_id }}<span v-if="account.last_issued_at"> · выдача {{ dateShort(account.last_issued_at) }}</span>
                   </div>
                 </div>
                 <CrmButton
                   :variant="account.enabled ? 'danger' : 'success'"
                   size="sm"
+                  class="w-full sm:!w-auto"
                   :loading="busyAccount === account.telegram_id"
                   @click="editAccount(account.telegram_id, { enabled: !account.enabled })"
                 >
@@ -239,7 +417,7 @@
                 </CrmButton>
               </div>
 
-              <div class="mt-3 grid grid-cols-2 gap-2">
+              <div class="mt-3 grid gap-2 sm:grid-cols-2">
                 <label class="block">
                   <span class="text-[11px] font-medium text-gray-500">Тариф</span>
                   <select
@@ -290,7 +468,7 @@
               class="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-amber-50/60 px-3 py-2 text-sm"
             >
               <span class="text-gray-800">@{{ pending.telegram_username }}</span>
-              <span class="text-xs text-gray-500">
+              <span class="w-full text-right text-xs text-gray-500 sm:w-auto">
                 {{ money(pending.monthly_limit_minor) }}/мес · {{ money(pending.max_order_minor) }}/заказ ·
                 {{ pending.enabled ? 'разрешено' : 'отключено' }}
               </span>
@@ -309,7 +487,7 @@
         </div>
         <div class="max-h-[420px] space-y-2 overflow-auto">
           <div v-for="request in snapshot.requests" :key="request.id" class="rounded-xl border border-gray-100 p-3">
-            <div class="flex items-start justify-between gap-3">
+            <div class="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
               <div class="min-w-0">
                 <div class="text-sm font-semibold text-gray-800">@{{ request.telegram_username || request.telegram_id }}</div>
                 <div class="mt-0.5 text-xs text-gray-600">
@@ -323,24 +501,24 @@
                 <div class="mt-0.5 text-[11px] text-gray-400">{{ dateLabel(request.created_at) }}</div>
               </div>
               <span
-                class="shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold"
+                class="self-start rounded-full px-2.5 py-1 text-[11px] font-semibold sm:shrink-0"
                 :class="request.status === 'new' ? 'bg-blue-100 text-blue-800' : request.status === 'processed' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'"
               >
                 {{ requestStatusLabel(request.status) }}
               </span>
             </div>
-            <div v-if="request.status === 'new'" class="mt-2.5 flex flex-wrap gap-2">
-              <CrmButton variant="primary" size="sm" :loading="busyRequest === request.id" title="Применить лимиты тарифа к аккаунту автоматически" @click="approveRequest(request)">
+            <div v-if="request.status === 'new'" class="mt-2.5 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+              <CrmButton variant="primary" size="sm" class="w-full sm:!w-auto" :loading="busyRequest === request.id" title="Применить лимиты тарифа к аккаунту автоматически" @click="approveRequest(request)">
                 Одобрить
               </CrmButton>
-              <CrmButton variant="danger" size="sm" :loading="busyRequest === request.id" @click="confirmRejectRequest = request">
+              <CrmButton variant="danger" size="sm" class="w-full sm:!w-auto" :loading="busyRequest === request.id" @click="confirmRejectRequest = request">
                 Отклонить
               </CrmButton>
               <a
                 v-if="request.telegram_username"
-                class="ml-auto inline-flex items-center rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-50"
+                class="col-span-2 inline-flex min-h-[40px] items-center justify-center rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-50 sm:ml-auto sm:w-auto"
                 :href="`https://t.me/${request.telegram_username}`" target="_blank" rel="noopener noreferrer"
-              >Написать</a>
+              >Написать в Telegram</a>
             </div>
             <div v-if="request.status === 'processed' && request.resolution_note" class="mt-2 text-[11px] text-gray-400">
               {{ request.resolution_note }}
@@ -390,10 +568,12 @@
               <div class="text-sm font-semibold text-gray-800">{{ tariff.title }} · {{ money(tariff.monthly_limit_minor ?? tariff.limit_minor) }}/мес · {{ money(tariff.per_order_limit_minor ?? 4500) }}/заказ</div>
               <div class="text-xs text-gray-500">{{ tariff.transition_cost_text || 'Без текста о стоимости' }}</div>
             </div>
-            <CrmButton variant="soft" size="sm" @click="editTariff(tariff)">Изменить</CrmButton>
-            <CrmButton variant="danger" size="sm" :loading="busyTariffId === tariff.id" @click="confirmTariffRemoval = tariff">
-              Удалить
-            </CrmButton>
+            <div class="flex w-full gap-2 sm:w-auto">
+              <CrmButton variant="soft" size="sm" class="flex-1 sm:!w-auto" @click="editTariff(tariff)">Изменить</CrmButton>
+              <CrmButton variant="danger" size="sm" class="flex-1 sm:!w-auto" :loading="busyTariffId === tariff.id" @click="confirmTariffRemoval = tariff">
+                Удалить
+              </CrmButton>
+            </div>
           </div>
           <p v-if="!snapshot.tariffs.length" class="py-2 text-xs text-gray-500">Тарифов пока нет.</p>
         </div>
@@ -425,6 +605,27 @@
           <CrmButton variant="ghost" size="sm" @click="confirmRejectRequest = null">Отмена</CrmButton>
           <CrmButton variant="danger-solid" size="sm" :loading="busyRequest === confirmRejectRequest.id"
             @click="rejectRequest(confirmRejectRequest)">Отклонить</CrmButton>
+        </div>
+      </div>
+    </div>
+
+    <!-- Подтверждение принудительного снятия паузы -->
+    <div
+      v-if="confirmCooldownClear && foundProfile"
+      class="fixed inset-0 z-[60] flex items-center justify-center bg-black/30 p-4"
+      role="dialog" aria-modal="true" aria-label="Подтверждение снятия паузы"
+      @click.self="confirmCooldownClear = false"
+    >
+      <div class="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl">
+        <h4 class="text-sm font-bold text-gray-900">Снять паузу принудительно?</h4>
+        <p class="mt-1.5 text-sm text-gray-600">
+          @{{ foundProfile.telegram_username }} сможет платить картой сразу, как будто
+          {{ pluralDays(foundProfile.cooldown_days_left || 0) }} уже прошли.
+          После следующей выдачи пауза вернётся на установленное время.
+        </p>
+        <div class="mt-4 flex justify-end gap-2">
+          <CrmButton variant="ghost" size="sm" @click="confirmCooldownClear = false">Отмена</CrmButton>
+          <CrmButton variant="primary" size="sm" :loading="profileToggling" @click="clearCooldown">Снять паузу</CrmButton>
         </div>
       </div>
     </div>
@@ -491,8 +692,16 @@ const busyAccount = ref("");
 const busyRequest = ref("");
 const busyTariffId = ref("");
 
-const monthlyAmount = ref(0);
-const dailyIncrease = ref<number | null>(null);
+const editingMonthKey = ref("");
+const editingMonthLimit = ref(0);
+const dailyDelta = ref<number | null>(null);
+const foundProfile = ref<import("@/stores/crm").CardAccountProfile | null>(null);
+const profileSearching = ref(false);
+const profileToggling = ref(false);
+const profileOrderLimit = ref(0);
+const profileTariffId = ref("");
+const profileCooldownDays = ref(10);
+const confirmCooldownClear = ref(false);
 const manualAmount = ref<number | null>(null);
 const manualNote = ref("");
 const accountUsername = ref("");
@@ -544,14 +753,6 @@ const filteredPendingAccounts = computed(() => {
 });
 
 watch(
-  () => snapshot.value?.limits.monthly_limit_minor,
-  (limit) => {
-    if (limit != null) monthlyAmount.value = Number(limit) / 100;
-  },
-  { immediate: true },
-);
-
-watch(
   () => props.isOpen,
   (open) => {
     if (open) {
@@ -561,6 +762,11 @@ watch(
     } else {
       draftAccountLimits.value = {};
       accountSearch.value = "";
+      foundProfile.value = null;
+      profileSearching.value = false;
+      profileToggling.value = false;
+      confirmCooldownClear.value = false;
+      editingMonthKey.value = "";
       confirmRejectRequest.value = null;
       confirmTariffRemoval.value = null;
       editingTariff.value = null;
@@ -656,18 +862,187 @@ async function load() {
   await run(() => crm.fetchCardPaymentAdmin());
 }
 
-async function saveMonthly() {
-  if (monthlyAmount.value == null || monthlyAmount.value < 0) return;
-  await run(
-    () => crm.setCardMonthlyLimit(limits.value?.month_key || "", monthlyAmount.value),
-    "monthly",
+function monthName(monthKey: string) {
+  const [year, month] = monthKey.split("-").map(Number);
+  const label = new Intl.DateTimeFormat("ru-BY", { month: "long", year: "numeric" }).format(
+    new Date(Date.UTC(year, month - 1, 1)),
   );
+  return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
-async function increaseDaily() {
-  if (!dailyIncrease.value || dailyIncrease.value <= 0) return;
-  const ok = await run(() => crm.increaseCardDailyLimit(dailyIncrease.value!), "daily");
-  if (ok) dailyIncrease.value = null;
+function startEditMonth(month: { month_key: string; limit_minor: number }) {
+  editingMonthKey.value = month.month_key;
+  editingMonthLimit.value = Number(month.limit_minor) / 100;
+}
+
+async function saveMonth() {
+  if (editingMonthLimit.value == null || editingMonthLimit.value < 0) return;
+  const ok = await run(
+    () => crm.setCardMonthlyLimit(editingMonthKey.value, editingMonthLimit.value),
+    "monthly",
+  );
+  if (ok) editingMonthKey.value = "";
+}
+
+async function adjustDaily() {
+  if (dailyDelta.value == null || dailyDelta.value === 0) return;
+  const ok = await run(() => crm.adjustCardDailyLimit(dailyDelta.value!), "daily");
+  if (ok) dailyDelta.value = null;
+}
+
+function pluralDays(days: number) {
+  const mod10 = days % 10;
+  const mod100 = days % 100;
+  if (mod10 === 1 && mod100 !== 11) return `${days} день`;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return `${days} дня`;
+  return `${days} дней`;
+}
+
+async function searchProfile() {
+  accountError.value = "";
+  foundProfile.value = null;
+  const username = accountUsername.value.trim().replace(/^@+/, "");
+  if (!username) {
+    accountError.value = "Введите @username клиента.";
+    return;
+  }
+  profileSearching.value = true;
+  try {
+    const profile = await crm.searchCardProfile(username);
+    foundProfile.value = profile;
+    profileOrderLimit.value = Number(profile.max_order_minor) / 100;
+    profileTariffId.value = profile.tariff_id || "";
+    profileCooldownDays.value = Number(profile.cooldown_days ?? 10);
+  } catch (error: any) {
+    if (error?.status === 404 || String(error?.message || "").includes("не найден")) {
+      accountError.value = `@${username} ещё не разрешали оплату картой — добавьте его кнопкой «Разрешить» ниже или сразу в списке аккаунтов.`;
+    } else {
+      accountError.value = error?.message || "Не удалось загрузить профиль";
+    }
+  } finally {
+    profileSearching.value = false;
+  }
+}
+
+async function toggleProfileEnabled() {
+  if (!foundProfile.value) return;
+  profileToggling.value = true;
+  errorText.value = "";
+  try {
+    if (foundProfile.value.source === "linked" && foundProfile.value.telegram_id) {
+      await crm.updateCardAccount(foundProfile.value.telegram_id, {
+        enabled: !foundProfile.value.enabled,
+      });
+    } else {
+      await crm.saveCardAccount({
+        telegram_username: foundProfile.value.telegram_username || "",
+        enabled: !foundProfile.value.enabled,
+      });
+    }
+    await refreshProfile();
+  } catch (error: any) {
+    errorText.value = error?.message || "Не удалось изменить разрешение";
+  } finally {
+    profileToggling.value = false;
+  }
+}
+
+async function applyProfileTariff() {
+  if (!foundProfile.value || !foundProfile.value.telegram_id) {
+    errorText.value = "Тариф применяется после первого входа клиента в приложение";
+    return;
+  }
+  profileToggling.value = true;
+  try {
+    await crm.applyCardTariff(foundProfile.value.telegram_id, profileTariffId.value || null);
+    await refreshProfile();
+  } catch (error: any) {
+    errorText.value = error?.message || "Не удалось применить тариф";
+  } finally {
+    profileToggling.value = false;
+  }
+}
+
+async function saveProfileOrderLimit() {
+  if (!foundProfile.value || !foundProfile.value.telegram_id) {
+    errorText.value = "Лимит сохранится после первого входа клиента в приложение";
+    return;
+  }
+  if (profileOrderLimit.value == null || profileOrderLimit.value <= 0) {
+    errorText.value = "Лимит заказа должен быть больше нуля";
+    return;
+  }
+  profileToggling.value = true;
+  try {
+    await crm.updateCardAccount(foundProfile.value.telegram_id, {
+      max_order: profileOrderLimit.value,
+    });
+    await refreshProfile();
+  } catch (error: any) {
+    errorText.value = error?.message || "Не удалось сохранить лимит";
+  } finally {
+    profileToggling.value = false;
+  }
+}
+
+const cooldownDaysChanged = computed(
+  () => foundProfile.value != null
+    && Number.isFinite(Number(profileCooldownDays.value))
+    && Number(profileCooldownDays.value) !== Number(foundProfile.value.cooldown_days ?? 10),
+);
+
+function resetCooldownDays() {
+  profileCooldownDays.value = Number(foundProfile.value?.cooldown_days ?? 10);
+}
+
+async function saveCooldownDays() {
+  if (!foundProfile.value || !foundProfile.value.telegram_id) {
+    errorText.value = "Длительность паузы сохранится после первого входа клиента в приложение";
+    return;
+  }
+  const days = Number(profileCooldownDays.value);
+  if (!Number.isInteger(days) || days < 0 || days > 365) {
+    errorText.value = "Дни паузы: целое число от 0 до 365";
+    return;
+  }
+  profileToggling.value = true;
+  try {
+    await crm.setCardAccountCooldownDays(foundProfile.value.telegram_id, days);
+    await refreshProfile();
+  } catch (error: any) {
+    errorText.value = error?.message || "Не удалось сохранить длительность паузы";
+  } finally {
+    profileToggling.value = false;
+  }
+}
+
+async function clearCooldown() {
+  if (!foundProfile.value?.telegram_id) return;
+  profileToggling.value = true;
+  try {
+    await crm.clearCardAccountCooldown(foundProfile.value.telegram_id);
+    confirmCooldownClear.value = false;
+    await refreshProfile();
+  } catch (error: any) {
+    errorText.value = error?.message || "Не удалось снять паузу";
+    confirmCooldownClear.value = false;
+  } finally {
+    profileToggling.value = false;
+  }
+}
+
+async function refreshProfile() {
+  const username = foundProfile.value?.telegram_username;
+  if (!username) return;
+  try {
+    const profile = await crm.searchCardProfile(username);
+    foundProfile.value = profile;
+    profileOrderLimit.value = Number(profile.max_order_minor) / 100;
+    profileTariffId.value = profile.tariff_id || "";
+    profileCooldownDays.value = Number(profile.cooldown_days ?? 10);
+  } catch {
+    // профиль мог стать недоступным — оставляем как есть
+  }
 }
 
 async function addManual() {

@@ -7,6 +7,11 @@ import {
   resolveCardOrderAmount,
 } from "./card-payment-limits.js";
 
+
+function accountCooldownMs(account) {
+  return Number(account?.cooldown_days ?? 10) * 24 * 60 * 60 * 1000;
+}
+
 export function toMinorUnits(amount) {
   const value = Number(amount);
   if (!Number.isFinite(value) || value < 0) throw new Error("invalid_amount");
@@ -92,6 +97,9 @@ export function getCardLimitSnapshot(referenceDate = new Date()) {
     committed_today_minor: adjustedAvailability.committedMinor,
     remaining_today_minor: adjustedAvailability.remainingMinor,
     can_start_order: adjustedAvailability.canStartOrder,
+    // > 0, когда занято больше дневного лимита (превышение для красного
+    // предупреждения в CRM и блокировки новых карточных заказов).
+    exceeded_today_minor: Math.max(0, adjustedAvailability.committedMinor - dailyLimitMinor),
   };
 }
 
@@ -145,7 +153,15 @@ export function getCardAdminSnapshot(referenceDate = new Date()) {
       AND o.operation_status = 'spent'
     ORDER BY o.issued_at DESC, o.id DESC
   `).all(limits.business_date);
-  return { limits, accounts, pending_accounts: pendingAccounts, tariffs, requests, operations };
+  return {
+    limits,
+    accounts,
+    pending_accounts: pendingAccounts,
+    tariffs,
+    requests,
+    operations,
+    months: listCardMonths(referenceDate),
+  };
 }
 
 export function setCardMonthlyLimit(monthKey, limitMinor) {
@@ -163,9 +179,128 @@ export function addCardDailyIncrease(businessDate, increaseMinor) {
   db.prepare(`
     INSERT INTO card_payment_day_adjustments (business_date, limit_override_minor, updated_at)
     VALUES (?, ?, DATETIME('now'))
-    ON CONFLICT(business_date) DO UPDATE SET
+    ON CONFLICT(businessDate) DO UPDATE SET
       limit_override_minor = excluded.limit_override_minor, updated_at = DATETIME('now')
   `).run(businessDate, current.daily_limit_minor + increaseMinor);
+}
+
+/**
+ * Дневной лимит: корректировка дельтой (можно и отрицательную — уменьшить).
+ * Дельта не может опустить лимит ниже нуля. Влияет только на остаток
+ * сегодняшнего дня; месячный лимит не меняется, но план на будущие дни
+ * пересчитывается из остатка месяца автоматически (см. computeDailyCardLimitMinor):
+ * пробил больше плана — завтра план ниже; не выбил — выше.
+ */
+export function adjustCardDailyLimit(deltaMinor, actorUsername = null, referenceDate = new Date()) {
+  const current = getCardLimitSnapshot(referenceDate);
+  const delta = Number(deltaMinor);
+  if (!Number.isFinite(delta) || delta === 0) throw new Error("invalid_amount");
+  const newLimit = current.daily_limit_minor + delta;
+  if (newLimit < 0) throw new Error("daily_limit_below_zero");
+  db.prepare(`
+    INSERT INTO card_payment_day_adjustments (business_date, limit_override_minor, updated_at, actor_username)
+    VALUES (?, ?, DATETIME('now'), ?)
+    ON CONFLICT(business_date) DO UPDATE SET
+      limit_override_minor = excluded.limit_override_minor, updated_at = DATETIME('now'), actor_username = excluded.actor_username
+  `).run(current.business_date, newLimit, actorUsername);
+  return getCardLimitSnapshot(referenceDate);
+}
+
+/**
+ * Список месячных лимитов: заданные + текущий и следующий месяц
+ * (с дефолтом 0, если лимит ещё не установлен).
+ */
+export function listCardMonths(referenceDate = new Date()) {
+  const monthKey = cardBusinessMonthKey(referenceDate);
+  const [year, month] = monthKey.split("-").map(Number);
+  const nextKey = month === 12
+    ? `${year + 1}-01`
+    : `${year}-${String(month + 1).padStart(2, "0")}`;
+  const rows = db.prepare(`
+    SELECT month_key, limit_minor, updated_at
+    FROM card_payment_months
+    WHERE month_key >= ?
+    ORDER BY month_key
+  `).all(monthKey);
+  const byKey = new Map(rows.map((row) => [row.month_key, row]));
+  const result = [];
+  for (const key of [monthKey, nextKey]) {
+    const row = byKey.get(key);
+    result.push({
+      month_key: key,
+      limit_minor: Number(row?.limit_minor ?? 0),
+      updated_at: row?.updated_at || null,
+      is_current: key === monthKey,
+    });
+  }
+  return result;
+}
+
+/**
+ * Поиск карточного профиля клиента по @username: среди привязанных аккаунтов
+ * и ожидающих привязки. Возвращает единый вид для CRM-поиска.
+ */
+export function findCardAccountProfileByUsername(rawUsername, referenceDate = new Date()) {
+  const username = normalizeTelegramUsername(rawUsername);
+  if (!username) return null;
+  const linked = db.prepare(`
+    SELECT a.*, tariff.title AS tariff_title
+    FROM card_payment_accounts a
+    LEFT JOIN card_payment_tariffs tariff ON tariff.id = a.tariff_id
+    WHERE lower(COALESCE(a.telegram_username, '')) = ?
+    ORDER BY a.updated_at DESC
+  `).get(username);
+  const now = referenceDate.getTime();
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  if (linked) {
+    const cooldownUntilMs = linked.cooldown_started_at
+      ? new Date(linked.cooldown_started_at).getTime() + accountCooldownMs(linked)
+      : 0;
+    const lastIssuedAt = Number(db.prepare(`
+      SELECT MAX(o.issued_at) IS NOT NULL AS has, COALESCE(MAX(o.issued_at), '') AS at
+      FROM card_payment_operations o
+      WHERE o.customer_telegram_id = ? AND o.operation_type = 'order' AND o.operation_status = 'spent'
+    `).get(linked.telegram_id).at || null);
+    return {
+      source: "linked",
+      telegram_id: linked.telegram_id,
+      telegram_username: linked.telegram_username,
+      enabled: Number(linked.enabled) === 1,
+      monthly_limit_minor: Number(linked.monthly_limit_minor),
+      max_order_minor: Number(linked.max_order_minor),
+      tariff_id: linked.tariff_id || null,
+      tariff_title: linked.tariff_title || null,
+      cooldown_started_at: linked.cooldown_started_at || null,
+      cooldown_until: cooldownUntilMs > now ? new Date(cooldownUntilMs).toISOString() : null,
+      cooldown_days_left: cooldownUntilMs > now
+        ? Math.ceil((cooldownUntilMs - now) / DAY_MS)
+        : 0,
+      cooldown_days: Number(linked.cooldown_days ?? 10),
+      last_issued_at: lastIssuedAt || null,
+    };
+  }
+  const pending = db.prepare(`
+    SELECT * FROM card_payment_pending_accounts
+    WHERE telegram_username = ?
+  `).get(username);
+  if (pending) {
+    return {
+      source: "pending",
+      telegram_id: null,
+      telegram_username: pending.telegram_username,
+      enabled: Number(pending.enabled) === 1,
+      monthly_limit_minor: Number(pending.monthly_limit_minor),
+      max_order_minor: Number(pending.max_order_minor),
+      tariff_id: null,
+      tariff_title: null,
+      cooldown_started_at: null,
+      cooldown_until: null,
+      cooldown_days_left: 0,
+      cooldown_days: Number(pending.cooldown_days ?? 10),
+      last_issued_at: null,
+    };
+  }
+  return null;
 }
 
 export function setCardAccount({
@@ -256,8 +391,7 @@ export function getCardCustomerSnapshot(telegramId, telegramUsername = "", refer
   const limits = getCardLimitSnapshot(referenceDate);
   const now = referenceDate.getTime();
   const cooldownUntil = account?.cooldown_started_at
-    ? new Date(account.cooldown_started_at).getTime() +
-      10 * 24 * 60 * 60 * 1000
+    ? new Date(account.cooldown_started_at).getTime() + accountCooldownMs(account)
     : 0;
   const isCoolingDown = cooldownUntil > now;
   const monthKey = cardBusinessMonthKey(referenceDate);
@@ -313,8 +447,7 @@ export function checkCardOrder({
   const account = resolveCardAccount(telegramId, telegramUsername);
   if (!account?.enabled) return { ok: false, reason: "card_payment_not_allowed" };
   const cooldownUntil = account.cooldown_started_at
-    ? new Date(account.cooldown_started_at).getTime() +
-      10 * 24 * 60 * 60 * 1000
+    ? new Date(account.cooldown_started_at).getTime() + accountCooldownMs(account)
     : 0;
   if (cooldownUntil > referenceDate.getTime()) {
     return {
@@ -407,11 +540,16 @@ export function issueCardOrder(orderId, referenceDate = new Date()) {
     SET operation_status = 'spent', business_date = ?, issued_at = ?
     WHERE order_id = ? AND operation_type = 'order' AND operation_status = 'reserved'
   `).run(businessDate, referenceDate.toISOString(), orderId);
+  // Пауза длится cooldown_days аккаунта; при 0 паузы нет вовсе.
+  const account = db
+    .prepare("SELECT cooldown_days FROM card_payment_accounts WHERE telegram_id = ?")
+    .get(operation.customer_telegram_id);
+  const pauseMs = accountCooldownMs(account);
   db.prepare(`
     UPDATE card_payment_accounts
     SET cooldown_started_at = ?, updated_at = DATETIME('now')
     WHERE telegram_id = ?
-  `).run(referenceDate.toISOString(), operation.customer_telegram_id);
+  `).run(pauseMs > 0 ? referenceDate.toISOString() : null, operation.customer_telegram_id);
   return operation;
 }
 
@@ -598,11 +736,66 @@ export function forceIssueCardPayment({
       actorUsername,
       referenceDate.toISOString(),
     );
+    const account = db
+      .prepare("SELECT cooldown_days FROM card_payment_accounts WHERE telegram_id = ?")
+      .get(customerTelegramId);
+    const pauseMs = accountCooldownMs(account);
     db.prepare(`
       UPDATE card_payment_accounts
       SET cooldown_started_at = ?, updated_at = ?
       WHERE telegram_id = ?
-    `).run(referenceDate.toISOString(), referenceDate.toISOString(), customerTelegramId);
+    `).run(
+      pauseMs > 0 ? referenceDate.toISOString() : null,
+      referenceDate.toISOString(),
+      customerTelegramId,
+    );
   })();
   return operationId;
+}
+
+/**
+ * Изменить длительность паузы после выдачи для аккаунта.
+ * 0 = паузы нет вообще. Диапазон 0–365. Не трогает текущую активную паузу —
+ * новая длительность начнёт действовать со следующей выдачи.
+ */
+export function setCardAccountCooldownDays(telegramId, days) {
+  const id = String(telegramId || "").trim();
+  if (!id) throw new Error("invalid_telegram_id");
+  const value = Number(days);
+  if (!Number.isInteger(value) || value < 0 || value > 365) {
+    throw new Error("invalid_cooldown_days");
+  }
+  const changed = db.prepare(`
+    UPDATE card_payment_accounts
+    SET cooldown_days = ?, updated_at = DATETIME('now')
+    WHERE telegram_id = ?
+  `).run(value, id);
+  if (!changed.changes) throw new Error("card_account_not_found");
+  return db
+    .prepare("SELECT cooldown_days, cooldown_started_at FROM card_payment_accounts WHERE telegram_id = ?")
+    .get(id);
+}
+
+/**
+ * Принудительно снять активную паузу: как будто срок уже прошёл.
+ * cooldown_started_at обнуляется; длительность (cooldown_days) не меняется —
+ * после следующей выдачи пауза вернётся на стандартное для аккаунта время.
+ */
+export function clearCardAccountCooldown(telegramId, actorUsername = "admin") {
+  const id = String(telegramId || "").trim();
+  if (!id) throw new Error("invalid_telegram_id");
+  const changed = db.prepare(`
+    UPDATE card_payment_accounts
+    SET cooldown_started_at = NULL, updated_at = DATETIME('now')
+    WHERE telegram_id = ? AND cooldown_started_at IS NOT NULL
+  `).run(id);
+  if (!changed.changes) {
+    // Аккаунт без активной паузы — проверяем, что он существует
+    const account = db
+      .prepare("SELECT telegram_id FROM card_payment_accounts WHERE telegram_id = ?")
+      .get(id);
+    if (!account) throw new Error("card_account_not_found");
+    return { cleared: false };
+  }
+  return { cleared: true, actor: actorUsername };
 }

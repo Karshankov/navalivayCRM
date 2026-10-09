@@ -17,6 +17,20 @@ const crmStoreMock = vi.hoisted(() => ({
   deleteCardTariff: vi.fn(async () => undefined),
   applyCardTariff: vi.fn(async () => undefined),
   approveCardRequest: vi.fn(async () => undefined),
+  searchCardProfile: vi.fn(async () => ({
+    source: "linked",
+    telegram_id: "100001",
+    telegram_username: "alice",
+    enabled: true,
+    monthly_limit_minor: 25000,
+    max_order_minor: 4500,
+    tariff_id: "t1",
+    tariff_title: "Максимум",
+    cooldown_started_at: null,
+    cooldown_until: null,
+    cooldown_days_left: 0,
+    last_issued_at: null,
+  })),
 }));
 
 vi.mock("@/stores/crm", () => ({
@@ -218,7 +232,7 @@ describe("CardPaymentsModal — вкладки и сводка", () => {
     const wrapper = mountModal();
     expect(wrapper.text()).toContain("Выдано: 40.00 BYN");
     expect(wrapper.text()).toContain("Резервы: 15.00 BYN");
-    expect(wrapper.text()).toContain("Добавлено сегодня: 20.00 BYN");
+    expect(wrapper.text()).toContain("Добавлено сегодня: +20.00 BYN");
   });
 
   it("в операциях за сегодня видны и заказы, и ручные пробития", () => {
@@ -252,7 +266,7 @@ describe("CardPaymentsModal — аккаунты", () => {
     expect(wrapper.text()).toContain("Пауза до");
     expect(wrapper.text()).toContain("alice");
     expect(wrapper.text()).toContain("bob");
-    expect(wrapper.text()).toContain("Отключено");
+    expect(wrapper.text()).toContain("Откл.");
   });
 
   it("поиск фильтрует аккаунты и ожидающих привязки", async () => {
@@ -281,19 +295,48 @@ describe("CardPaymentsModal — аккаунты", () => {
     expect(crmStoreMock.updateCardAccount).toHaveBeenCalledWith("100001", { max_order: 60 });
   });
 
-  it("форма добавления аккаунта требует только @username, без лимитов", async () => {
+  it("поиск по @username загружает карточку клиента и разрешение в один клик", async () => {
     const wrapper = mountModal();
     await openAccounts(wrapper);
     await wrapper.find("form").trigger("submit");
-    expect(crmStoreMock.saveCardAccount).not.toHaveBeenCalled();
-    expect(wrapper.text()).toContain("Укажите @username клиента.");
-    await wrapper.find('input[aria-label="Telegram username без собаки"]').setValue("@newbie");
+    expect(crmStoreMock.searchCardProfile).not.toHaveBeenCalled();
+    expect(wrapper.text()).toContain("Введите @username клиента.");
+    await wrapper.find('input[aria-label="Telegram username без собаки"]').setValue("@alice");
     await wrapper.find("form").trigger("submit");
-    // Лимиты не передаются: сервер выдаёт стандартные 250 BYN/мес и 45 BYN на заказ.
-    expect(crmStoreMock.saveCardAccount).toHaveBeenCalledWith({
-      telegram_username: "newbie",
-      enabled: true,
+    expect(crmStoreMock.searchCardProfile).toHaveBeenCalledWith("alice");
+
+    const toggle = wrapper.findAll("button").find((b) => b.text() === "Запретить оплату картой");
+    expect(toggle).toBeTruthy();
+    await toggle!.trigger("click");
+    expect(crmStoreMock.updateCardAccount).toHaveBeenCalledWith("100001", { enabled: false });
+  });
+
+  it("профиль не найден — понятная подсказка", async () => {
+    crmStoreMock.searchCardProfile = vi.fn(async () => {
+      const error = new Error("not found") as Error & { status?: number };
+      error.status = 404;
+      throw error;
     });
+    const wrapper = mountModal();
+    await openAccounts(wrapper);
+    await wrapper.find('input[aria-label="Telegram username без собаки"]').setValue("@ghost");
+    await wrapper.find("form").trigger("submit");
+    expect(wrapper.text()).toContain("ещё не разрешали оплату картой");
+    wrapper.unmount();
+    crmStoreMock.searchCardProfile = vi.fn(async () => ({
+      source: "linked",
+      telegram_id: "100001",
+      telegram_username: "alice",
+      enabled: true,
+      monthly_limit_minor: 25000,
+      max_order_minor: 4500,
+      tariff_id: "t1",
+      tariff_title: "Максимум",
+      cooldown_started_at: null,
+      cooldown_until: null,
+      cooldown_days_left: 0,
+      last_issued_at: null,
+    }));
   });
 
   it("в форме нет полей ручного ввода лимитов", async () => {
