@@ -621,6 +621,7 @@ crmOperationsRouter.get("/api/admin/crm/orders", authMiddleware, (req, res) => {
         COALESCE(o.telegram_username, c.telegram_username) as telegram_username,
         c.first_name || ' ' || COALESCE(c.last_name, '') as customer_name,
         c.telegram_id as customer_telegram_id,
+        c.notes as customer_notes,
         COALESCE(cpa.enabled, 0) as customer_card_payment_enabled,
         COALESCE(pc.has_gift, 0) as promo_has_gift,
         pc.manager_description as promo_manager_description,

@@ -222,14 +222,21 @@ beforeEach(() => {
 const defaultSearchProfile = crmStoreMock.searchCardProfile;
 
 describe("CardPaymentsModal — вкладки и сводка", () => {
-  it("показывает четыре вкладки и открывается на «Лимиты»", async () => {
+  it("сохраняет фиксированную высоту области контента при переключении вкладок", async () => {
     const wrapper = mountModal();
+    const content = wrapper.find(".h-\\[min\\(600px\\,calc\\(100dvh-14rem\\)\\)\\]");
+    expect(content.exists()).toBe(true);
+    expect(content.classes()).toContain("overflow-y-auto");
     const tabButtons = wrapper.findAll("nav button");
     expect(tabButtons.map((b) => b.text())).toEqual(["Лимиты", "Аккаунты", "Заявки 1", "Тарифы"]);
     expect(wrapper.text()).toContain("Занято сегодня");
     expect(wrapper.text()).toContain("55.00");
     expect(wrapper.text()).toContain("из 110.00");
     expect(wrapper.text()).toContain("55.00 BYN свободно");
+    for (const tab of tabButtons.slice(1)) {
+      await tab.trigger("click");
+      expect(wrapper.find(".h-\\[min\\(600px\\,calc\\(100dvh-14rem\\)\\)\\]").exists()).toBe(true);
+    }
   });
 
   it("показывает разбивку дня: выдано, резервы и добавку", () => {

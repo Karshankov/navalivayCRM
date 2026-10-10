@@ -57,8 +57,10 @@
         </button>
       </nav>
 
-      <!-- ======================= ВКЛАДКА: ЛИМИТЫ ======================= -->
-      <div v-if="activeTab === 'limits'" class="space-y-4">
+      <!-- Фиксированная высота рабочей области: вкладки не меняют размер модального окна -->
+      <div class="h-[min(600px,calc(100dvh-14rem))] overflow-y-auto">
+        <!-- ======================= ВКЛАДКА: ЛИМИТЫ ======================= -->
+        <div v-if="activeTab === 'limits'" class="space-y-4">
         <!-- Прогресс-карточки -->
         <div class="grid gap-3 sm:grid-cols-2">
           <!-- Сегодня -->
@@ -509,6 +511,7 @@
           </div>
           <p v-if="!snapshot.tariffs.length" class="py-2 text-xs text-gray-500">Тарифов пока нет.</p>
         </div>
+      </div>
       </div>
     </template>
 
