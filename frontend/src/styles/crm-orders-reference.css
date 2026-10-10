@@ -1,0 +1,201 @@
+/* User-supplied crm-order-preview (1).html is the visual authority.
+   Navigation is shared across admin routes; page styling remains order-scoped. */
+.crm-orders-layout,
+.crm-orders-page,
+.crm-reference-sidebar,
+.crm-reference-mobile-menu {
+  --crm-reference-ink: #081b4b;
+  --crm-reference-primary: linear-gradient(100deg, #05b8ff, #185dff);
+  --crm-reference-danger: linear-gradient(115deg, #ff685a, #fa104f);
+  color: var(--crm-reference-ink);
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+}
+.crm-orders-layout {
+  background: radial-gradient(ellipse at 60% 0%, #e7f1ff 0%, transparent 55%), #f6f9fc;
+}
+.crm-orders-layout *, .crm-orders-page *, .crm-reference-sidebar *, .crm-reference-mobile-menu * { box-sizing: border-box; }
+.crm-orders-layout > div { background: transparent; }
+.crm-orders-layout .admin-layout-main { padding: 20px 36px 55px; }
+.crm-orders-page { min-width: 0; width: 100%; background: transparent; }
+.crm-orders-content { width: 100%; max-width: none; margin: 0; }
+.crm-orders-content > [role="status"] { margin-bottom: 16px; }
+.crm-orders-page button, .crm-orders-layout button, .crm-reference-sidebar button, .crm-reference-mobile-menu button { font-family: inherit; }
+.crm-orders-page button:focus-visible { outline: 2px solid #0958ff; outline-offset: 3px; }
+.crm-orders-page button:disabled { cursor: not-allowed; }
+.crm-orders-layout ::selection, .crm-orders-page ::selection { background: #d9ecff; color: #081b4b; }
+.crm-orders-layout .admin-layout-main, .crm-reference-sidebar nav { scrollbar-color: #8999b7 #f0f4fa; scrollbar-width: thin; }
+/* Desktop navigation */
+.admin-reference-navigation .crm-reference-sidebar { display: flex; width: 238px; flex: 0 0 238px; }
+.crm-reference-sidebar > div { border-right: 1px solid #edf2fa; background: rgba(255,255,255,.74); }
+.crm-reference-sidebar nav { padding: 22px 14px; }
+.crm-reference-sidebar nav > div:not(.crm-reference-brand) { height: auto; gap: 0; }
+.crm-reference-brand { display: flex; align-items: center; gap: 12px; margin: 0 0 30px 6px; color: #081b4b; font-size: 17px; font-weight: 800; }
+.crm-reference-brand > span:last-child { min-width: 0; overflow-wrap: anywhere; }
+.crm-reference-brand-icon { display: grid; place-items: center; flex-shrink: 0; width: 43px; height: 43px; border-radius: 12px; background: var(--crm-reference-primary); color: white; box-shadow: 0 8px 17px #328aff40; }
+.crm-reference-brand-icon svg { width: 24px; height: 24px; }
+.crm-reference-sidebar .sidebar-stack { gap: 0; }
+.crm-reference-sidebar .sidebar-stack > p { margin: 0; padding: 11px 10px; color: #7584a7; font-size: 10px; font-weight: 800; letter-spacing: .17em; line-height: normal; }
+.crm-reference-sidebar .sidebar-stack > .sidebar-stack { margin-top: 0; }
+.crm-reference-sidebar .sidebar-button,
+.crm-reference-mobile-menu .sidebar-button {
+  gap: 12px; min-height: 0; margin: 3px 0; padding: 12px; border: 0;
+  border-radius: 13px; background: transparent; color: #1b2b53;
+  font-size: 13px; font-weight: 650; line-height: normal; box-shadow: none;
+  backdrop-filter: none; transform: none; overflow: visible; isolation: auto;
+}
+.crm-reference-sidebar .sidebar-button::after, .crm-reference-mobile-menu .sidebar-button::after { content: none; }
+.crm-reference-sidebar .sidebar-button > div, .crm-reference-mobile-menu .sidebar-button > div { gap: 0; min-width: 0; }
+.crm-reference-sidebar .sidebar-button > div > span:first-child,
+.crm-reference-mobile-menu .sidebar-button > div > span:first-child { color: inherit; font-size: 13px; font-weight: 650; line-height: normal; }
+.crm-reference-sidebar .sidebar-button > div > span:last-child:not(:first-child),
+.crm-reference-mobile-menu .sidebar-button > div > span:last-child:not(:first-child) { margin-top: 3px; color: #9aa8c2; font-size: 10px; font-weight: 500; line-height: normal; }
+.crm-reference-sidebar .sidebar-button__icon, .crm-reference-mobile-menu .sidebar-button__icon {
+  width: 30px; height: 30px; border-radius: 9px; background: #f2f6fd; color: inherit; box-shadow: none; transform: none;
+}
+.crm-reference-sidebar .sidebar-button__icon > svg { width: 17px; height: 17px; }
+.crm-reference-sidebar .sidebar-button--crm-active,
+.crm-reference-sidebar .sidebar-button--main-active,
+.crm-reference-mobile-menu .sidebar-button--crm-active,
+.crm-reference-mobile-menu .sidebar-button--main-active { background: var(--crm-reference-primary); color: white; box-shadow: 0 8px 18px #1c89f83a; }
+.crm-reference-sidebar .sidebar-button--crm-active .sidebar-button__icon,
+.crm-reference-sidebar .sidebar-button--main-active .sidebar-button__icon,
+.crm-reference-mobile-menu .sidebar-button--crm-active .sidebar-button__icon,
+.crm-reference-mobile-menu .sidebar-button--main-active .sidebar-button__icon { background: #ffffff21; color: white; box-shadow: none; }
+.crm-reference-sidebar .sidebar-button--crm-active > div > span:last-child:not(:first-child),
+.crm-reference-sidebar .sidebar-button--main-active > div > span:last-child:not(:first-child),
+.crm-reference-mobile-menu .sidebar-button--crm-active > div > span:last-child:not(:first-child),
+.crm-reference-mobile-menu .sidebar-button--main-active > div > span:last-child:not(:first-child) { color: #eaf7ff; }
+.crm-reference-sidebar .sidebar-button--default:hover { background: #f2f6fd; box-shadow: none; transform: none; }
+.crm-reference-sidebar .sidebar-button:focus-visible { outline: 2px solid #0958ff; outline-offset: 2px; }
+/* Staff-shift state: preserve the live state and all its actions. */
+.crm-orders-page section[aria-label="Смена сотрудника"],
+.crm-orders-page section[aria-label="Учёт сотрудников выключен"] {
+  border: 0; border-radius: 16px; padding: 13px 18px; background: white;
+  color: #425778; font-size: 13px; box-shadow: 0 10px 35px #2038690a;
+}
+.crm-orders-page section[aria-label="Смена сотрудника"] > div:first-child { gap: 16px; }
+.crm-orders-page section[aria-label="Смена сотрудника"] > div:first-child > div:first-child { font-size: 13px; color: #425778; }
+.crm-orders-page .crm-shift-closed-label { color: #101f44; font-weight: 700; }
+.crm-orders-page section[aria-label="Смена сотрудника"] > div:first-child > div:first-child:not(.flex)::before { content: ""; display: inline-block; width: 9px; height: 9px; margin-right: 10px; border-radius: 50%; background: #18b86d; }
+.crm-orders-page section[aria-label="Смена сотрудника"] > div:first-child > div:last-child > button {
+  min-height: 0; padding: 13px 21px; border: 0; border-radius: 12px; background: linear-gradient(#f7faff, #e9f0fa);
+  color: #233e70; font-size: 13px; font-weight: 750; line-height: normal; box-shadow: none;
+}
+.crm-orders-page section[aria-label="Смена сотрудника"] > div:first-child > div:last-child > button.bg-gradient-to-r { background: var(--crm-reference-primary); color: white; box-shadow: 0 8px 16px #148cff30; }
+/* Heading, search and toolbar */
+.crm-orders-heading { display: flex; align-items: center; gap: 26px; margin: 32px 0 18px; }
+.crm-orders-title { flex-shrink: 0; margin: 0; font-size: 37px; font-weight: 700; letter-spacing: -.04em; line-height: normal; color: #081b4b; }
+.crm-orders-search { position: relative; flex: 1; min-width: 0; max-width: 680px; }
+.crm-orders-search-input { display: block; width: 100%; padding: 15px 18px 15px 40px; border: 1px solid #eaf0f9; border-radius: 12px; background: white; color: #081b4b; font: inherit; font-size: 13px; line-height: normal; caret-color: #0958ff; }
+.crm-orders-search-input::placeholder { color: #9ba8c0; opacity: 1; }
+.crm-orders-search-input:focus-visible { outline: 2px solid #0958ff; outline-offset: 2px; }
+.crm-orders-search-icon { position: absolute; left: 18px; top: 50%; width: 14px; height: 14px; transform: translateY(-50%); color: #9ba8c0; pointer-events: none; }
+.crm-orders-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; }
+.crm-orders-toolbar-spacer { flex: 1; }
+.crm-orders-page .crm-reference-button,
+.crm-orders-other > button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 0; max-width: 100%; padding: 13px 21px; border: none; border-radius: 12px;
+  font-size: 13px; font-weight: 750; line-height: normal; white-space: nowrap; cursor: pointer;
+  background: linear-gradient(#f7faff, #e9f0fa); color: #233e70; box-shadow: none;
+}
+.crm-orders-page .crm-reference-button--primary { background: var(--crm-reference-primary); color: white; box-shadow: 0 8px 16px #148cff30; }
+.crm-orders-page .crm-reference-button--danger { background: var(--crm-reference-danger); color: white; }
+.crm-orders-page .crm-reference-button--gray { background: linear-gradient(#f7faff, #e9f0fa); color: #233e70; }
+.crm-reference-button > svg, .crm-orders-other > button > svg { width: 16px; height: 16px; flex-shrink: 0; }
+.crm-orders-toolbar > button:hover, .crm-orders-disclosure > button:hover { filter: brightness(1.04); transform: none; }
+.crm-orders-disclosure { position: relative; max-width: 100%; }
+.crm-orders-menu { position: absolute; top: 100%; left: 0; z-index: 60; width: 320px; max-width: calc(100vw - 26px); max-height: min(65dvh, 560px); overflow-y: auto; margin-top: 8px; padding: 12px; border: 1px solid #eaf0f9; border-radius: 16px; background: white; box-shadow: 0 12px 35px #20386926; scrollbar-color: #8999b7 #f0f4fa; scrollbar-width: thin; }
+.crm-orders-other .crm-orders-menu { left: auto; right: 0; }
+.crm-orders-actions-menu { display: grid; gap: 6px; }
+.crm-orders-actions-menu > button { justify-content: flex-start; width: 100%; margin: 0; padding: 12px; min-height: 44px; border: 1px solid #eaf0f9; border-radius: 12px; background: white; color: #102456; font-size: 13px; font-weight: 650; line-height: 1.35; text-align: left; white-space: normal; box-shadow: none; transform: none; }
+.crm-orders-actions-menu > button:hover { background: #f2f6fd; transform: none; box-shadow: none; }
+.crm-orders-actions-menu > button > span { min-width: 0; overflow-wrap: anywhere; }
+.crm-orders-actions-menu > button > span:first-child { flex-shrink: 1; }
+.crm-orders-actions-menu > button > span.flex { background: #f2f6fd; color: #1759ed; box-shadow: none; }
+/* Live review draw banner */
+.crm-orders-draw { margin-bottom: 22px; padding: 18px 25px; border-radius: 16px; background: linear-gradient(105deg, #e9efff, #e4ebff 55%, #eee0fd); color: #1834b1; }
+.crm-orders-draw > div > div:first-child { align-items: center; }
+.crm-orders-draw > div > div:first-child > span { width: auto; height: auto; background: transparent; color: #1834b1; }
+.crm-orders-draw > div > div:first-child > div > p:first-child { margin: 0; color: #1834b1; font-size: 17px; font-weight: 700; }
+.crm-orders-draw > div > div:first-child > div > p:last-child { margin-top: 4px; color: #1834b1; font-size: 13px; }
+.crm-orders-draw button { padding: 13px 21px; border: none; border-radius: 12px; background: var(--crm-reference-primary); color: white; font-size: 13px; font-weight: 750; line-height: normal; box-shadow: 0 8px 16px #148cff30; }
+.crm-orders-draw button:last-child:not(:first-child) { background: linear-gradient(#f7faff, #e9f0fa); color: #233e70; box-shadow: none; }
+/* Kanban structure, including working drag/drop targets */
+.crm-orders-board { display: grid; grid-template-columns: 1fr 1.12fr 1fr; gap: 14px; }
+.crm-orders-column { min-width: 0; min-height: 575px; padding: 19px 14px 25px; border: none; border-radius: 19px; background: white; box-shadow: 0 12px 35px #20386908; }
+.crm-orders-column-header { margin: 0 6px 22px; padding: 0; border: none; }
+.crm-orders-column-header > div { gap: 8px; }
+.crm-orders-column-title { display: flex; align-items: center; gap: 8px; margin: 0; color: #081b4b; font-size: 17px; font-weight: 700; line-height: normal; }
+.crm-orders-column-header p { margin: 5px 0 0; color: #8898b5; font-size: 11px; line-height: normal; }
+.crm-orders-column-header > div > div:last-child > span:first-child { padding: 7px 11px; border-radius: 40px; background: #f0f4fa; color: #253663; font-size: 12px; font-weight: 700; line-height: normal; }
+.crm-orders-column-header > div > div:last-child > span:not(:first-child) { padding: 0; background: transparent; color: #fa2948; font-size: 12px; font-weight: 700; letter-spacing: 0; }
+.crm-orders-column-body { display: flow-root; min-height: 235px; border-radius: 13px; transition: background-color 150ms ease-out; }
+.crm-orders-column-body > .order-card:first-child { margin-top: 16px; }
+.crm-orders-empty { display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 8px; min-height: 235px; margin: 0 4px; padding: 15px; border: 1px dashed #dce6f4; border-radius: 13px; color: #8493b0; font-size: 12px; line-height: normal; text-align: center; }
+.crm-orders-empty-symbol { display: grid; place-items: center; width: 57px; height: 57px; margin-bottom: 9px; border-radius: 50%; background: #f4f7fd; color: #4d6089; font-size: 27px; }
+.crm-orders-empty b { color: #64799e; font-size: 13px; }
+.crm-orders-empty > span:last-child { max-width: 230px; }
+/* Match the secondary tones supplied by the reference, not the old gray UI. */
+.crm-orders-page .order-card-customer [data-inviter-menu] > span { color: #8999b7; }
+.crm-orders-page .order-card-products .text-gray-400 { color: #a0acc6; }
+/* Reference text uses the browser's normal line metrics. */
+.crm-orders-page .order-card .order-card-client-name,
+.crm-orders-page .order-card .order-card-client-actions,
+.crm-orders-page .order-card .order-card-button { line-height: normal; }
+.crm-orders-page .order-card .order-card-bottom { margin-top: 0; }
+.crm-orders-page .order-card-products > li:has(> button) { margin-bottom: 14px; }
+.crm-orders-page .order-card-products > li > button { min-height: 0; line-height: normal; }
+.crm-orders-toolbar > .crm-reference-button,
+.crm-orders-toolbar > .crm-orders-disclosure > button { min-height: 43px; }
+.crm-orders-draw { min-height: 83px; }
+@media (max-width: 1120px) {
+  .admin-reference-navigation .crm-reference-sidebar { width: 206px; flex-basis: 206px; }
+  .crm-orders-layout .admin-layout-main { padding: 17px; }
+  /* Approved deviation: no hidden statuses; stack all columns on narrow screens. */
+  .crm-orders-board { grid-template-columns: minmax(0, 1fr); }
+  .crm-orders-column { min-height: auto; }
+  .crm-orders-column-body > .order-card { max-width: 520px; }
+}
+@media (max-width: 700px) {
+  .admin-reference-navigation .crm-reference-sidebar { display: none; }
+  .crm-orders-layout .admin-layout-main { padding: 13px 13px 84px; }
+  .crm-orders-heading { display: block; }
+  .crm-orders-title { font-size: 30px; }
+  .crm-orders-search { margin-top: 15px; }
+  .crm-orders-toolbar-spacer { display: none; }
+  .crm-orders-toolbar { align-items: stretch; }
+  .crm-orders-toolbar > .crm-reference-button, .crm-orders-toolbar > .crm-orders-disclosure { flex: 1 1 auto; }
+  .crm-orders-disclosure > button { width: 100%; }
+  .crm-orders-page .crm-reference-button, .crm-orders-other > button { white-space: normal; }
+  .crm-orders-page .crm-orders-menu { position: fixed; top: auto; bottom: 16px; left: 13px; right: 13px; width: auto; max-width: none; max-height: calc(100dvh - 32px); }
+  .crm-orders-draw { padding: 18px; }
+  .crm-orders-page section[aria-label="Смена сотрудника"] > div:first-child > div:first-child { font-size: 11px; }
+  .crm-orders-column-body > .order-card { max-width: 520px; }
+}
+/* Compact, read-only server card allowance; clicking opens the existing modal. */
+.crm-orders-page .crm-card-limit {
+  display: flex; align-items: center; gap: 9px; flex: 0 1 253px;
+  min-width: 0; max-width: 100%; padding: 7px 12px;
+  border: 1px solid #dce8fa; border-radius: 12px;
+  background: #f7fbff; color: #081b4b; text-align: left;
+  cursor: pointer; transition: background .15s, border-color .15s;
+}
+.crm-orders-page .crm-card-limit:hover { background: #edf5ff; border-color: #b8cef5; }
+.crm-card-limit-icon { width: 19px; height: 19px; flex-shrink: 0; color: #1759ed; }
+.crm-card-limit-content { display: grid; gap: 3px; min-width: 0; flex: 1; }
+.crm-card-limit-caption { color: #66799e; font-size: 10px; font-weight: 600; line-height: 1.2; }
+.crm-card-limit-summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 6px; min-width: 0; font-size: 10px; line-height: 1.3; color: #66799e; overflow-wrap: anywhere; }
+.crm-card-limit-summary strong { color: #081b4b; font-size: 12px; font-weight: 750; font-variant-numeric: tabular-nums; }
+.crm-card-limit-track { display: block; height: 3px; width: 100%; overflow: hidden; border-radius: 6px; background: #dce8fa; }
+.crm-card-limit-track > span { display: block; height: 100%; border-radius: inherit; background: var(--crm-reference-primary); }
+.crm-card-limit--exhausted .crm-card-limit-icon, .crm-card-limit--exhausted .crm-card-limit-summary > span { color: #9b6042; }
+.crm-card-limit--exhausted .crm-card-limit-track { background: #eedfd5; }
+.crm-card-limit--unavailable .crm-card-limit-icon { color: #8999b7; }
+.crm-card-limit-track--unknown { background: #e7edf6; }
+@media (max-width: 700px) {
+  .crm-orders-page .crm-card-limit { flex: 1 1 200px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .crm-orders-page *, .crm-reference-sidebar * { scroll-behavior: auto; transition-duration: 0ms; }
+}

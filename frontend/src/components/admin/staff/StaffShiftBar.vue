@@ -24,7 +24,7 @@
         </div>
       </div>
       <div v-else class="text-sm text-slate-600">
-        Смена не открыта. Выберите сотрудника и подтвердите начало личным ПИН.
+        <span class="crm-shift-closed-label">Смена не открыта.</span> Выберите сотрудника и подтвердите начало личным ПИН.
       </div>
 
       <div class="flex flex-wrap gap-2">

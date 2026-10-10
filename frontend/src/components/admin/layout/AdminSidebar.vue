@@ -1,7 +1,11 @@
 <template>
-  <aside class="hidden md:flex w-64 xl:w-72 bg-transparent md:h-full md:overflow-hidden">
+  <aside class="hidden md:flex w-64 xl:w-72 bg-transparent md:h-full md:overflow-hidden" :class="{ 'crm-reference-sidebar': referenceDesign }">
     <div class="sticky top-0 flex h-full w-full flex-col border-r border-gray-200 bg-white">
       <nav class="flex-1 overflow-y-auto px-3 py-2 sm:py-3 min-h-0">
+        <div v-if="referenceDesign" class="crm-reference-brand">
+          <span class="crm-reference-brand-icon" aria-hidden="true"><ClipboardDocumentCheckIcon /></span>
+          <span>{{ title || 'НАВАЛИВАЙ' }}</span>
+        </div>
         <div class="flex h-full flex-col gap-[clamp(0.5rem,1.2vh,0.9rem)]">
           <div class="sidebar-stack">
             <p class="px-2 text-[11px] font-semibold uppercase tracking-[0.3em] text-gray-500">Основное</p>
@@ -103,7 +107,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
-import { LockClosedIcon } from '@heroicons/vue/24/outline'
+import { LockClosedIcon, ClipboardDocumentCheckIcon } from '@heroicons/vue/24/outline'
 import { useCrmStore } from '@/stores/crm'
 import { useAdminStore } from '@/stores/admin'
 import { storeToRefs } from 'pinia'
@@ -115,6 +119,7 @@ const props = defineProps<{
   modelValue: string
   tabs: Tab[]
   title?: string
+  referenceDesign?: boolean
   crmLinks?: SidebarLink[]
 }>()
 

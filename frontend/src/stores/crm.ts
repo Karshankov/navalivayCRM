@@ -4456,15 +4456,20 @@ export const useCrmStore = defineStore("crm", () => {
     return profile;
   }
 
-  async function fetchCardPaymentAdmin() {
-    loadingCardPaymentAdmin.value = true;
+  async function fetchCardPaymentAdmin(
+    options: { background?: boolean; shouldApply?: () => boolean } = {},
+  ) {
+    if (!options.background) loadingCardPaymentAdmin.value = true;
     try {
-      cardPaymentAdminSnapshot.value = await fetchAPI<CardPaymentAdminSnapshot>(
+      const snapshot = await fetchAPI<CardPaymentAdminSnapshot>(
         `${API_BASE}/card-payments`,
       );
-      return cardPaymentAdminSnapshot.value;
+      if (!options.shouldApply || options.shouldApply()) {
+        cardPaymentAdminSnapshot.value = snapshot;
+      }
+      return snapshot;
     } finally {
-      loadingCardPaymentAdmin.value = false;
+      if (!options.background) loadingCardPaymentAdmin.value = false;
     }
   }
 

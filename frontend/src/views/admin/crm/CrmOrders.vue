@@ -1,6 +1,6 @@
 <template>
-  <div class="min-h-screen bg-gray-50 px-4 py-6 sm:px-6 lg:px-8">
-    <div class="mx-auto w-full max-w-7xl space-y-6">
+  <div class="crm-orders-page">
+    <div class="crm-orders-content">
       <div
         v-if="userbotDisconnected"
         class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
@@ -10,12 +10,201 @@
         нет связи с Telegram. Отправим клиентам, когда канал восстановится.
       </div>
       <StaffShiftBar ref="staffShiftBarRef" />
-      <div class="flex items-center justify-between gap-4">
-        <div
-          class="flex w-full flex-nowrap items-center justify-start gap-1.5 sm:gap-2 sm:w-auto sm:justify-end"
+      <div class="crm-orders-heading">
+        <h1 class="crm-orders-title">Заказы</h1>
+        <div class="crm-orders-search">
+          <input
+            v-model="searchQuery"
+            type="search"
+            placeholder="Ячейка 7, заказ #10456 или клиент..."
+            class="crm-orders-search-input"
+            aria-label="Поиск по ячейке, заказу или клиенту"
+            @input="handleSearch"
+          />
+          <svg
+            v-if="!searchQuery"
+            class="crm-orders-search-icon"
+            aria-hidden="true"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+            />
+          </svg>
+        </div>
+
+      </div>
+
+      <div class="crm-orders-toolbar">
+          <!-- Создать заказ -->
+          <button
+            @click="showCreateModal = true"
+            class="crm-reference-button crm-reference-button--primary"
+            data-test="orders-create"
+          >
+            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+            </svg>
+            <span>Создать заказ</span>
+          </button>
+
+          <!-- Заблокировать клиента -->
+          <button
+            @click="openBlockModal()"
+            class="crm-reference-button crm-reference-button--danger"
+            data-test="orders-block"
+            title="Заблокировать клиента по @username"
+          >
+            <NoSymbolIcon class="h-4 w-4" />
+            <span>Заблокировать клиента</span>
+          </button>
+          <div class="crm-orders-disclosure" ref="moreDropdownRef" @keydown.esc.stop="moreDropdownOpen = false; moreDropdownRef?.querySelector('button')?.focus()">
+            <button type="button" class="crm-reference-button crm-reference-button--gray" data-test="orders-actions-toggle" aria-controls="crm-orders-actions" :aria-expanded="moreDropdownOpen" @click.stop="moreDropdownOpen = !moreDropdownOpen">
+              <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" d="M4 7h16M4 12h16M4 17h16" /></svg>
+              <span>Действия с заказами</span>
+              <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6" /></svg>
+            </button>
+            <div v-if="moreDropdownOpen" id="crm-orders-actions" class="crm-orders-menu crm-orders-actions-menu" @click.stop>
+          <CrmButton
+            variant="secondary"
+            size="sm"
+            @click="openCardPaymentsModal(); moreDropdownOpen = false"
+          >
+            <span>Оплата картой и лимиты</span>
+          </CrmButton>
+
+        <button
+          type="button"
+          class="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-semibold text-indigo-700 transition hover:bg-indigo-100"
+          :aria-label="pickupCellsLoaded
+            ? `Ячейки: занято ${pickupCells.occupied} из ${pickupCells.capacity}`
+            : loadingPickupCells ? 'Ячейки: загружаются' : 'Ячейки: данные недоступны'"
+          @click="openPickupCellsModal(); moreDropdownOpen = false"
         >
+          <span>Ячейки</span>
+          <span v-if="pickupCellsLoaded">{{ pickupCells.occupied }}/{{ pickupCells.capacity }}</span>
+          <span v-else-if="loadingPickupCells">…/…</span>
+          <span v-else>—/—</span>
+        </button>
+          <!-- Заметка на клиента -->
+          <button
+            @click="openNoteModal(); moreDropdownOpen = false"
+            class="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm font-semibold text-sky-700 shadow-sm transition-all duration-200 hover:bg-sky-100"
+            title="Заметка на клиента по @username"
+          >
+            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h6m-6 8l-2 4 4-2h8a2 2 0 002-2V6a2 2 0 00-2-2H7a2 2 0 00-2 2v12z" />
+            </svg>
+            <span>Заметка на клиента</span>
+          </button>
+
+          <!-- Отмененные -->
+          <button
+            v-if="cancelledOrders.length"
+            @click="cancelledModalOpen = true; moreDropdownOpen = false"
+            class="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl border border-red-200 bg-gradient-to-r from-red-50 to-rose-50 px-3 py-2 text-sm font-medium text-red-600 shadow-sm transition-all duration-200 hover:from-red-100 hover:to-rose-100"
+          >
+            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+            </svg>
+            <span>Отмененные</span>
+          </button>
+
+          <!-- Выданные (запаролено) -->
+          <button
+            @click="profitUnlocked ? openDeliveredModal('today') : openPasswordModal(); moreDropdownOpen = false"
+            class="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl border border-emerald-200 bg-gradient-to-r from-emerald-50 to-green-50 px-3 py-2 text-sm font-medium text-emerald-600 shadow-sm transition-all duration-200 hover:from-emerald-100 hover:to-green-100"
+          >
+            <LockClosedIcon v-if="!profitUnlocked" class="h-4 w-4" />
+            <svg v-else class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+            </svg>
+            <span>Выданные</span>
+          </button>
+
+                <!-- Заголовок -->
+                <div class="px-2 py-1.5 mb-2">
+                  <h3 class="text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-400">Дополнительно</h3>
+                </div>
+
+                <button
+                  @click="$router.push('/admin/crm/message-templates'); moreDropdownOpen = false"
+                  class="flex w-full items-center gap-3 rounded-xl border border-slate-200/40 bg-gradient-to-br from-slate-50/90 to-gray-50/60 px-3 py-2.5 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300/50 hover:shadow-md focus:outline-none"
+                >
+                  <span class="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-100/80 text-blue-500 shadow-sm shadow-blue-200/50">
+                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                    </svg>
+                  </span>
+                  <div>
+                    <div class="text-sm font-semibold text-slate-800">Шаблоны сообщений</div>
+                    <div class="text-xs text-slate-400">Готовые ответы клиентам</div>
+                  </div>
+                </button>
+
+                <button
+                  @click="$router.push('/admin/crm/orders/archive'); moreDropdownOpen = false"
+                  class="mt-2 flex w-full items-center gap-3 rounded-xl border border-slate-200/40 bg-gradient-to-br from-slate-50/90 to-gray-50/60 px-3 py-2.5 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300/50 hover:shadow-md focus:outline-none"
+                >
+                  <span class="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-100/80 text-amber-500 shadow-sm shadow-amber-200/50">
+                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                    </svg>
+                  </span>
+                  <div>
+                    <div class="text-sm font-semibold text-slate-800">Архив заказов</div>
+                    <div class="text-xs text-slate-400">Старые и завершенные</div>
+                  </div>
+                </button>
+            </div>
+          </div>
+          <button
+            type="button"
+            class="crm-card-limit"
+            :class="{
+              'crm-card-limit--exhausted': toolbarCardLimitState === 'ready' && toolbarCardLimits?.remaining_today_minor === 0,
+              'crm-card-limit--unavailable': toolbarCardLimitState === 'error' || toolbarCardLimitState === 'unavailable',
+            }"
+            data-test="orders-card-limit"
+            :aria-busy="refreshingCardLimit || crmStore.loadingCardPaymentAdmin"
+            :aria-label="toolbarCardLimitState === 'ready'
+              ? `По карте сегодня осталось ${toolbarCardRemaining}. Открыть оплату картой и лимиты`
+              : `${toolbarCardLimitMessage}. Открыть оплату картой и лимиты`"
+            title="Оплата картой и лимиты · остаток учитывает выданные оплаты и резервы"
+            @click="openCardPaymentsModal()"
+          >
+            <svg class="crm-card-limit-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+              <rect x="3" y="5" width="18" height="14" rx="3" />
+              <path d="M3 10h18M7 15h3" stroke-linecap="round" />
+            </svg>
+            <span class="crm-card-limit-content">
+              <span class="crm-card-limit-caption">Карта · сегодня</span>
+              <span class="crm-card-limit-summary">
+                <strong v-if="toolbarCardLimitState === 'ready'" data-test="orders-card-limit-remaining">{{ toolbarCardRemaining }}</strong>
+                <span>{{ toolbarCardLimitMessage }}</span>
+              </span>
+              <span
+                v-if="toolbarCardLimitState === 'ready'"
+                class="crm-card-limit-track"
+                role="progressbar"
+                aria-label="Свободная доля дневного лимита оплаты картой"
+                aria-valuemin="0"
+                aria-valuemax="100"
+                :aria-valuenow="Math.round(toolbarCardRemainingPercent)"
+                :aria-valuetext="`${toolbarCardRemaining} осталось на сегодня`"
+              ><span :style="{ width: `${toolbarCardRemainingPercent}%` }" /></span>
+              <span v-else class="crm-card-limit-track crm-card-limit-track--unknown" aria-hidden="true" />
+            </span>
+          </button>
+        <span class="crm-orders-toolbar-spacer" aria-hidden="true" />
           <!-- Обновить -->
           <CrmButton
+            class="crm-reference-button crm-reference-button--gray"
             variant="secondary"
             size="sm"
             refresh-icon
@@ -23,24 +212,17 @@
             loading-label="Обновляем..."
             @click="deferClick(() => refreshOrders())"
           >
-            <span class="hidden sm:inline">Обновить</span>
-          </CrmButton>
-
-          <CrmButton
-            variant="secondary"
-            size="sm"
-            @click="openCardPaymentsModal"
-          >
-            <span class="hidden sm:inline">Оплата картой и лимиты</span>
-            <span class="sm:hidden">Карта</span>
+            <span>Обновить</span>
           </CrmButton>
 
           <!-- Dropdown: Настройки -->
-          <div class="relative" ref="settingsDropdownRef">
+          <div class="crm-orders-disclosure crm-orders-other" ref="settingsDropdownRef" @keydown.esc.stop="settingsDropdownOpen = false; settingsDropdownRef?.querySelector('button')?.focus()">
             <button
               type="button"
               @click.stop="settingsDropdownOpen = !settingsDropdownOpen"
-              title="Настройки"
+              title="Остальное"
+              aria-controls="crm-orders-settings"
+              :aria-expanded="settingsDropdownOpen"
               class="inline-flex shrink-0 items-center gap-1 rounded-xl border px-2.5 py-2 text-sm font-medium transition-all duration-200"
               :class="
                 hasActiveSettings
@@ -52,6 +234,7 @@
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
               </svg>
+              <span>Остальное</span>
               <svg
                 class="h-3 w-3 transition-transform duration-200"
                 :class="{ 'rotate-180': settingsDropdownOpen }"
@@ -72,7 +255,8 @@
             >
               <div
                 v-if="settingsDropdownOpen"
-                class="absolute left-0 z-[60] mt-2 w-80 origin-top-left rounded-2xl border border-slate-200/40 bg-white/95 p-3 shadow-2xl backdrop-blur-sm"
+                id="crm-orders-settings"
+                class="crm-orders-menu"
                 @click.stop
               >
                 <!-- Заголовок -->
@@ -217,167 +401,6 @@
             </Transition>
           </div>
 
-          <!-- Dropdown: Ещё -->
-          <div class="relative" ref="moreDropdownRef">
-            <button
-              type="button"
-              @click.stop="moreDropdownOpen = !moreDropdownOpen"
-              class="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl border border-slate-200/40 bg-gradient-to-br from-slate-50/90 to-gray-50/60 px-3 py-2 text-sm font-medium text-slate-600 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300/50 hover:shadow-md"
-            >
-              <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h.01M12 12h.01M19 12h.01M6 12a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0z" />
-              </svg>
-              <span class="hidden sm:inline">Ещё</span>
-            </button>
-            <Transition
-              enter-active-class="transition ease-out duration-150"
-              enter-from-class="transform opacity-0 scale-95 -translate-y-1"
-              enter-to-class="transform opacity-100 scale-100 translate-y-0"
-              leave-active-class="transition ease-in duration-100"
-              leave-from-class="transform opacity-100 scale-100 translate-y-0"
-              leave-to-class="transform opacity-0 scale-95 -translate-y-1"
-            >
-              <div
-                v-if="moreDropdownOpen"
-                class="absolute left-0 z-[60] mt-2 w-72 origin-top-left rounded-2xl border border-slate-200/40 bg-white/95 p-3 shadow-2xl backdrop-blur-sm"
-                @click.stop
-              >
-                <!-- Заголовок -->
-                <div class="px-2 py-1.5 mb-2">
-                  <h3 class="text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-400">Дополнительно</h3>
-                </div>
-
-                <button
-                  @click="$router.push('/admin/crm/message-templates'); moreDropdownOpen = false"
-                  class="flex w-full items-center gap-3 rounded-xl border border-slate-200/40 bg-gradient-to-br from-slate-50/90 to-gray-50/60 px-3 py-2.5 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300/50 hover:shadow-md focus:outline-none"
-                >
-                  <span class="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-100/80 text-blue-500 shadow-sm shadow-blue-200/50">
-                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                    </svg>
-                  </span>
-                  <div>
-                    <div class="text-sm font-semibold text-slate-800">Шаблоны сообщений</div>
-                    <div class="text-xs text-slate-400">Готовые ответы клиентам</div>
-                  </div>
-                </button>
-
-                <button
-                  @click="$router.push('/admin/crm/orders/archive'); moreDropdownOpen = false"
-                  class="mt-2 flex w-full items-center gap-3 rounded-xl border border-slate-200/40 bg-gradient-to-br from-slate-50/90 to-gray-50/60 px-3 py-2.5 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300/50 hover:shadow-md focus:outline-none"
-                >
-                  <span class="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-100/80 text-amber-500 shadow-sm shadow-amber-200/50">
-                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
-                    </svg>
-                  </span>
-                  <div>
-                    <div class="text-sm font-semibold text-slate-800">Архив заказов</div>
-                    <div class="text-xs text-slate-400">Старые и завершенные</div>
-                  </div>
-                </button>
-              </div>
-            </Transition>
-          </div>
-
-          <!-- Отмененные -->
-          <button
-            v-if="cancelledOrders.length"
-            @click="cancelledModalOpen = true"
-            class="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl border border-red-200 bg-gradient-to-r from-red-50 to-rose-50 px-3 py-2 text-sm font-medium text-red-600 shadow-sm transition-all duration-200 hover:from-red-100 hover:to-rose-100"
-          >
-            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
-            </svg>
-            <span class="hidden sm:inline">Отмененные</span>
-          </button>
-
-          <!-- Выданные (запаролено) -->
-          <button
-            @click="profitUnlocked ? openDeliveredModal('today') : openPasswordModal()"
-            class="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl border border-emerald-200 bg-gradient-to-r from-emerald-50 to-green-50 px-3 py-2 text-sm font-medium text-emerald-600 shadow-sm transition-all duration-200 hover:from-emerald-100 hover:to-green-100"
-          >
-            <LockClosedIcon v-if="!profitUnlocked" class="h-4 w-4" />
-            <svg v-else class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-            </svg>
-            <span class="hidden sm:inline">Выданные</span>
-          </button>
-
-          <!-- Создать заказ -->
-          <button
-            @click="showCreateModal = true"
-            class="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-md transition-all duration-200 hover:from-blue-700 hover:to-indigo-700 hover:shadow-lg sm:px-4"
-          >
-            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-            </svg>
-            <span class="hidden sm:inline">Создать заказ</span>
-            <span class="sm:hidden">Заказ</span>
-          </button>
-
-          <!-- Заметка на клиента -->
-          <button
-            @click="openNoteModal()"
-            class="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm font-semibold text-sky-700 shadow-sm transition-all duration-200 hover:bg-sky-100"
-            title="Заметка на клиента по @username"
-          >
-            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h6m-6 8l-2 4 4-2h8a2 2 0 002-2V6a2 2 0 00-2-2H7a2 2 0 00-2 2v12z" />
-            </svg>
-            <span class="hidden sm:inline">Заметка на клиента</span>
-          </button>
-
-          <!-- Заблокировать клиента -->
-          <button
-            @click="openBlockModal()"
-            class="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-600 shadow-sm transition-all duration-200 hover:bg-red-100"
-            title="Заблокировать клиента по @username"
-          >
-            <NoSymbolIcon class="h-4 w-4" />
-            <span class="hidden sm:inline">Заблокировать</span>
-          </button>
-        </div>
-      </div>
-
-      <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
-        <h1 class="text-2xl font-bold text-gray-900 sm:text-3xl shrink-0">Заказы</h1>
-        <div class="relative min-w-0 flex-1">
-          <input
-            v-model="searchQuery"
-            type="search"
-            placeholder="Ячейка 7, заказ #10456 или клиент..."
-            class="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-            @input="handleSearch"
-          />
-          <svg
-            v-if="!searchQuery"
-            class="absolute right-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-            />
-          </svg>
-        </div>
-        <button
-          type="button"
-          class="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-semibold text-indigo-700 transition hover:bg-indigo-100"
-          :aria-label="pickupCellsLoaded
-            ? `Ячейки: занято ${pickupCells.occupied} из ${pickupCells.capacity}`
-            : loadingPickupCells ? 'Ячейки: загружаются' : 'Ячейки: данные недоступны'"
-          @click="openPickupCellsModal"
-        >
-          <span>Ячейки</span>
-          <span v-if="pickupCellsLoaded">{{ pickupCells.occupied }}/{{ pickupCells.capacity }}</span>
-          <span v-else-if="loadingPickupCells">…/…</span>
-          <span v-else>—/—</span>
-        </button>
       </div>
 
       <!-- Розыгрыш отзывов: плашка для менеджеров на доске заказов -->
@@ -391,7 +414,7 @@
       >
         <div
           v-if="crmStore.hasUnseenDraw && crmStore.latestMonthlyDraw"
-          class="rounded-xl border border-violet-200 bg-gradient-to-r from-violet-50 to-fuchsia-50 p-4 shadow-sm"
+          class="crm-orders-draw"
         >
           <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div class="flex items-start gap-3">
@@ -551,17 +574,19 @@
       </div>
 
       <div v-else class="space-y-6">
-        <div class="grid gap-4 lg:grid-cols-3">
+        <div class="crm-orders-board">
           <section
             v-for="column in kanbanColumns"
             :key="column.key"
-            class="flex h-full flex-col rounded-xl border border-gray-200 bg-white shadow-sm"
+            class="crm-orders-column"
+            :data-column="column.key"
           >
-            <header class="border-b border-gray-100 px-5 py-4">
+            <header class="crm-orders-column-header">
               <div class="flex items-center justify-between">
                 <div>
                   <div class="flex items-center gap-2">
-                    <h2 class="text-lg font-semibold text-gray-900">
+                    <h2 class="crm-orders-column-title">
+                      <span aria-hidden="true">{{ column.key === 'action_required' ? '◷' : column.key === 'new' ? '⬡' : '◎' }}</span>
                       {{ column.label }}
                     </h2>
                   </div>
@@ -592,7 +617,7 @@
               </div>
             </header>
             <div
-              class="flex-1 space-y-3 overflow-y-auto px-4 py-4 transition"
+              class="crm-orders-column-body"
               :class="[
                 activeDropColumn === column.key
                   ? 'bg-blue-50/60 ring-2 ring-blue-300 ring-offset-2'
@@ -603,17 +628,16 @@
               @dragleave.prevent="onDragLeave(column.key)"
               @drop.prevent="onDrop(column.key)"
             >
-              <p
-                v-if="column.orders.length === 0"
-                class="rounded-lg border border-dashed border-gray-200 px-3 py-8 text-center text-sm text-gray-400"
-              >
-                Нет заказов в этом статусе
-              </p>
+              <div v-if="column.orders.length === 0" class="crm-orders-empty">
+                <span class="crm-orders-empty-symbol" aria-hidden="true">{{ column.key === 'in_progress' ? '⬡' : '▤' }}</span>
+                <b>Нет заказов в этом статусе</b>
+                <span>{{ column.key === 'action_required' ? 'Здесь появятся заказы, требующие вашего внимания' : column.key === 'in_progress' ? 'Здесь появятся собранные заказы, готовые к выдаче клиенту' : 'Здесь появятся новые заказы, которые необходимо собрать' }}</span>
+              </div>
 
               <article
                 v-for="order in column.orders"
                 :key="order.id"
-                class="cursor-grab rounded-lg border border-gray-200 bg-white p-4 shadow-sm transition hover:shadow-md active:cursor-grabbing"
+                class="order-card cursor-grab border border-gray-200 bg-white transition active:cursor-grabbing"
                 :class="[
                   order.delivery_type === 'delivery'
                     ? 'border-rose-200 ring-1 ring-rose-100'
@@ -641,216 +665,61 @@
                 @dragstart="onDragStart(order)"
                 @dragend="onDragEnd"
               >
-                <!-- Заголовок с номером и бейджами -->
-                <div class="flex items-center justify-between">
-                  <div class="flex min-w-0 flex-wrap items-center gap-2 text-sm font-semibold text-gray-900">
-                    <div v-if="order.pickup_cell_number" class="flex items-baseline gap-2">
-                      <span class="text-lg font-black text-gray-950">
-                        {{ order.pickup_cell_number }} ЯЧЕЙКА
-                      </span>
-                      <span class="font-medium text-gray-400">#{{ order.order_number }}</span>
-                    </div>
-                    <div v-else class="flex items-center gap-2">
-                      <span>#{{ order.order_number }}</span>
-                      <span
-                        v-if="order.status === 'in_progress'"
-                        class="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800"
-                      >Без ячейки · старый заказ</span>
-                    </div>
-                    <span
-                      v-if="order.needs_manager_action && order.manager_action_type === 'modified'"
-                      class="rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-semibold text-orange-700"
-                    >Изменен покупателем</span>
-                    <span
-                      v-else-if="order.needs_manager_action && order.manager_action_type === 'cancelled_by_customer'"
-                      class="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700"
-                    >Отменен покупателем</span>
-                    <span
-                      v-else-if="order.auto_notification?.status === 'pending_retry'"
-                      class="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800"
-                      :title="order.auto_notification?.error || 'Нет связи с Telegram, уведомление в очереди'"
-                    >Отложено</span>
-                    <span
-                      v-else-if="order.auto_notification?.status === 'failed'"
-                      class="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700"
-                      :title="order.auto_notification?.error || 'Уведомление клиенту не доставлено'"
-                    >Не дошло клиенту</span>
-                    <span
-                      v-else-if="order.auto_notification?.warn"
-                      class="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700"
-                      :title="order.auto_notification?.warn"
-                    >Могло не дойти</span>
-                    <span
-                      v-if="order.payment_type === 'card'"
-                      class="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-wide text-violet-800 ring-1 ring-violet-200"
-                      title="Заказ оформлен с оплатой картой"
-                    >💳 Оплата картой</span>
-                  </div>
-                  <!-- Кнопка отмены (не показываем для action_required) -->
+                <div class="order-card-crown">
+                  <span class="order-card-cell" :aria-label="order.pickup_cell_number ? `Ячейка ${order.pickup_cell_number}` : `Заказ ${order.order_number}`" :title="order.pickup_cell_number ? `Ячейка ${order.pickup_cell_number}` : 'Ячейка пока не назначена'" data-test="order-cell">{{ order.pickup_cell_number || `#${order.order_number}` }}</span>
+                  <span
+                    v-if="!order.is_blocked && order.is_returning_customer !== undefined && !order.is_returning_customer"
+                    class="order-card-first"
+                    title="Первый заказ клиента — обратить внимание"
+                  >Первый заказ</span>
                   <button
                     v-if="!order.needs_manager_action"
-                    @click.stop="openCancelModal(order)"
-                    class="group flex h-7 w-7 items-center justify-center rounded-lg border border-transparent text-gray-400 transition-all hover:border-red-200 hover:bg-red-50 hover:text-red-500"
+                    type="button"
+                    class="order-card-cancel"
+                    data-test="order-cancel"
                     title="Отменить заказ"
+                    :aria-label="`Отменить заказ #${order.order_number}`"
+                    @click.stop="openCancelModal(order)"
                   >
-                    <svg class="h-4 w-4 transition-transform group-hover:scale-110" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                     </svg>
                   </button>
                 </div>
+                <div class="order-card-status">
+                  <span v-if="!order.pickup_cell_number && order.status === 'in_progress'" class="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800">Без ячейки · старый заказ</span>
+                  <span v-if="order.needs_manager_action && order.manager_action_type === 'modified'" class="rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-semibold text-orange-700">Изменен покупателем</span>
+                  <span v-else-if="order.needs_manager_action && order.manager_action_type === 'cancelled_by_customer'" class="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700">Отменен покупателем</span>
+                  <span v-else-if="order.auto_notification?.status === 'pending_retry'" class="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800" :title="order.auto_notification?.error || 'Нет связи с Telegram, уведомление в очереди'">Отложено</span>
+                  <span v-else-if="order.auto_notification?.status === 'failed'" class="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700" :title="order.auto_notification?.error || 'Уведомление клиенту не доставлено'">Не дошло клиенту</span>
+                  <span v-else-if="order.auto_notification?.warn" class="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700" :title="order.auto_notification?.warn">Могло не дойти</span>
+                </div>
 
-                <div class="mt-2 space-y-1 text-sm text-gray-700">
-                  <div class="flex items-center justify-between">
-                    <div class="flex items-center gap-2 font-medium">
-                      <span
-                        v-if="order.telegram_username"
-                        class="cursor-pointer hover:text-red-500 transition-colors"
-                        @click.stop="openBlockModal(order.telegram_username)"
-                        :title="'Заблокировать ' + order.telegram_username"
-                      >{{ order.customer_name || "Без имени" }}</span>
-                      <span v-else>{{ order.customer_name || "Без имени" }}</span>
-                      <span
-                        v-if="order.customer_card_payment_enabled"
-                        class="text-[10px] font-medium text-emerald-600"
-                      >разрешена карта</span>
-                      <span v-if="order.is_blocked"
-                        class="rounded-full bg-red-200 px-2 py-0.5 text-[10px] font-semibold text-red-800"
-                        title="Клиент заблокирован. Сообщения не отправляются."
-                      >Заблокирован</span>
-                      <span v-else-if="order.is_returning_customer !== undefined"
-                        :class="[
-                          'rounded-full px-2 py-0.5 text-[10px] font-semibold',
-                          order.is_returning_customer
-                            ? 'bg-emerald-100 text-emerald-700'
-                            : 'bg-red-100 text-red-700'
-                        ]"
-                        :title="order.is_returning_customer ? 'У клиента уже были завершённые заказы' : 'Первый заказ клиента - обратить внимание'"
-                      >{{ order.is_returning_customer ? 'Постоянный' : 'Первый заказ' }}</span>
-                      <button
-                        v-if="order.customer_id"
-                        type="button"
-                        class="inline-flex items-center justify-center rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-blue-700 transition hover:bg-blue-100"
-                        title="Заметка о клиенте"
-                        @click.stop="openNoteModalForOrder(order)"
-                      >
-                        <svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                        </svg>
-                      </button>
-                    </div>
+                <div class="order-card-customer space-y-2 text-sm text-gray-700">
+                  <div class="order-card-client-row">
+                    <span class="order-card-client-name" data-test="order-customer-name">{{ order.customer_name || 'Без имени' }}</span>
                     <button
-                      v-if="order.telegram_username"
-                      @click.stop="contactClient(order.id)"
-                      :disabled="generatingMessageForOrder === order.id"
-                      class="inline-flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-[11px] font-semibold text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      <svg
-                        v-if="generatingMessageForOrder === order.id"
-                        class="h-3 w-3 animate-spin"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          stroke-width="2"
-                          d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                        />
-                      </svg>
-                      <svg
-                        v-else
-                        class="h-3 w-3"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          stroke-width="2"
-                          d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-                        />
-                      </svg>
-                      <span>{{
-                        generatingMessageForOrder === order.id
-                          ? "Генерируем…"
-                          : "Написать"
-                      }}</span>
-                    </button>
-                  </div>
-                  <div
-                    v-if="order.referral?.inviter_username"
-                    class="relative flex min-h-5 min-w-0 items-center gap-1 text-[11px] leading-5"
-                    data-inviter-menu
-                  >
-                    <span class="shrink-0 font-medium text-slate-500">Пригласивший:</span>
-                    <button
-                      :id="`inviter-trigger-${order.id}`"
                       type="button"
-                      class="inviter-trigger group inline-flex min-w-0 items-center gap-0.5 font-semibold text-blue-600 underline decoration-blue-200 decoration-1 underline-offset-2 outline-none transition-colors hover:text-blue-800 hover:decoration-blue-500 focus-visible:text-blue-800 focus-visible:decoration-blue-600"
-                      :aria-expanded="activeInviterMenuOrderId === order.id"
-                      aria-haspopup="menu"
-                      :aria-controls="`inviter-menu-${order.id}`"
-                      :aria-label="`Действия с пригласившим @${order.referral.inviter_username}`"
-                      :title="`@${order.referral.inviter_username}`"
-                      @click.stop="toggleInviterMenu(order.id, $event)"
-                    >
-                      <span class="truncate">@{{ order.referral.inviter_username }}</span>
-                      <svg
-                        aria-hidden="true"
-                        viewBox="0 0 20 20"
-                        fill="currentColor"
-                        class="h-3 w-3 text-blue-400 transition-transform duration-150 group-hover:text-blue-600"
-                        :class="activeInviterMenuOrderId === order.id ? 'rotate-180' : ''"
-                      >
-                        <path fill-rule="evenodd" d="M5.22 7.22a.75.75 0 0 1 1.06 0L10 10.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 8.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" />
+                      class="order-card-client-actions"
+                      data-test="order-customer-actions"
+                      aria-haspopup="dialog"
+                      :aria-expanded="showCustomerActionsModal && customerActionsOrderId === order.id"
+                      :disabled="Boolean(generatingMessageForOrder)"
+                      @click.stop="openCustomerActions(order)"
+                    >{{ generatingMessageForOrder === order.id ? 'Подготавливаем…' : 'Действия с клиентом' }}</button>
+                  </div>
+                  <div v-if="order.customer_card_payment_enabled || order.is_blocked" class="order-card-client-flags">
+                    <span v-if="order.customer_card_payment_enabled" class="order-card-card-access" data-test="order-card-card-access" title="Клиенту разрешена оплата картой">
+                      <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+                        <rect x="3" y="5" width="18" height="14" rx="3" />
+                        <path stroke-linecap="round" d="M3 10h18M7 15h3" />
                       </svg>
-                    </button>
-                    <Teleport to="body">
-                      <Transition
-                        enter-active-class="transition duration-150 ease-out"
-                        enter-from-class="translate-y-1 scale-[0.98] opacity-0"
-                        enter-to-class="translate-y-0 scale-100 opacity-100"
-                        leave-active-class="transition duration-100 ease-in"
-                        leave-from-class="translate-y-0 scale-100 opacity-100"
-                        leave-to-class="translate-y-1 scale-[0.98] opacity-0"
-                      >
-                        <div
-                          v-if="activeInviterMenuOrderId === order.id"
-                          :id="`inviter-menu-${order.id}`"
-                          role="menu"
-                          data-inviter-menu
-                          :aria-label="`Действия с пригласившим @${order.referral.inviter_username}`"
-                          :style="{ top: `${inviterMenuPosition.top}px`, left: `${inviterMenuPosition.left}px` }"
-                          class="fixed z-[100] flex w-60 origin-top-left flex-col rounded-xl border border-slate-200/80 bg-white p-1.5 text-xs shadow-xl shadow-slate-900/10"
-                          @click.stop
-                          @focusout="handleInviterMenuFocusOut(order.id, $event)"
-                          @keydown="handleInviterMenuKeydown(order.id, $event)"
-                        >
-                          <button role="menuitem" class="min-h-9 cursor-pointer rounded-lg border-0 bg-transparent px-2.5 py-2 text-left font-medium text-slate-700 transition-colors hover:bg-slate-100 focus-visible:bg-slate-100 focus-visible:outline-none" @click="copyInviter(order, $event)">Скопировать</button>
-                          <button role="menuitem" class="min-h-9 cursor-pointer rounded-lg border-0 bg-transparent px-2.5 py-2 text-left font-medium text-slate-700 transition-colors hover:bg-blue-50 hover:text-blue-700 focus-visible:bg-blue-50 focus-visible:text-blue-700 focus-visible:outline-none" @click="openInviterMessage(order)">Написать пригласившему</button>
-                          <div class="my-1 h-px bg-slate-100" aria-hidden="true"></div>
-                          <button role="menuitem" class="min-h-9 cursor-pointer rounded-lg border-0 bg-transparent px-2.5 py-2 text-left font-medium text-slate-600 transition-colors hover:bg-red-50 hover:text-red-700 focus-visible:bg-red-50 focus-visible:text-red-700 focus-visible:outline-none" @click="openInviterBlockModal(order)">Заблокировать пригласившего</button>
-                          <button
-                            v-if="!order.referral.inviter_is_invite_banned"
-                            role="menuitem"
-                            class="min-h-9 cursor-pointer rounded-lg border-0 bg-transparent px-2.5 py-2 text-left font-medium text-slate-600 transition-colors hover:bg-red-50 hover:text-red-700 focus-visible:bg-red-50 focus-visible:text-red-700 focus-visible:outline-none"
-                            @click="openInviteBanModal(order)"
-                          >Запретить приглашать</button>
-                          <button
-                            v-else
-                            role="menuitem"
-                            class="min-h-9 cursor-pointer rounded-lg border-0 bg-transparent px-2.5 py-2 text-left font-medium text-slate-600 transition-colors hover:bg-emerald-50 hover:text-emerald-700 focus-visible:bg-emerald-50 focus-visible:text-emerald-700 focus-visible:outline-none disabled:cursor-default disabled:opacity-50"
-                            :disabled="removingInviterBanId === order.referral.inviter_invite_ban_id"
-                            @click="removeInviterBan(order)"
-                          >{{ removingInviterBanId === order.referral.inviter_invite_ban_id ? 'Снимаем…' : 'Разрешить приглашать' }}</button>
-                        </div>
-                      </Transition>
-                    </Teleport>
+                      <span>Карта разрешена</span>
+                    </span>
+                    <span v-if="order.is_blocked" class="rounded-full bg-red-200 px-2 py-0.5 text-[10px] font-semibold text-red-800" title="Клиент заблокирован. Сообщения не отправляются.">Заблокирован</span>
                   </div>
                   <div
-                    v-else-if="order.access_authorization?.access_authorization_source === 'staff'"
+                    v-if="!order.referral?.inviter_username && order.access_authorization?.access_authorization_source === 'staff'"
                     class="flex min-h-5 items-center gap-1 text-[11px] leading-5"
                   >
                     <span class="font-medium text-slate-500">Доступ:</span>
@@ -918,9 +787,9 @@
 
                 <ol
                   v-if="order.items?.length"
-                  class="mt-3 space-y-1 text-xs text-gray-600"
+                  class="order-card-products text-xs text-gray-600"
                 >
-                  <li v-for="(item, index) in previewItems(order)" :key="item.id" class="flex gap-1.5">
+                  <li v-for="(item, index) in previewItems(order)" :key="item.id" class="flex min-w-0 gap-2">
                     <span class="flex-shrink-0 font-medium text-gray-400">{{ index + 1 }}.</span>
                     <div class="flex-1">
                       <div>
@@ -928,9 +797,7 @@
                           v-if="item.group_name"
                           class="font-semibold text-blue-600"
                         >{{ item.group_name }}</span
-                        >{{ item.group_name ? " - " : ""
-                        }}{{ item.base_product_title || item.product_title
-                        }}{{ item.variant_name ? " - " + item.variant_name : "" }}
+                        >{{ item.group_name ? " - " : "" }}<span :class="!item.group_name ? 'font-semibold text-blue-600' : ''">{{ item.base_product_title || item.product_title }}</span>{{ item.variant_name ? " - " + item.variant_name : "" }}
                         <span
                           v-if="catalogDiscountPerUnit(item) > 0"
                           class="ml-1 inline-flex items-center rounded px-1 py-px align-middle text-[10px] font-bold uppercase tracking-wide text-white"
@@ -1001,7 +868,7 @@
                   </li>
                 </ol>
 
-                <div class="mt-4 space-y-3">
+                <div class="order-card-bottom space-y-3">
                   <!-- Примечание об изменениях (для action_required) -->
                   <div
                     v-if="order.needs_manager_action && order.manager_action_note"
@@ -1013,21 +880,67 @@
                       size="xs"
                     />
                   </div>
-                  <!-- Сумма и скидка -->
-                  <div>
-                    <div
-                      @click.stop="openDiscountModal(order)"
-                      class="group inline-flex cursor-pointer items-center gap-1.5 text-base font-semibold text-gray-900 transition-colors hover:text-emerald-600"
-                      title="Нажмите для скидки"
+                  <!-- Сумма, способ оплаты и существующие действия заказа -->
+                  <div class="order-card-finance">
+                    <div class="order-card-footer">
+                      <div class="order-card-price">
+                        <button
+                          type="button"
+                          data-test="order-total"
+                          class="order-card-total"
+                          title="Изменить скидку на заказ"
+                          :aria-label="'Изменить скидку на заказ. Итого ' + formatCurrency(order.final_amount)"
+                          @click.stop="openDiscountModal(order)"
+                        >
+                          <span v-if="getOrderTotalDiscount(order) > 0" class="order-card-original-total">{{ formatCurrency(order.total_amount) }}</span>
+                          <span>{{ formatCurrency(order.final_amount) }}</span>
+                        </button>
+                        <span v-if="order.payment_type === 'card'" class="order-card-payment order-card-payment--card">Оплата картой</span>
+                        <span v-else-if="order.payment_type === 'cash'" class="order-card-payment order-card-payment--cash">Оплата наличными</span>
+                      </div>
+                  <!-- Кнопки resolve для action_required -->
+                  <div v-if="order.needs_manager_action" class="order-card-controls">
+                    <button
+                      @click.stop="viewOrder(order.id)"
+                      type="button" class="order-card-button order-card-button--details"
                     >
-                      <span
-                        v-if="getOrderTotalDiscount(order) > 0"
-                        class="text-sm text-gray-400 line-through"
-                      >{{ formatCurrency(order.total_amount) }}</span>
-                      <span>{{ formatCurrency(order.final_amount) }}</span>
-                      <svg class="h-3.5 w-3.5 flex-shrink-0 text-gray-400 group-hover:text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                      </svg>
+                      Подробнее
+                    </button>
+                    <button
+                      v-if="order.manager_action_type === 'modified'"
+                      @click.stop="deferClick(() => { void handleResolveAction(order) })"
+                      :disabled="resolvingOrderId === order.id"
+                      type="button" class="order-card-button bg-orange-600 text-white hover:bg-orange-700 disabled:opacity-60"
+                    >
+                      {{ resolvingOrderId === order.id ? 'Обработка...' : 'Принять изменения' }}
+                    </button>
+                    <button
+                      v-else-if="order.manager_action_type === 'cancelled_by_customer'"
+                      @click.stop="deferClick(() => { void handleResolveAction(order) })"
+                      :disabled="resolvingOrderId === order.id"
+                      type="button" class="order-card-button order-card-button--danger bg-red-600 text-white hover:bg-red-700 disabled:opacity-60"
+                    >
+                      {{ resolvingOrderId === order.id ? 'Обработка...' : 'Разобрать' }}
+                    </button>
+                  </div>
+                  <!-- Обычные кнопки -->
+                  <div v-else class="order-card-controls">
+                    <button
+                      @click.stop="viewOrder(order.id)"
+                      type="button" class="order-card-button order-card-button--details"
+                    >
+                      Подробнее
+                    </button>
+                    <button
+                      v-if="canAdvance(order)"
+                      @click.stop="deferClick(() => { void advanceOrder(order) })"
+                      :disabled="updatingOrderId === order.id"
+                      type="button" class="order-card-button admin-link-button admin-link-button--compact"
+                      :class="advanceButtonClass(order)"
+                    >
+                      {{ updatingOrderId === order.id ? 'Назначаем ячейку...' : nextStatusLabel(order.status) }}
+                    </button>
+                  </div>
                     </div>
                     <div
                       v-if="getOrderTotalDiscount(order) > 0"
@@ -1098,52 +1011,10 @@
                     >
                       Минимальный заказ: {{ formatCurrency(order.wholesale_min_amount) }}
                     </p>
-                    <div class="text-[11px] text-gray-400">
-                      {{ formatDate(order.created_at) }}
+                    <div class="order-card-metadata" data-test="order-card-metadata">
+                      <span data-test="order-number">#{{ order.order_number }}</span>
+                      <span data-test="order-created-at">{{ formatDate(order.created_at) }}</span>
                     </div>
-                  </div>
-                  <!-- Кнопки resolve для action_required -->
-                  <div v-if="order.needs_manager_action" class="flex items-center justify-end gap-2">
-                    <button
-                      @click.stop="viewOrder(order.id)"
-                      class="admin-link-button admin-link-button--compact admin-link-button--muted"
-                    >
-                      Подробнее
-                    </button>
-                    <button
-                      v-if="order.manager_action_type === 'modified'"
-                      @click.stop="deferClick(() => { void handleResolveAction(order) })"
-                      :disabled="resolvingOrderId === order.id"
-                      class="admin-link-button admin-link-button--compact bg-orange-600 text-white hover:bg-orange-700 disabled:opacity-60"
-                    >
-                      {{ resolvingOrderId === order.id ? 'Обработка...' : 'Принять изменения' }}
-                    </button>
-                    <button
-                      v-else-if="order.manager_action_type === 'cancelled_by_customer'"
-                      @click.stop="deferClick(() => { void handleResolveAction(order) })"
-                      :disabled="resolvingOrderId === order.id"
-                      class="admin-link-button admin-link-button--compact bg-red-600 text-white hover:bg-red-700 disabled:opacity-60"
-                    >
-                      {{ resolvingOrderId === order.id ? 'Обработка...' : 'Разобрать' }}
-                    </button>
-                  </div>
-                  <!-- Обычные кнопки -->
-                  <div v-else class="flex items-center justify-end gap-2">
-                    <button
-                      @click.stop="viewOrder(order.id)"
-                      class="admin-link-button admin-link-button--compact admin-link-button--muted"
-                    >
-                      Подробнее
-                    </button>
-                    <button
-                      v-if="canAdvance(order)"
-                      @click.stop="deferClick(() => { void advanceOrder(order) })"
-                      :disabled="updatingOrderId === order.id"
-                      class="admin-link-button admin-link-button--compact"
-                      :class="advanceButtonClass(order)"
-                    >
-                      {{ updatingOrderId === order.id ? 'Назначаем ячейку...' : nextStatusLabel(order.status) }}
-                    </button>
                   </div>
                 </div>
               </article>
@@ -1444,6 +1315,16 @@
       @close="showCreateModal = false"
       @created="handleOrderCreated"
       @shift-required="handleOrderCreateShiftRequired"
+    />
+
+    <CustomerActionsModal
+      :is-open="showCustomerActionsModal"
+      :order="customerActionsOrder"
+      :busy="Boolean(generatingMessageForOrder || removingInviterBanId || sendingInviterMessage)"
+      @close="closeCustomerActions"
+      @action="queueCustomerAction"
+      @inviter-action="queueInviterAction"
+      @after-leave="runQueuedCustomerAction"
     />
 
     <!-- Блокировка клиента -->
@@ -1773,12 +1654,14 @@ import AdminModal from "@/components/AdminModal.vue";
 import CustomerBlockModal from "@/components/admin/CustomerBlockModal.vue";
 import CustomerNoteModal from "@/components/admin/CustomerNoteModal.vue";
 import CustomerInviteBanModal from "@/components/admin/CustomerInviteBanModal.vue";
+import CustomerActionsModal, { type CustomerAction, type InviterAction } from "@/components/admin/crm/CustomerActionsModal.vue";
 import { LockClosedIcon, NoSymbolIcon } from "@heroicons/vue/24/outline";
 import { buildAutoNotifyToast } from "@/utils/auto-notify-message";
 import CrmProfitPasswordField from "@/components/crm/CrmProfitPasswordField.vue";
 import StaffCurrentActorBadge from "@/components/admin/staff/StaffCurrentActorBadge.vue";
 import StaffShiftBar from "@/components/admin/staff/StaffShiftBar.vue";
 import CardPaymentsModal from "@/components/admin/crm/CardPaymentsModal.vue";
+import { getBusinessDateParts } from "@/utils/businessTime";
 
 /** Отдаёт клик браузеру сразу — меньше [Violation] 'click' handler took Nms */
 function deferClick(fn: () => void | Promise<void>) {
@@ -1846,13 +1729,103 @@ function openReviews() {
 }
 
 const showCreateModal = ref(false);
+const showCustomerActionsModal = ref(false);
+const customerActionsOrderId = ref<string | null>(null);
+const customerActionsOrder = computed(() =>
+  orders.value.find((order) => order.id === customerActionsOrderId.value) || null,
+);
+const pendingCustomerAction = ref<{
+  action: CustomerAction | InviterAction;
+  target?: 'inviter';
+  inviterCustomerId?: string | null;
+  inviterUsername?: string;
+  inviterBanId?: string | null;
+  orderId: string;
+  customerId: string | null;
+  username: string;
+} | null>(null);
+
+function openCustomerActions(order: Order) {
+  if (generatingMessageForOrder.value || showCustomerActionsModal.value || pendingCustomerAction.value) return;
+  customerActionsOrderId.value = order.id;
+  showCustomerActionsModal.value = true;
+}
+
+function closeCustomerActions() {
+  pendingCustomerAction.value = null;
+  showCustomerActionsModal.value = false;
+}
+
+function queueCustomerAction(action: CustomerAction) {
+  const order = customerActionsOrder.value;
+  if (!showCustomerActionsModal.value || !order || generatingMessageForOrder.value || pendingCustomerAction.value) return;
+  if ((action === 'block' || action === 'invite-ban') && !order.customer_id && !order.telegram_username) return;
+  if (action === 'block' && order.is_blocked) return;
+  if (action === 'note' && !order.customer_id) return;
+  if (action === 'contact' && !order.telegram_username && !order.customer_telegram_id) return;
+  pendingCustomerAction.value = {
+    action,
+    orderId: order.id,
+    customerId: order.customer_id,
+    username: order.telegram_username || '',
+  };
+  showCustomerActionsModal.value = false;
+}
+
+function queueInviterAction(action: InviterAction) {
+  const order = customerActionsOrder.value;
+  const referral = order?.referral;
+  if (!showCustomerActionsModal.value || !order || !referral?.inviter_username || pendingCustomerAction.value || generatingMessageForOrder.value || removingInviterBanId.value || sendingInviterMessage.value) return;
+  if (action === 'message' && !referral.inviter_customer_id) return;
+  if (action === 'remove-ban' && (!referral.inviter_is_invite_banned || !referral.inviter_invite_ban_id)) return;
+  if (action === 'invite-ban' && referral.inviter_is_invite_banned) return;
+  pendingCustomerAction.value = { action, target: 'inviter', orderId: order.id, customerId: order.customer_id, username: order.telegram_username || '', inviterCustomerId: referral.inviter_customer_id || null, inviterUsername: referral.inviter_username, inviterBanId: referral.inviter_invite_ban_id || null };
+  showCustomerActionsModal.value = false;
+}
+
+async function runQueuedCustomerAction() {
+  const pending = pendingCustomerAction.value;
+  pendingCustomerAction.value = null;
+  customerActionsOrderId.value = null;
+  if (!pending) return;
+  // The first dialog must finish restoring focus before the existing dialog opens.
+  await nextTick();
+  const order = orders.value.find((item) => item.id === pending.orderId);
+  if (!order || order.customer_id !== pending.customerId ||
+      (!pending.customerId && (order.telegram_username || '') !== pending.username)) {
+    showOrderToast({ kind: 'error', message: 'Данные заказа изменились. Откройте действия клиента заново.' });
+    return;
+  }
+  if (pending.target === 'inviter') {
+    const referral = order.referral;
+    if (!referral?.inviter_username || (referral.inviter_customer_id || null) !== pending.inviterCustomerId || (!pending.inviterCustomerId && referral.inviter_username !== pending.inviterUsername)) {
+      showOrderToast({ kind: 'error', message: 'Пригласивший изменился. Откройте действия клиента заново.' });
+      return;
+    }
+    if (pending.action === 'copy') await copyInviter(order);
+    else if (pending.action === 'message' && referral.inviter_customer_id) openInviterMessage(order);
+    else if (pending.action === 'block') openInviterBlockModal(order);
+    else if (pending.action === 'invite-ban' && !referral.inviter_is_invite_banned) openInviteBanModal(order);
+    else if (pending.action === 'remove-ban' && referral.inviter_is_invite_banned && (referral.inviter_invite_ban_id || null) === pending.inviterBanId) await removeInviterBan(order);
+    return;
+  }
+  if (pending.action === 'block') {
+    if (!order.is_blocked) openBlockModal(order.telegram_username, order.customer_id);
+  } else if (pending.action === 'invite-ban') {
+    inviteBanCustomerId.value = order.customer_id;
+    inviteBanUsername.value = order.telegram_username || '';
+    showInviteBanModal.value = true;
+  } else if (pending.action === 'note') {
+    openNoteModalForOrder(order);
+  } else if (pending.action === 'contact') {
+    await contactClient(order.id);
+  }
+}
 
 // Модалка блокировки клиента
 const showBlockModal = ref(false);
 const blockPrefillUsername = ref<string>('');
 const blockCustomerId = ref<string | null>(null);
-const activeInviterMenuOrderId = ref<string | null>(null);
-const inviterMenuPosition = ref({ top: 0, left: 0 });
 const showInviteBanModal = ref(false);
 const inviteBanCustomerId = ref<string | null>(null);
 const inviteBanUsername = ref('');
@@ -1869,83 +1842,7 @@ function openBlockModal(prefill?: string, customerId: string | null = null) {
   showBlockModal.value = true;
 }
 
-async function toggleInviterMenu(orderId: string, event: Event) {
-  if (activeInviterMenuOrderId.value === orderId) {
-    activeInviterMenuOrderId.value = null;
-    return;
-  }
-  const trigger = event.currentTarget as HTMLElement | null;
-  if (!trigger) return;
-  const triggerRect = trigger.getBoundingClientRect();
-  const viewportMargin = 8;
-  inviterMenuPosition.value = {
-    top: triggerRect.bottom + 4,
-    left: Math.max(viewportMargin, Math.min(triggerRect.left, window.innerWidth - 248)),
-  };
-  activeInviterMenuOrderId.value = orderId;
-  await nextTick();
-  const menu = document.getElementById(`inviter-menu-${orderId}`);
-  if (!menu) return;
-  const menuRect = menu.getBoundingClientRect();
-  const below = triggerRect.bottom + 4;
-  const above = triggerRect.top - menuRect.height - 4;
-  inviterMenuPosition.value = {
-    top: below + menuRect.height <= window.innerHeight - viewportMargin
-      ? below
-      : Math.max(viewportMargin, above),
-    left: Math.max(
-      viewportMargin,
-      Math.min(triggerRect.left, window.innerWidth - menuRect.width - viewportMargin),
-    ),
-  };
-  await nextTick();
-  menu.querySelector<HTMLElement>('button')?.focus();
-}
-
-async function closeInviterMenu(orderId: string, restoreFocus = false) {
-  activeInviterMenuOrderId.value = null;
-  if (!restoreFocus) return;
-  await nextTick();
-  document.getElementById(`inviter-trigger-${orderId}`)?.focus({ preventScroll: true });
-}
-
-function handleInviterMenuFocusOut(orderId: string, event: FocusEvent) {
-  const menu = event.currentTarget as HTMLElement | null;
-  const nextTarget = event.relatedTarget as Node | null;
-  const trigger = document.getElementById(`inviter-trigger-${orderId}`);
-  if (nextTarget && (menu?.contains(nextTarget) || trigger?.contains(nextTarget))) return;
-  activeInviterMenuOrderId.value = null;
-}
-
-function handleInviterMenuKeydown(orderId: string, event: KeyboardEvent) {
-  const menu = event.currentTarget as HTMLElement | null;
-  if (!menu) return;
-  const items = Array.from(
-    menu.querySelectorAll<HTMLElement>('[role="menuitem"]:not([disabled])'),
-  );
-  if (!items.length) return;
-
-  if (event.key === 'Escape') {
-    event.preventDefault();
-    event.stopPropagation();
-    void closeInviterMenu(orderId, true);
-    return;
-  }
-
-  const currentIndex = items.indexOf(document.activeElement as HTMLElement);
-  let nextIndex: number | null = null;
-  if (event.key === 'ArrowDown') nextIndex = (currentIndex + 1) % items.length;
-  if (event.key === 'ArrowUp') nextIndex = (currentIndex - 1 + items.length) % items.length;
-  if (event.key === 'Home') nextIndex = 0;
-  if (event.key === 'End') nextIndex = items.length - 1;
-  if (nextIndex === null) return;
-
-  event.preventDefault();
-  event.stopPropagation();
-  items[nextIndex]?.focus();
-}
-
-async function copyInviter(order: Order, event: MouseEvent) {
+async function copyInviter(order: Order) {
   const username = order.referral?.inviter_username;
   if (!username) return;
   const text = `@${username}`;
@@ -1973,13 +1870,9 @@ async function copyInviter(order: Order, event: MouseEvent) {
   } else {
     showOrderToast({ kind: 'success', message: `${text} скопирован` });
   }
-  // После обычного клика не возвращаем программный фокус на ссылку — именно
-  // он создавал тяжёлую синюю рамку на карточке. Для клавиатуры фокус сохраняем.
-  await closeInviterMenu(order.id, event.detail === 0);
 }
 
 function openInviterBlockModal(order: Order) {
-  activeInviterMenuOrderId.value = null;
   openBlockModal(
     order.referral?.inviter_username || '',
     order.referral?.inviter_customer_id || null,
@@ -1990,7 +1883,6 @@ function openInviteBanModal(order: Order) {
   inviteBanCustomerId.value = order.referral?.inviter_customer_id || null;
   inviteBanUsername.value = order.referral?.inviter_username || '';
   showInviteBanModal.value = true;
-  activeInviterMenuOrderId.value = null;
 }
 
 async function removeInviterBan(order: Order) {
@@ -2016,7 +1908,6 @@ async function removeInviterBan(order: Order) {
 
 async function handleInviteBanChanged() {
   showInviteBanModal.value = false;
-  activeInviterMenuOrderId.value = null;
   await refreshOrders({ skipNotify: true });
 }
 
@@ -2025,7 +1916,6 @@ function openInviterMessage(order: Order) {
   inviterMessageUsername.value = order.referral?.inviter_username || '';
   inviterMessageText.value = '';
   showInviterMessageModal.value = true;
-  activeInviterMenuOrderId.value = null;
 }
 
 function closeInviterMessage() {
@@ -2145,6 +2035,86 @@ const pickupCellsLoadError = ref("");
 const savingPickupCellCapacity = ref(false);
 const pickupCellsLoaded = ref(false);
 const cardPaymentsModalOpen = ref(false);
+const cardLimitRefreshError = ref(false);
+const refreshingCardLimit = ref(false);
+let cardLimitTimer: ReturnType<typeof setInterval> | null = null;
+let cardLimitDisposed = false;
+
+function currentCardBusinessDate() {
+  const { year, month, day } = getBusinessDateParts();
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+const cardLimitBusinessDate = ref(currentCardBusinessDate());
+const toolbarCardLimits = computed(() => {
+  const limits = crmStore.cardPaymentAdminSnapshot?.limits;
+  if (!limits || limits.business_date !== cardLimitBusinessDate.value) return null;
+  if (![limits.daily_limit_minor, limits.remaining_today_minor].every(
+    (amount) => Number.isSafeInteger(amount) && amount >= 0,
+  )) return null;
+  return limits;
+});
+const toolbarCardLimitState = computed(() => {
+  if (cardLimitRefreshError.value) return "error";
+  if (toolbarCardLimits.value) return "ready";
+  if (refreshingCardLimit.value || crmStore.loadingCardPaymentAdmin) return "loading";
+  return "unavailable";
+});
+const toolbarCardRemaining = computed(() => {
+  const minor = toolbarCardLimits.value?.remaining_today_minor;
+  if (minor == null) return "";
+  return `${new Intl.NumberFormat("ru-BY", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(minor / 100)} BYN`;
+});
+// Только визуальная доля свободного лимита; сумму и финансовые правила отдаёт сервер.
+const toolbarCardRemainingPercent = computed(() => {
+  const limits = toolbarCardLimits.value;
+  if (!limits || limits.daily_limit_minor <= 0) return 0;
+  return Math.min(100, Math.max(0,
+    limits.remaining_today_minor / limits.daily_limit_minor * 100,
+  ));
+});
+const toolbarCardLimitMessage = computed(() => {
+  if (toolbarCardLimitState.value === "loading") return "Загружаем лимит…";
+  if (toolbarCardLimitState.value !== "ready") return "Лимит недоступен";
+  return toolbarCardLimits.value?.remaining_today_minor === 0
+    ? "Лимит исчерпан" : "осталось";
+});
+
+async function refreshToolbarCardLimit() {
+  if (cardLimitDisposed) return;
+  cardLimitBusinessDate.value = currentCardBusinessDate();
+  // Не мешаем загрузке и сохранению в существующем окне лимитов.
+  if (cardPaymentsModalOpen.value || refreshingCardLimit.value || crmStore.loadingCardPaymentAdmin) return;
+  if (document.visibilityState !== "visible") return;
+  refreshingCardLimit.value = true;
+  try {
+    const previousSnapshot = crmStore.cardPaymentAdminSnapshot;
+    await crmStore.fetchCardPaymentAdmin({
+      background: true,
+      shouldApply: () => !cardLimitDisposed && !cardPaymentsModalOpen.value
+        && crmStore.cardPaymentAdminSnapshot === previousSnapshot,
+    });
+    if (!cardLimitDisposed) {
+      cardLimitBusinessDate.value = currentCardBusinessDate();
+      cardLimitRefreshError.value = false;
+    }
+  } catch {
+    if (!cardLimitDisposed) cardLimitRefreshError.value = true;
+  } finally {
+    if (!cardLimitDisposed) refreshingCardLimit.value = false;
+  }
+}
+
+watch(() => crmStore.cardPaymentAdminSnapshot, (snapshot) => {
+  if (!snapshot) return;
+  cardLimitBusinessDate.value = currentCardBusinessDate();
+  cardLimitRefreshError.value = false;
+});
+watch(cardPaymentsModalOpen, (open) => {
+  if (!open) void refreshToolbarCardLimit();
+});
 
 function openCardPaymentsModal() {
   cardPaymentsModalOpen.value = true;
@@ -2994,6 +2964,8 @@ async function contactClient(orderId: string) {
 }
 
 onMounted(async () => {
+  void refreshToolbarCardLimit();
+  cardLimitTimer = setInterval(() => { void refreshToolbarCardLimit(); }, 30_000);
   void refreshUserbotStatus();
   userbotStatusTimer = setInterval(() => {
     void refreshUserbotStatus();
@@ -3026,11 +2998,14 @@ onMounted(async () => {
 
   // Close dropdowns on click outside
   document.addEventListener('click', handleClickOutside);
-  window.addEventListener('scroll', handleInviterViewportChange, true);
-  window.addEventListener('resize', handleInviterViewportChange);
 });
 
 onUnmounted(() => {
+  cardLimitDisposed = true;
+  if (cardLimitTimer) {
+    clearInterval(cardLimitTimer);
+    cardLimitTimer = null;
+  }
   if (userbotStatusTimer) {
     clearInterval(userbotStatusTimer);
     userbotStatusTimer = null;
@@ -3053,20 +3028,10 @@ onUnmounted(() => {
     pollActivityRefreshTimer = null;
   }
   document.removeEventListener('click', handleClickOutside);
-  window.removeEventListener('scroll', handleInviterViewportChange, true);
-  window.removeEventListener('resize', handleInviterViewportChange);
 });
-
-function handleInviterViewportChange() {
-  const orderId = activeInviterMenuOrderId.value;
-  if (orderId) void closeInviterMenu(orderId, true);
-}
 
 function handleClickOutside(event: MouseEvent) {
   const target = event.target as Node;
-  if (!(event.target as HTMLElement | null)?.closest('[data-inviter-menu]')) {
-    activeInviterMenuOrderId.value = null;
-  }
   if (settingsDropdownRef.value && !settingsDropdownRef.value.contains(target)) {
     settingsDropdownOpen.value = false;
   }
@@ -3076,8 +3041,9 @@ function handleClickOutside(event: MouseEvent) {
 }
 
 function handleVisibilityChange() {
-  if (!autoRefreshEnabled.value) return;
   if (document.visibilityState !== 'visible') return;
+  void refreshToolbarCardLimit();
+  if (!autoRefreshEnabled.value) return;
   void refreshOrders({ skipNotify: true });
 }
 
@@ -3326,7 +3292,92 @@ async function confirmCancelOrder() {
 }
 </script>
 
+<style src="@/styles/crm-orders-reference.css"></style>
+
 <style scoped>
+.order-card {
+  --order-primary: linear-gradient(100deg, #05b8ff, #185dff);
+  --order-danger: linear-gradient(115deg, #ff685a, #fa104f);
+  position: relative;
+  min-width: 0;
+  margin-top: 38px;
+  padding: 36px 18px 17px;
+  border-style: solid;
+  border-width: 1.5px;
+  border-color: #ffc72e;
+  border-radius: 13px;
+  box-shadow: 0 6px 19px #455f7a0a;
+  color: #081b4b;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  container-type: inline-size;
+}
+/* Preserve the existing semantic borders and rings for exceptional orders. */
+.order-card.border-rose-200 { border-color: #fecdd3; }
+.order-card.border-amber-300 { border-color: #fcd34d; }
+.order-card.border-amber-200 { border-color: #fde68a; }
+.order-card.border-red-300 { border-color: #fca5a5; }
+.order-card.border-orange-300 { border-color: #fdba74; }
+.order-card + .order-card { margin-top: 38px; }
+.order-card-crown { position: absolute; top: -17px; left: 14px; right: 11px; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: start; gap: 6px; }
+.order-card-cell { grid-column: 1; justify-self: start; max-width: 100%; margin-top: 2px; padding: 8px 15px; border-radius: 12px; background: linear-gradient(145deg, #09265c, #06143b); box-shadow: 0 6px 13px #0a1e4033; color: #fff; font-size: 20px; line-height: 1.2; font-weight: 850; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.order-card-first { grid-column: 2; align-self: start; margin-top: 2px; padding: 7px 14px; border-radius: 30px; background: var(--order-danger); box-shadow: 0 8px 13px #fb456038; color: #fff; font-size: 11px; line-height: 1.2; font-weight: 750; white-space: nowrap; transform: translateX(-1.5px); }
+.order-card-cancel { grid-column: 3; justify-self: end; display: grid; place-items: center; width: 35px; height: 35px; border: 0; border-radius: 10px; background: var(--order-danger); color: #fff; cursor: pointer; }
+.order-card-cancel svg { width: 19px; height: 19px; }
+.order-card-cancel:hover { filter: brightness(1.08); }
+.order-card-status { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 8px; }
+.order-card-status:empty { display: none; }
+.order-card-metadata { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; min-width: 0; margin-top: 6px; color: #66799e; font-size: 9px; line-height: 1.2; font-weight: 400; overflow-wrap: anywhere; }
+.order-card-client-row { display: flex; flex-wrap: wrap; align-items: center; gap: 11px; margin: 1px 0 13px; }
+.order-card-client-name { min-width: 0; color: #081b4b; font-size: 23px; font-weight: 800; letter-spacing: -.03em; line-height: 1.2; overflow-wrap: anywhere; }
+.order-card-client-actions { max-width: 100%; min-height: 34px; padding: 9px 10px; border: 1px solid #dce8fa; border-radius: 9px; background: #f7fbff; color: #152d69; font-size: 11px; line-height: normal; font-weight: 700; cursor: pointer; }
+.order-card-client-actions:hover { background: #edf5ff; border-color: #b8cef5; }
+.order-card-customer, .order-card-finance { min-width: 0; overflow-wrap: anywhere; }
+.order-card-customer { color: #081b4b; }
+.order-card-client-flags { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+.order-card-card-access { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 5px 8px; border: 1px solid #dce8fa; border-radius: 8px; background: #f7fbff; color: #233e70; font-size: 11px; font-weight: 600; line-height: 1.35; }
+.order-card-card-access svg { width: 14px; height: 14px; flex-shrink: 0; color: #1759ed; }
+.order-card-card-access > span { min-width: 0; overflow-wrap: anywhere; }
+.order-card-customer [data-inviter-menu] { min-height: 0; font-size: 12px; line-height: normal; }
+.order-card-customer [data-inviter-menu] > span { color: #8999b7; font-weight: 400; }
+.order-card .inviter-trigger { color: #1759ed; font-weight: 700; line-height: normal; text-decoration: none; }
+.order-card .inviter-trigger:hover { text-decoration: underline; }
+.order-card-products { display: grid; gap: 10px; margin: 20px 0 10px; color: #081b4b; font-size: 12px; line-height: 1.35; overflow-wrap: anywhere; }
+.order-card-products li > div { min-width: 0; }
+.order-card-products li > div .text-blue-600 { color: #1055e9; }
+.order-card-products .text-gray-800 { color: #081b4b; }
+.order-card-products button { min-height: 28px; padding: 0; border: 0; background: none; color: #819bd0; font-size: 11px; }
+.order-card-bottom { margin-top: 24px; }
+.order-card-footer { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 8px; margin-bottom: 0; }
+.order-card-price { display: flex; min-width: 0; flex-direction: column; align-items: flex-start; gap: 9px; }
+.order-card-total { display: flex; flex-direction: column; align-items: flex-start; max-width: 100%; padding: 0; border: 0; border-radius: 4px; background: none; color: #081b4b; font-size: 30px; font-weight: 900; letter-spacing: -.04em; line-height: 1; text-align: left; font-variant-numeric: tabular-nums; cursor: pointer; overflow-wrap: anywhere; }
+.order-card-total:hover { color: #1759ed; }
+.order-card-original-total { color: #66799e; font-size: 12px; font-weight: 500; letter-spacing: 0; text-decoration: line-through; margin-bottom: 4px; }
+.order-card-payment { display: inline-block; max-width: 100%; padding: 7px 9px; border-radius: 30px; font-size: 10px; font-weight: 800; line-height: 1.2; text-transform: uppercase; }
+.order-card-payment--card { background: var(--order-danger); color: #fff; }
+.order-card-payment--cash { background: #edf2fa; color: #425778; }
+.order-card-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; max-width: 100%; min-width: 0; }
+.order-card-button { display: inline-flex; align-items: center; justify-content: center; min-height: 41px; max-width: 100%; padding: 13px 12px; border: 0; border-radius: 12px; font-size: 11px; line-height: 1.35; font-weight: 750; cursor: pointer; white-space: normal; text-align: center; }
+.order-card-button--details { background: linear-gradient(#f7faff, #e9f0fa); color: #233e70; }
+.order-card-button.admin-link-button--primary { background: var(--order-primary); color: #fff; box-shadow: 0 8px 16px #148cff30; }
+.order-card-button--danger { background: var(--order-danger); color: #fff; }
+.order-card-button:hover { filter: brightness(1.05); }
+.order-card button:disabled { opacity: .6; cursor: not-allowed; }
+.order-card button:focus-visible { outline: 2px solid #1759ed; outline-offset: 3px; }
+.order-card .text-gray-400 { color: #66799e; }
+.order-card ::selection { background: #d9ecff; color: #081b4b; }
+@container (max-width: 300px) {
+  .order-card-cell { padding: 7px 8px; font-size: 18px; }
+  .order-card-first { padding: 7px; font-size: 10px; }
+  .order-card-total { font-size: 26px; }
+  .order-card-footer { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .order-card-controls { width: 100%; }
+  .order-card-controls .order-card-button { flex: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .order-card, .order-card svg { transition: none; }
+  .order-card.animate-pulse { animation: none; }
+}
+
 .inviter-trigger,
 .inviter-trigger:hover,
 .inviter-trigger:focus,

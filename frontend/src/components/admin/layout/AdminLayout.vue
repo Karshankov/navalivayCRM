@@ -1,18 +1,19 @@
 <template>
-  <div class="flex min-h-screen bg-gray-50 md:h-full md:min-h-0 md:overflow-hidden">
+  <div class="admin-reference-navigation flex min-h-screen bg-gray-50 md:h-full md:min-h-0 md:overflow-hidden" :class="{ 'crm-orders-layout': isOrdersReference }">
     <AdminSidebar
       v-model="innerValue"
       :tabs="tabs"
       :title="title"
       :main-active="mainActive"
       :crm-links="crmLinks"
+      :reference-design="true"
       @lock="$emit('lock')"
     />
 
     <div class="flex-1 flex flex-col min-w-0 md:h-full md:min-h-0 md:overflow-hidden">
 
       <!-- Main content -->
-      <main class="flex-1 p-4 sm:p-6 lg:p-8 pb-16 md:pb-0 min-h-0 flex flex-col md:overflow-y-auto">
+      <main class="admin-layout-main flex-1 p-4 sm:p-6 lg:p-8 pb-16 md:pb-0 min-h-0 flex flex-col md:overflow-y-auto">
         <slot />
       </main>
     </div>
@@ -27,7 +28,7 @@
       <Bars3Icon class="w-7 h-7" />
     </button>
 
-    <div v-if="menuOpen" class="md:hidden fixed inset-0 z-[80] flex flex-col justify-end">
+    <div v-if="menuOpen" class="crm-reference-mobile-menu md:hidden fixed inset-0 z-[80] flex flex-col justify-end">
       <div class="absolute inset-0 bg-slate-900/45 backdrop-blur-sm" @click="closeMenu"></div>
 
       <div class="relative w-full px-3 pb-0">
@@ -150,6 +151,7 @@ import { RouterLink, useRoute } from 'vue-router'
 import { Bars3Icon, XMarkIcon, LockClosedIcon } from '@heroicons/vue/24/outline'
 import { storeToRefs } from 'pinia'
 import AdminSidebar from './AdminSidebar.vue'
+import '@/styles/crm-orders-reference.css'
 import { useCrmStore } from '@/stores/crm'
 import { useAdminStore } from '@/stores/admin'
 
@@ -181,6 +183,7 @@ const crmLinks = computed(() => props.crmLinks || [])
 
 const menuOpen = ref(false)
 const route = useRoute()
+const isOrdersReference = computed(() => route.path.replace(/\/$/, '') === '/admin/crm/orders')
 const previousBodyOverflow = ref<string | null>(null)
 
 const restoreBodyOverflow = () => {
