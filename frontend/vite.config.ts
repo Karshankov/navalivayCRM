@@ -55,6 +55,7 @@ export default defineConfig(({ mode }) => {
     server: {
       host: '0.0.0.0', // Разрешить доступ из локальной сети
       port: 5173,
+      allowedHosts: ['wieldable-subgroup-lecturer.ngrok-free.dev'],
       proxy: {
         '/api': {
           target: API_TARGET,

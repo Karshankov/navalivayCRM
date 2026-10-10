@@ -17,6 +17,8 @@ const crmStoreMock = vi.hoisted(() => ({
   deleteCardTariff: vi.fn(async () => undefined),
   applyCardTariff: vi.fn(async () => undefined),
   approveCardRequest: vi.fn(async () => undefined),
+  markCardRequestsAsSeen: vi.fn(() => undefined),
+  unseenCardRequestCount: 0,
   searchCardProfile: vi.fn(async () => ({
     source: "linked",
     telegram_id: "100001",

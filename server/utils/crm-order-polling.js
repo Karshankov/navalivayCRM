@@ -19,6 +19,16 @@ export function buildCrmOrderPollSummary({ db, newLimit = 100, actionLimit = 200
     LIMIT ?
   `).all(actionLimit);
 
+  // Заявки клиентов на смену тарифа оплаты картой (status = new):
+  // уведомляем менеджера как о новых заказах.
+  const newCardRequestRows = db.prepare(`
+    SELECT id
+    FROM card_payment_limit_requests
+    WHERE status = 'new'
+    ORDER BY created_at DESC
+    LIMIT 100
+  `).all();
+
   const latestRow = db.prepare(`
     SELECT MAX(COALESCE(updated_at, created_at)) AS latest_order_activity_at
     FROM orders
@@ -60,6 +70,7 @@ export function buildCrmOrderPollSummary({ db, newLimit = 100, actionLimit = 200
   return {
     newOrderIds: newOrderRows.map((row) => row.id),
     actionRequiredIds: actionRequiredRows.map((row) => row.id),
+    newCardRequestIds: newCardRequestRows.map((row) => row.id),
     latestOrderActivityAt: latestRow?.latest_order_activity_at || null,
     pendingReviewCount: Number(pendingReviewRow?.count || 0),
     latestMonthlyDraw,

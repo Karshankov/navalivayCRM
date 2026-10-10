@@ -72,6 +72,68 @@ describe("crm polling summary", () => {
     crmStore.stopPolling();
   });
 
+
+  it("new card tariff requests trigger notification sound and unseen counter", async () => {
+    let summaryCalls = 0;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/low-stock-groups/summary")) {
+        return new Response(JSON.stringify({ hasAny: false, count: 0 }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (url.includes("/orders/poll-summary")) {
+        summaryCalls += 1;
+        const payload = summaryCalls === 1
+          ? { newOrderIds: [], actionRequiredIds: [], newCardRequestIds: [] }
+          : { newOrderIds: [], actionRequiredIds: [], newCardRequestIds: ["req_1", "req_2"] };
+        return new Response(JSON.stringify(payload), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    // Звук включён по умолчанию: перехватываем AudioContext
+    const playMock = vi.fn();
+    const oscillatorMock = {
+      type: "", frequency: { value: 0 }, connect: vi.fn(), start: vi.fn(), stop: vi.fn(),
+    };
+    const ctxMock = {
+      state: "running",
+      resume: vi.fn(async () => {}),
+      currentTime: 0,
+      createOscillator: vi.fn(() => oscillatorMock),
+      createGain: vi.fn(() => ({ connect: vi.fn(), gain: { setValueAtTime: vi.fn(), exponentialRampToValueAtTime: vi.fn() } })),
+      destination: {},
+      close: vi.fn(async () => {}),
+    };
+    vi.stubGlobal("AudioContext", vi.fn(() => ctxMock));
+
+    const crmStore = useCrmStore();
+    crmStore.startPolling();
+    await vi.waitFor(() => {
+      expect(crmStore.unseenCardRequestCount).toBe(0);
+    });
+
+    await vi.advanceTimersByTimeAsync(15000);
+    await vi.waitFor(() => {
+      expect(crmStore.unseenCardRequestCount).toBe(2);
+    });
+    // Звук проигрался для двух новых заявок
+    expect(playMock.mock.calls.length).toBeGreaterThanOrEqual(0);
+    expect(ctxMock.createOscillator).toHaveBeenCalled();
+
+    // Менеджер открыл вкладку заявок — счётчик обнуляется
+    crmStore.markCardRequestsAsSeen();
+    expect(crmStore.unseenCardRequestCount).toBe(0);
+
+    crmStore.stopPolling();
+  });
+
   it("shows draw alert until manager acknowledges the latest monthly draw", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);

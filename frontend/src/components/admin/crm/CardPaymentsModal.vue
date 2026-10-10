@@ -44,15 +44,15 @@
             ? 'bg-white text-slate-800 shadow-sm'
             : 'text-slate-500 hover:bg-white/60 hover:text-slate-700'"
           :aria-current="activeTab === tab.id ? 'page' : undefined"
-          @click="activeTab = tab.id"
+          @click="activeTab = tab.id; tab.id === 'requests' && crm.markCardRequestsAsSeen()"
         >
           <component :is="tab.icon" class="h-4 w-4" aria-hidden="true" />
           {{ tab.label }}
           <span
-            v-if="tab.id === 'requests' && newRequestCount"
+            v-if="tab.id === 'requests' && (newRequestCount || unseenCardRequests)"
             class="inline-flex min-w-[18px] items-center justify-center rounded-full bg-blue-600 px-1 text-[10px] font-bold leading-[16px] text-white"
           >
-            {{ newRequestCount }}
+            {{ newRequestCount || unseenCardRequests }}
           </span>
         </button>
       </nav>
@@ -651,6 +651,9 @@ const tabDescription = computed(() => {
 const newRequestCount = computed(
   () => snapshot.value?.requests.filter((request) => request.status === "new").length || 0,
 );
+// Непросмотренные заявки от глобального поллинга: подсветим вкладку, пока
+// менеджер не откроет окно заявок.
+const unseenCardRequests = computed(() => crm.unseenCardRequestCount || 0);
 
 const todayOperations = computed(() => snapshot.value?.operations || []);
 

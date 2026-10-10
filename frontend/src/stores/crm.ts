@@ -1551,6 +1551,9 @@ export const useCrmStore = defineStore("crm", () => {
   const actionRequiredCount = ref(0);
   const unseenActionIds = ref<Set<string>>(new Set());
   const lastKnownActionIds = ref<Set<string>>(new Set());
+  // Заявки на смену тарифа оплаты картой: unseen = ждут реакции менеджера.
+  const unseenCardRequestIds = ref<Set<string>>(new Set());
+  const lastKnownCardRequestIds = ref<Set<string>>(new Set());
   // In-app toast notification (fallback for Safari)
   const inAppToast = ref<{
     show: boolean;
@@ -1684,20 +1687,24 @@ export const useCrmStore = defineStore("crm", () => {
 
   function triggerBrowserNotification(
     count: number,
-    options: { isActionRequired?: boolean; isReview?: boolean; isMonthlyDraw?: boolean } = {},
+    options: { isActionRequired?: boolean; isReview?: boolean; isMonthlyDraw?: boolean; isCardRequest?: boolean } = {},
   ) {
-    const { isActionRequired = false, isReview = false, isMonthlyDraw = false } = options;
+    const { isActionRequired = false, isReview = false, isMonthlyDraw = false, isCardRequest = false } = options;
     // Always show in-app toast (works in Safari and all browsers)
     const toastMessage = isMonthlyDraw
       ? "Розыгрыш отзывов"
-      : isReview
-        ? (count === 1 ? "Новый отзыв!" : `Новых отзывов: ${count}`)
-        : isActionRequired
-          ? (count === 1 ? "Заказ требует действий!" : `Заказов требует действий: ${count}`)
-          : (count === 1 ? "Новый заказ!" : `Новых заказов: ${count}`);
+      : isCardRequest
+        ? (count === 1 ? "Новая заявка на тариф карты!" : `Новых заявок на тариф: ${count}`)
+        : isReview
+          ? (count === 1 ? "Новый отзыв!" : `Новых отзывов: ${count}`)
+          : isActionRequired
+            ? (count === 1 ? "Заказ требует действий!" : `Заказов требует действий: ${count}`)
+            : (count === 1 ? "Новый заказ!" : `Новых заказов: ${count}`);
     const toastHint = isMonthlyDraw
       ? "Список в разделе Отзывы"
-      : isReview
+      : isCardRequest
+        ? "Окно «Оплата картой и лимиты» → Заявки"
+        : isReview
         ? "Откройте раздел «Отзывы» для модерации"
         : "Проверьте колонку «Новые»";
     inAppToast.value = { show: true, message: toastMessage, count, hint: toastHint };
@@ -1714,14 +1721,20 @@ export const useCrmStore = defineStore("crm", () => {
 
     const title = isMonthlyDraw
       ? "Розыгрыш отзывов"
-      : isReview
-        ? (count === 1 ? "Новый отзыв" : `Новых отзывов: ${count}`)
-        : isActionRequired
-          ? (count === 1 ? "Требует действий" : `Требует действий: ${count}`)
-          : (count === 1 ? "Новый заказ" : `Новых заказов: ${count}`);
+      : isCardRequest
+        ? (count === 1 ? "Заявка на тариф" : `Заявок на тариф: ${count}`)
+        : isReview
+          ? (count === 1 ? "Новый отзыв" : `Новых отзывов: ${count}`)
+          : isActionRequired
+            ? (count === 1 ? "Требует действий" : `Требует действий: ${count}`)
+            : (count === 1 ? "Новый заказ" : `Новых заказов: ${count}`);
     const body = isMonthlyDraw
       ? "Появился список победителей."
-      : isReview
+      : isCardRequest
+        ? (count === 1
+            ? "Клиент подал заявку на смену тарифа оплаты картой."
+            : "Клиенты подали новые заявки на смену тарифа оплаты картой.")
+        : isReview
         ? (count === 1
             ? "Появился отзыв на модерации."
             : "Появились новые отзывы на модерации.")
@@ -1750,6 +1763,7 @@ export const useCrmStore = defineStore("crm", () => {
   type OrderPollSummary = {
     newOrderIds: string[];
     actionRequiredIds: string[];
+    newCardRequestIds?: string[];
     latestOrderActivityAt: string | null;
     pendingReviewCount?: number;
     latestMonthlyDraw?: MonthlyDrawAlert | null;
@@ -1838,6 +1852,34 @@ export const useCrmStore = defineStore("crm", () => {
     );
     pendingReviewCount.value = currentPendingReviews;
 
+    // Заявки на тариф карты: тот же паттерн unseen/known, что и заказы.
+    const currentCardRequestIds = new Set(summary.newCardRequestIds || []);
+    const newCardRequestIds: string[] = [];
+    currentCardRequestIds.forEach((id) => {
+      if (!lastKnownCardRequestIds.value.has(id)) {
+        newCardRequestIds.push(id);
+        unseenCardRequestIds.value.add(id);
+      }
+    });
+    lastKnownCardRequestIds.value = currentCardRequestIds;
+
+    const cleanedCardRequests = new Set<string>();
+    unseenCardRequestIds.value.forEach((id) => {
+      if (currentCardRequestIds.has(id)) {
+        cleanedCardRequests.add(id);
+      }
+    });
+    unseenCardRequestIds.value = cleanedCardRequests;
+
+    if (pollingInitialized && newCardRequestIds.length > 0) {
+      if (notificationsEnabled.value) {
+        triggerBrowserNotification(newCardRequestIds.length, { isCardRequest: true });
+      }
+      if (soundEnabled.value) {
+        playNotificationSound();
+      }
+    }
+
     if (pollingInitialized && newIds.length > 0) {
       if (notificationsEnabled.value) {
         triggerBrowserNotification(newIds.length);
@@ -1887,6 +1929,10 @@ export const useCrmStore = defineStore("crm", () => {
 
   function markReviewsAsSeen() {
     reviewAlertBaseline.value = pendingReviewCount.value;
+  }
+
+  function markCardRequestsAsSeen() {
+    unseenCardRequestIds.value = new Set();
   }
 
   function markDrawAsSeen(drawId?: string) {
@@ -5312,6 +5358,8 @@ export const useCrmStore = defineStore("crm", () => {
     pendingReviewCount,
     hasUnseenReviews,
     markReviewsAsSeen,
+    unseenCardRequestCount: computed(() => unseenCardRequestIds.value.size),
+    markCardRequestsAsSeen,
     latestMonthlyDraw,
     hasUnseenDraw,
     isDrawBannerDismissed,
