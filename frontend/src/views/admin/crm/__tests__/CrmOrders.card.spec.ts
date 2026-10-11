@@ -331,14 +331,111 @@ describe('CrmOrders: redesign preserves order-card behavior', () => {
     expect(wrapper.find('article').text()).not.toContain('Товар 6');
   });
 
-  it('opens the existing whole-order discount modal from a semantic total button', async () => {
+  it('opens the order-cost modal from a semantic total button without saving', async () => {
     const { store, wrapper } = await setup();
     const update = vi.spyOn(store, 'updateOrder');
     const total = wrapper.get('[data-test="order-total"]');
     expect(total.element.tagName).toBe('BUTTON');
     await total.trigger('click');
-    expect(wrapper.get('[data-test="existing-modal"]').text()).toContain('Скидка');
+    expect(wrapper.get('[data-test="existing-modal"] h2').text()).toBe('Стоимость заказа #1001');
+    expect(wrapper.get('#order-price-additional').exists()).toBe(true);
     expect(update).not.toHaveBeenCalled();
+  });
+
+  function pricedOrder(overrides: Partial<Order> = {}) {
+    const order = makeOrder();
+    return makeOrder({
+      total_amount: 58, final_amount: 58, profit: 18,
+      discount_amount: 0, discount_percent: 0, additional_cost: 0,
+      items: [{ ...order.items![0], quantity: 1, price_per_unit: 58,
+        cost_per_unit: 40, total_price: 58, total_cost: 40 }],
+      ...overrides,
+    });
+  }
+
+  it('previews 58 + 2 = 60 and saves the absolute surcharge with discounts', async () => {
+    const { store, wrapper } = await setup(pricedOrder());
+    const update = vi.spyOn(store, 'updateOrder').mockResolvedValue(pricedOrder({ additional_cost: 2, final_amount: 60, profit: 20 }));
+    await wrapper.get('[data-test="order-total"]').trigger('click');
+    await wrapper.get('#order-price-additional').setValue('2');
+    expect(wrapper.get('[data-test="order-price-preview"]').text().replace(/\s/g, '')).toBe('60BYN');
+    await wrapper.get('[data-test="order-price-form"]').trigger('submit');
+    await flushPromises();
+    expect(update).toHaveBeenCalledWith('order-1', { discount_amount: 0, discount_percent: 0, additional_cost: 2 });
+    expect(wrapper.find('[data-test="order-price-form"]').exists()).toBe(false);
+  });
+
+  it('preserves percentage discounts and adds the surcharge after both discounts', async () => {
+    const { wrapper } = await setup(pricedOrder({ discount_amount: 8, discount_percent: 10, additional_cost: 2, final_amount: 47 }));
+    await wrapper.get('[data-test="order-total"]').trigger('click');
+    expect(wrapper.get('[data-test="order-price-preview"]').text().replace(/\s/g, '')).toBe('47BYN');
+    expect((wrapper.get('#order-price-additional').element as HTMLInputElement).value).toBe('2');
+  });
+
+  it.each(['-1', '1.234', '', '1000000000'])('rejects invalid surcharge %j without a request', async value => {
+    const { store, wrapper } = await setup(pricedOrder());
+    const update = vi.spyOn(store, 'updateOrder');
+    await wrapper.get('[data-test="order-total"]').trigger('click');
+    await wrapper.get('#order-price-additional').setValue(value);
+    expect((wrapper.get('[data-test="order-price-save"]').element as HTMLButtonElement).disabled).toBe(true);
+    expect(wrapper.get('#order-price-validation').text()).toContain('Добавочная стоимость');
+    await wrapper.get('[data-test="order-price-form"]').trigger('submit');
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('guards duplicate saves and closes after a pending request succeeds', async () => {
+    const { store, wrapper } = await setup(pricedOrder());
+    let resolve!: (order: Order) => void;
+    const update = vi.spyOn(store, 'updateOrder').mockImplementation(() => new Promise<Order>(done => { resolve = done; }));
+    await wrapper.get('[data-test="order-total"]').trigger('click');
+    await wrapper.get('#order-price-additional').setValue('2');
+    await wrapper.get('[data-test="order-price-form"]').trigger('submit');
+    await wrapper.get('[data-test="order-price-form"]').trigger('submit');
+    expect(update).toHaveBeenCalledTimes(1);
+    expect((wrapper.get('[data-test="order-price-save"]').element as HTMLButtonElement).disabled).toBe(true);
+    resolve(pricedOrder({ additional_cost: 2, final_amount: 60, profit: 20 }));
+    await flushPromises();
+    expect(wrapper.find('[data-test="order-price-form"]').exists()).toBe(false);
+  });
+
+  it('retains input on failure and allows an explicit retry', async () => {
+    const { store, wrapper } = await setup(pricedOrder());
+    const update = vi.spyOn(store, 'updateOrder')
+      .mockRejectedValueOnce(new Error('Тестовая ошибка'))
+      .mockResolvedValueOnce(pricedOrder({ additional_cost: 2, final_amount: 60 }));
+    await wrapper.get('[data-test="order-total"]').trigger('click');
+    await wrapper.get('#order-price-additional').setValue('2');
+    await wrapper.get('[data-test="order-price-form"]').trigger('submit');
+    await flushPromises();
+    expect(wrapper.get('[data-test="order-price-form"]').text()).toContain('Тестовая ошибка');
+    expect((wrapper.get('#order-price-additional').element as HTMLInputElement).value).toBe('2');
+    await wrapper.get('[data-test="order-price-form"]').trigger('submit');
+    await flushPromises();
+    expect(update).toHaveBeenCalledTimes(2);
+    expect(wrapper.find('[data-test="order-price-form"]').exists()).toBe(false);
+  });
+
+  it('removes discounts without removing the surcharge', async () => {
+    const { store, wrapper } = await setup(pricedOrder({ discount_amount: 8, discount_percent: 10, additional_cost: 2, final_amount: 47 }));
+    const update = vi.spyOn(store, 'updateOrder').mockResolvedValue(pricedOrder({ additional_cost: 2, final_amount: 60 }));
+    await wrapper.get('[data-test="order-total"]').trigger('click');
+    await buttonByText('Убрать скидку').trigger('click');
+    await flushPromises();
+    expect(update).toHaveBeenCalledWith('order-1', { discount_amount: 0, discount_percent: 0, additional_cost: 2 });
+  });
+
+  it('locks surcharge changes for paid orders', async () => {
+    const { wrapper } = await setup(pricedOrder({ paid_amount: 1 }));
+    await wrapper.get('[data-test="order-total"]').trigger('click');
+    expect((wrapper.get('#order-price-additional').element as HTMLInputElement).disabled).toBe(true);
+  });
+
+  it('locks the surcharge when the open order becomes delivered', async () => {
+    const { store, wrapper } = await setup(pricedOrder());
+    await wrapper.get('[data-test="order-total"]').trigger('click');
+    store.orders = store.orders.map(order => ({ ...order, status: 'delivered' as const }));
+    await flushPromises();
+    expect((wrapper.get('#order-price-additional').element as HTMLInputElement).disabled).toBe(true);
   });
 
   it('keeps cancellation confirmation and existing detail navigation', async () => {

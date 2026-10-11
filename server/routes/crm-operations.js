@@ -72,6 +72,7 @@ import {
   forceIssueCardPayment,
   issueCardOrder,
   reverseCardOrder,
+  toMinorUnits,
 } from "../utils/card-payment-service.js";
 
 export const crmOperationsRouter = express.Router();
@@ -1334,6 +1335,7 @@ crmOperationsRouter.patch(
         items,
         discount_amount,
         discount_percent,
+        additional_cost,
         payment_type,
         payment_account_id,
         paid_amount,
@@ -1366,14 +1368,14 @@ crmOperationsRouter.patch(
 
       const shouldUpdateDiscount =
         discount_amount !== undefined || discount_percent !== undefined;
-      const updatedDiscountAmount =
-        discount_amount !== undefined
-          ? Number(discount_amount)
-          : Number(order.discount_amount || 0);
-      const updatedDiscountPercent =
-        discount_percent !== undefined
-          ? Number(discount_percent)
-          : Number(order.discount_percent || 0);
+      const shouldUpdatePrice = shouldUpdateDiscount || additional_cost !== undefined;
+      if (additional_cost !== undefined && (
+        typeof additional_cost !== "number" || !Number.isFinite(additional_cost)
+        || additional_cost < 0 || additional_cost > 999999999.99
+        || Math.abs(additional_cost - roundMoney(additional_cost)) > 0.0000001
+      )) {
+        return res.status(400).json({ error: "invalid_additional_cost", message: "Добавочная стоимость: неотрицательная сумма с точностью до копеек" });
+      }
 
       let desiredStatus = order.status;
       if (reactivate && order.status === "cancelled") {
@@ -1421,6 +1423,22 @@ crmOperationsRouter.patch(
           if (status !== undefined) {
             desiredStatus = status;
           }
+        }
+
+        // Значения по умолчанию берём из свежей строки под блокировкой.
+        const updatedDiscountAmount = discount_amount !== undefined
+          ? Number(discount_amount) : Number(order.discount_amount || 0);
+        const updatedDiscountPercent = discount_percent !== undefined
+          ? Number(discount_percent) : Number(order.discount_percent || 0);
+        const updatedAdditionalCost = additional_cost !== undefined
+          ? roundMoney(additional_cost) : Number(order.additional_cost || 0);
+        if (shouldUpdatePrice && (
+          !Number.isFinite(updatedDiscountAmount) || updatedDiscountAmount < 0
+          || !Number.isFinite(updatedDiscountPercent) || updatedDiscountPercent < 0 || updatedDiscountPercent > 100
+        )) throw new StaffServiceError("invalid_order_discount", 400);
+        if (additional_cost !== undefined && updatedAdditionalCost !== Number(order.additional_cost || 0)
+          && (Number(order.paid_amount || 0) > 0 || order.status === "delivered")) {
+          throw new StaffServiceError("order_price_locked", 409);
         }
 
         // Выдача идёт только через свой эндпоинт, иначе её некому записать.
@@ -1826,18 +1844,18 @@ crmOperationsRouter.patch(
           totalAmount = Number(orderBuild.totalAmount || 0);
           totalCost = Number(orderBuild.totalCost || 0);
 
-          const finalAmount = applyDiscounts(
+          const finalAmount = roundMoney(applyDiscounts(
             itemsSubtotal,
             updatedDiscountAmount,
             updatedDiscountPercent,
-          );
+          ) + updatedAdditionalCost);
           const profit = roundMoney(finalAmount - totalCost);
 
           db.prepare(
             `
           UPDATE orders
           SET total_amount = ?, final_amount = ?, profit = ?,
-              discount_amount = ?, discount_percent = ?, updated_at = DATETIME('now')
+              discount_amount = ?, discount_percent = ?, additional_cost = ?, updated_at = DATETIME('now')
           WHERE id = ?
         `,
           ).run(
@@ -1846,12 +1864,13 @@ crmOperationsRouter.patch(
             profit,
             updatedDiscountAmount,
             updatedDiscountPercent,
+            updatedAdditionalCost,
             id,
           );
           db.prepare(
             `UPDATE orders SET stock_deducted = ?, updated_at = DATETIME('now') WHERE id = ?`,
           ).run(nextStockDeducted, id);
-        } else if (shouldUpdateDiscount) {
+        } else if (shouldUpdatePrice) {
           const totals = db
             .prepare(
               `
@@ -1865,26 +1884,44 @@ crmOperationsRouter.patch(
             .get(id);
           const itemsSubtotal = Number(totals?.items_subtotal || 0);
           const totalCost = Number(totals?.total_cost || 0);
-          const finalAmount = applyDiscounts(
+          const finalAmount = roundMoney(applyDiscounts(
             itemsSubtotal,
             updatedDiscountAmount,
             updatedDiscountPercent,
-          );
+          ) + updatedAdditionalCost);
           const profit = roundMoney(finalAmount - totalCost);
 
           db.prepare(
             `
           UPDATE orders
-          SET discount_amount = ?, discount_percent = ?, final_amount = ?, profit = ?, updated_at = DATETIME('now')
+          SET discount_amount = ?, discount_percent = ?, additional_cost = ?, final_amount = ?, profit = ?, updated_at = DATETIME('now')
           WHERE id = ?
         `,
           ).run(
             updatedDiscountAmount,
             updatedDiscountPercent,
+            updatedAdditionalCost,
             finalAmount,
             profit,
             id,
           );
+        }
+
+        if ((hasItemsPayload || shouldUpdatePrice)
+          && !["delivered", "cancelled"].includes(desiredStatus)
+          && Number(order.paid_amount || 0) <= 0) {
+          const pricedOrder = db.prepare("SELECT final_amount FROM orders WHERE id = ?").get(id);
+          const finalMinor = toMinorUnits(pricedOrder.final_amount);
+          const reserved = db.prepare(`SELECT id, amount_minor FROM card_payment_operations
+            WHERE order_id = ? AND operation_type = 'order' AND operation_status = 'reserved'`).get(id);
+          // Не увеличиваем существующий резерв: надбавка оплачивается наличными.
+          const cardMinor = reserved ? Math.min(Number(reserved.amount_minor), finalMinor) : 0;
+          if (reserved) {
+            if (cardMinor > 0) db.prepare("UPDATE card_payment_operations SET amount_minor = ? WHERE id = ?").run(cardMinor, reserved.id);
+            else reverseCardOrder(id);
+          }
+          db.prepare("UPDATE orders SET card_amount_minor = ?, cash_due_minor = ? WHERE id = ?")
+            .run(cardMinor, Math.max(0, finalMinor - cardMinor), id);
         }
 
         if (order.promo_code_id) {

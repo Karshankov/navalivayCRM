@@ -2997,13 +2997,14 @@ publicRouter.put(
           nextPromoCodeId = nextPromoResult.promo.id;
         }
 
-        const nextFinalAmount = Math.max(
+        // Клиент не может изменить установленную менеджером надбавку.
+        const nextFinalAmount = roundMoney(Math.max(
           0,
           orderBuild.totalAmount -
             nextPromoDiscount -
             Number(orderBuild.totalLoyaltyDiscount || 0),
-        );
-        const nextProfit = nextFinalAmount - orderBuild.totalCost;
+        ) + Number(order.additional_cost || 0));
+        const nextProfit = roundMoney(nextFinalAmount - orderBuild.totalCost);
         const reservedCardOperation = db.prepare(`
           SELECT amount_minor
           FROM card_payment_operations

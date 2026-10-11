@@ -893,7 +893,114 @@ async function testCatalogPriceSnapshotSurvivesEdits() {
   console.log("crm-regressions: снимок каталожной цены переживает правки заказа");
 }
 
+async function testOrderAdditionalCost() {
+  const productId = insertProduct({ stock: 20, price: 58, cost: 40 });
+  const orderId = insertOrder({
+    orderNumber: 99001, status: 'new', stockDeducted: 0,
+    createdAt: '2026-03-24 20:00:00',
+    items: [{ productId, quantity: 1, price: 58, cost: 40 }],
+  });
+  assert.equal(Number(getOrder(orderId).additional_cost), 0);
+  const { migrateOrderAdditionalCost } = await import('../migrations/add_order_additional_cost.js');
+  migrateOrderAdditionalCost();
+  assert.equal(Number(getOrder(orderId).additional_cost), 0);
+
+  const added = await patchOrder(orderId, { additional_cost: 2 });
+  assert.equal(added.response.status, 200);
+  let order = getOrder(orderId);
+  assert.equal(Number(order.total_amount), 58);
+  assert.equal(Number(order.additional_cost), 2);
+  assert.equal(Number(order.final_amount), 60);
+  assert.equal(Number(order.profit), 20);
+  assert.equal(Number(order.cash_due_minor), 6000);
+  assert.equal(getProductStock(productId), 20);
+  const beforeRepeat = getOrder(orderId);
+  assert.equal((await patchOrder(orderId, { additional_cost: 2 })).response.status, 200);
+  assert.equal(Number(getOrder(orderId).final_amount), Number(beforeRepeat.final_amount));
+  assert.equal(Number(getOrder(orderId).profit), Number(beforeRepeat.profit));
+
+  for (const additional_cost of [-1, 1.234, null, '2', {}, 1000000000]) {
+    const before = getOrder(orderId);
+    const rejected = await patchOrder(orderId, { additional_cost });
+    assert.equal(rejected.response.status, 400, JSON.stringify(additional_cost));
+    assert.deepEqual(getOrder(orderId), before, 'Invalid input must not change the order');
+  }
+
+  assert.equal((await patchOrder(orderId, {
+    items: [{ product_id: productId, quantity: 2, price_per_unit: 58 }],
+  })).response.status, 200);
+  order = getOrder(orderId);
+  assert.equal(Number(order.additional_cost), 2);
+  assert.equal(Number(order.final_amount), 118);
+  assert.equal(Number(order.profit), 38);
+
+  assert.equal((await patchOrder(orderId, { discount_amount: 10, discount_percent: 10 })).response.status, 200);
+  order = getOrder(orderId);
+  assert.equal(Number(order.additional_cost), 2);
+  assert.equal(Number(order.final_amount), 97.4);
+  assert.equal(Number(order.profit), 17.4);
+  assert.equal((await patchOrder(orderId, { additional_cost: 0 })).response.status, 200);
+  assert.equal(Number(getOrder(orderId).final_amount), 95.4);
+  assert.equal(Number(getOrder(orderId).profit), 15.4);
+
+  db.prepare('UPDATE orders SET paid_amount = 1 WHERE id = ?').run(orderId);
+  const beforePaidChange = getOrder(orderId);
+  assert.equal((await patchOrder(orderId, { additional_cost: 3 })).response.status, 409);
+  assert.deepEqual(getOrder(orderId), beforePaidChange);
+  db.prepare("UPDATE orders SET paid_amount = 0, status = 'delivered' WHERE id = ?").run(orderId);
+  const beforeDeliveredChange = getOrder(orderId);
+  assert.equal((await patchOrder(orderId, { additional_cost: 3 })).response.status, 409);
+  assert.deepEqual(getOrder(orderId), beforeDeliveredChange);
+
+  const unauthenticated = await requestJson(`/api/admin/crm/orders/${orderId}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ additional_cost: 3 }),
+  });
+  assert.equal(unauthenticated.response.status, 401);
+  assert.deepEqual(getOrder(orderId), beforeDeliveredChange);
+  console.log('crm-regressions: надбавка увеличивает итог и прибыль, сохраняется и валидируется');
+}
+
+async function testOrderCardAdditionalCost() {
+  const productId = insertProduct({ stock: 5, price: 58, cost: 40 });
+  const orderId = insertOrder({
+    orderNumber: 99002, status: 'new', stockDeducted: 0,
+    createdAt: '2026-03-24 20:00:00',
+    items: [{ productId, quantity: 1, price: 58, cost: 40 }],
+  });
+  const operationId = makeId('card');
+  db.prepare("UPDATE orders SET payment_type = 'card', card_amount_minor = 4500, cash_due_minor = 1300 WHERE id = ?").run(orderId);
+  db.prepare(`INSERT INTO card_payment_operations
+    (id, operation_type, operation_status, order_id, amount_minor, business_date)
+    VALUES (?, 'order', 'reserved', ?, 4500, '2026-03-24')`).run(operationId, orderId);
+  const operation = () => db.prepare('SELECT * FROM card_payment_operations WHERE id = ?').get(operationId);
+
+  assert.equal((await patchOrder(orderId, { additional_cost: 2 })).response.status, 200);
+  assert.equal(Number(getOrder(orderId).final_amount), 60);
+  assert.equal(Number(getOrder(orderId).profit), 20);
+  assert.equal(Number(getOrder(orderId).card_amount_minor), 4500);
+  assert.equal(Number(getOrder(orderId).cash_due_minor), 1500);
+  assert.equal(Number(operation().amount_minor), 4500);
+  assert.equal(operation().operation_status, 'reserved');
+
+  assert.equal((await patchOrder(orderId, { discount_amount: 50, additional_cost: 2 })).response.status, 200);
+  assert.equal(Number(getOrder(orderId).final_amount), 10);
+  assert.equal(Number(getOrder(orderId).card_amount_minor), 1000);
+  assert.equal(Number(getOrder(orderId).cash_due_minor), 0);
+  assert.equal(Number(operation().amount_minor), 1000);
+
+  assert.equal((await patchOrder(orderId, { discount_amount: 58, additional_cost: 0 })).response.status, 200);
+  assert.equal(Number(getOrder(orderId).final_amount), 0);
+  assert.equal(Number(getOrder(orderId).card_amount_minor), 0);
+  assert.equal(Number(getOrder(orderId).cash_due_minor), 0);
+  assert.equal(operation().operation_status, 'reversed');
+  assert.equal(getProductStock(productId), 5);
+  console.log('crm-regressions: надбавка не увеличивает карточный резерв, снижение суммы освобождает резерв');
+}
+
 async function main() {
+  await testOrderCardAdditionalCost();
+  await testOrderAdditionalCost();
   await testDashboardUsesBusinessDayBoundary();
   await testPackedStatusTransitionsWithItemsPayload();
   await testPackedOrderItemChangeRedeductsStock();

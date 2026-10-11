@@ -896,8 +896,8 @@
                           type="button"
                           data-test="order-total"
                           class="order-card-total"
-                          title="Изменить скидку на заказ"
-                          :aria-label="'Изменить скидку на заказ. Итого ' + formatCurrency(order.final_amount)"
+                          title="Изменить стоимость заказа"
+                          :aria-label="'Изменить стоимость заказа. Итого ' + formatCurrency(order.final_amount)"
                           @click.stop="openDiscountModal(order)"
                         >
                           <span v-if="getOrderTotalDiscount(order) > 0" class="order-card-original-total">{{ formatCurrency(order.total_amount) }}</span>
@@ -1390,67 +1390,58 @@
       @saved="handleNoteSaved"
     />
 
-    <!-- Модалка скидки -->
+    <!-- Стоимость заказа: скидка и отдельная надбавка -->
     <AdminModal
       :isOpen="discountModalOpen && !!discountOrder"
-      :title="discountOrder ? `Скидка на заказ #${discountOrder.order_number}` : 'Скидка'"
-      description="Введите сумму скидки в рублях"
-      size="sm"
+      :title="discountOrder ? `Стоимость заказа #${discountOrder.order_number}` : 'Стоимость заказа'"
+      description="Скидка уменьшает сумму, добавочная стоимость увеличивает её."
+      size="md"
+      reference-design
+      :is-loading="isApplyingDiscount"
       :showActions="false"
       @close="closeDiscountModal"
       @cancel="closeDiscountModal"
     >
-      <div class="grid gap-4">
-        <div>
-          <label class="text-sm font-medium text-gray-700">Сумма заказа</label>
-          <div class="mt-1 text-lg font-semibold text-gray-900">
-            {{ discountOrder ? formatCurrency(discountOrder.total_amount) : '' }}
+      <form class="crm-order-price" data-test="order-price-form" novalidate @submit.prevent="applyDiscount">
+        <div class="crm-order-price-base">
+          <span>Стоимость товаров со скидками по позициям</span>
+          <strong>{{ formatCurrency(orderPriceSubtotal) }}</strong>
+        </div>
+        <fieldset class="crm-order-price-fields" :disabled="isApplyingDiscount">
+          <div class="crm-order-price-field">
+            <label for="order-price-discount">Скидка на заказ <span>BYN</span></label>
+            <input id="order-price-discount" v-model.number="discountAmount" type="number" min="0"
+              :max="orderPriceSubtotal" step="0.01" inputmode="decimal" placeholder="0"
+              :aria-invalid="!!orderPriceValidation" aria-describedby="order-price-discount-hint order-price-validation" />
+            <p id="order-price-discount-hint">Вычитается из стоимости товаров.</p>
+          </div>
+          <div class="crm-order-price-field">
+            <label for="order-price-additional">Добавочная стоимость <span>BYN</span></label>
+            <input id="order-price-additional" v-model.number="additionalCost" type="number" min="0"
+              max="999999999.99" step="0.01" inputmode="decimal" placeholder="0" :disabled="orderPriceAdditionalLocked"
+              :aria-invalid="!!orderPriceValidation" aria-describedby="order-price-additional-hint order-price-validation" />
+            <p id="order-price-additional-hint">{{ orderPriceAdditionalLocked
+              ? 'Для изменения надбавки сначала отмените оплату заказа.'
+              : 'Добавляется после скидок и целиком увеличивает прибыль.' }}</p>
+          </div>
+        </fieldset>
+        <p v-if="discountPercent > 0" class="crm-order-price-hint">Сохранена скидка {{ discountPercent }}% на товары после скидки в BYN.</p>
+        <div class="crm-order-price-result" aria-live="polite" aria-atomic="true">
+          <div><span>Итого к оплате</span><strong data-test="order-price-preview">{{ orderPriceValidation ? '—' : formatCurrency(orderPriceFinal) }}</strong></div>
+          <p v-if="!orderPriceValidation && Number(additionalCost) > 0">Включая добавочную стоимость +{{ formatCurrency(Number(additionalCost)) }}</p>
+        </div>
+        <p v-if="orderPriceValidation" id="order-price-validation" class="crm-order-price-error" role="alert">{{ orderPriceValidation }}</p>
+        <p v-else id="order-price-validation" class="crm-order-price-hint">Чтобы убрать добавочную стоимость, укажите 0.</p>
+        <p v-if="orderPriceError" class="crm-order-price-error" role="alert">{{ orderPriceError }}</p>
+        <div class="crm-order-price-actions">
+          <button v-if="Number(discountOrder?.discount_amount) > 0 || Number(discountOrder?.discount_percent) > 0"
+            type="button" class="crm-order-price-reset" :disabled="isApplyingDiscount || !!orderPriceValidation" @click="removeDiscount">Убрать скидку</button>
+          <div class="crm-order-price-main-actions">
+            <button type="button" class="crm-order-price-secondary" :disabled="isApplyingDiscount" @click="closeDiscountModal">Отмена</button>
+            <button type="submit" class="crm-order-price-primary" data-test="order-price-save" :disabled="isApplyingDiscount || !!orderPriceValidation">{{ isApplyingDiscount ? 'Сохраняем…' : 'Сохранить' }}</button>
           </div>
         </div>
-        <div>
-          <label class="text-sm font-medium text-gray-700">Скидка (BYN)</label>
-          <input
-            v-model.number="discountAmount"
-            type="number"
-            min="0"
-            :max="discountOrder?.total_amount || 0"
-            step="1"
-            class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-200"
-            placeholder="0"
-          />
-        </div>
-        <div v-if="discountAmount > 0" class="rounded-lg bg-emerald-50 p-3">
-          <div class="text-sm text-gray-600">Итого со скидкой:</div>
-          <div class="text-xl font-bold text-emerald-700">
-            {{ discountOrder ? formatCurrency(discountOrder.total_amount - discountAmount) : '' }}
-          </div>
-        </div>
-      </div>
-      <footer class="mt-6 flex justify-between gap-3">
-        <button
-          v-if="discountOrder?.discount_amount && discountOrder.discount_amount > 0"
-          @click="removeDiscount"
-          class="rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50"
-          :disabled="isApplyingDiscount"
-        >
-          Убрать скидку
-        </button>
-        <div class="flex-1"></div>
-        <button
-          @click="closeDiscountModal"
-          class="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 transition hover:bg-gray-100"
-          :disabled="isApplyingDiscount"
-        >
-          Отмена
-        </button>
-        <button
-          @click="deferClick(() => { void applyDiscount() })"
-          class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-700 disabled:opacity-50"
-          :disabled="isApplyingDiscount || discountAmount < 0"
-        >
-          {{ isApplyingDiscount ? 'Сохранение...' : 'Применить' }}
-        </button>
-      </footer>
+      </form>
     </AdminModal>
 
     <!-- Модалка отмены заказа -->
@@ -2294,7 +2285,7 @@ function getOrderOrderLevelDiscount(order: Order) {
 function getOrderTotalDiscount(order: Order) {
   return Math.max(
     0,
-    Number(order.total_amount || 0) - Number(order.final_amount || 0),
+    Number(order.total_amount || 0) + Number(order.additional_cost || 0) - Number(order.final_amount || 0),
   );
 }
 
@@ -2342,8 +2333,39 @@ async function refreshUserbotStatus() {
 // Discount modal state
 const discountModalOpen = ref(false);
 const discountOrder = ref<Order | null>(null);
-const discountAmount = ref(0);
+const discountAmount = ref<number | string>(0);
+const discountPercent = ref(0);
+const additionalCost = ref<number | string>(0);
+const orderPriceError = ref("");
 const isApplyingDiscount = ref(false);
+let orderPriceGeneration = 0;
+const orderPriceAdditionalLocked = computed(() => {
+  const order = crmStore.orders.find(item => item.id === discountOrder.value?.id) || discountOrder.value;
+  return Number(order?.paid_amount || 0) > 0 || order?.status === "delivered";
+});
+const orderPriceSubtotal = computed(() => {
+  const order = discountOrder.value;
+  if (!order) return 0;
+  return order.items?.length
+    ? Math.round(order.items.reduce((sum, item) => sum + Number(item.total_price || 0), 0) * 100) / 100
+    : Number(order.total_amount || 0);
+});
+const orderPriceValidation = computed(() => {
+  const discount = Number(discountAmount.value);
+  const extra = Number(additionalCost.value);
+  const validMoney = (value: number | string, amount: number) => String(value).trim() !== ""
+    && Number.isFinite(amount) && amount >= 0 && amount <= 999999999.99
+    && Math.abs(amount * 100 - Math.round(amount * 100)) < 0.00001;
+  if (!validMoney(discountAmount.value, discount) || discount > orderPriceSubtotal.value)
+    return "Скидка: сумма от 0 до стоимости товаров, с точностью до копеек.";
+  if (!validMoney(additionalCost.value, extra))
+    return "Добавочная стоимость: неотрицательная сумма с точностью до копеек.";
+  return "";
+});
+const orderPriceFinal = computed(() => Math.round((
+  Math.max(0, orderPriceSubtotal.value - Number(discountAmount.value))
+  * (1 - discountPercent.value / 100) + Number(additionalCost.value)
+) * 100) / 100);
 
 // Cancel order modal state
 const cancelModalOpen = ref(false);
@@ -3145,41 +3167,59 @@ function orderStatusLabel(
   }
 }
 
-// Discount modal functions
+// Стоимость заказа: сохраняем абсолютные значения, безопасные при повторе.
 function openDiscountModal(order: Order) {
+  if (isApplyingDiscount.value) return;
+  orderPriceGeneration++;
   discountOrder.value = order;
-  discountAmount.value = order.discount_amount || 0;
+  discountAmount.value = Number(order.discount_amount || 0);
+  discountPercent.value = Number(order.discount_percent || 0);
+  additionalCost.value = Number(order.additional_cost || 0);
+  orderPriceError.value = "";
   discountModalOpen.value = true;
 }
 
 function closeDiscountModal() {
   if (isApplyingDiscount.value) return;
+  orderPriceGeneration++;
+  resetOrderPriceModal();
+}
+
+function resetOrderPriceModal() {
   discountModalOpen.value = false;
   discountOrder.value = null;
   discountAmount.value = 0;
+  discountPercent.value = 0;
+  additionalCost.value = 0;
+  orderPriceError.value = "";
 }
 
 async function applyDiscount() {
-  if (!discountOrder.value) return false;
+  if (!discountOrder.value || isApplyingDiscount.value || orderPriceValidation.value) return false;
   const activeOrder = discountOrder.value;
+  const generation = orderPriceGeneration;
+  const values = {
+    discount_amount: Number(discountAmount.value),
+    discount_percent: discountPercent.value,
+    additional_cost: Number(additionalCost.value),
+  };
+  orderPriceError.value = "";
   isApplyingDiscount.value = true;
   try {
-    await crmStore.updateOrder(activeOrder.id, {
-      discount_amount: discountAmount.value,
-      discount_percent: 0,
-    });
-    // Закрываем модалку напрямую
-    discountModalOpen.value = false;
-    discountOrder.value = null;
-    discountAmount.value = 0;
+    await crmStore.updateOrder(activeOrder.id, values);
+    resetOrderPriceModal();
     return true;
   } catch (error: any) {
     if (error?.code === "shift_required") {
       discountModalOpen.value = false;
       void staffShiftBarRef.value?.requestShiftRequired(
-        `Изменить скидку заказа #${activeOrder.order_number}`,
+        `Изменить стоимость заказа #${activeOrder.order_number}`,
         async () => {
+          if (generation !== orderPriceGeneration) return false;
           discountOrder.value = activeOrder;
+          discountAmount.value = values.discount_amount;
+          discountPercent.value = values.discount_percent;
+          additionalCost.value = values.additional_cost;
           discountModalOpen.value = true;
           await nextTick();
           return applyDiscount();
@@ -3188,16 +3228,14 @@ async function applyDiscount() {
       return false;
     }
     if (error?.outcomeUnknown) {
-      discountModalOpen.value = false;
-      showOrderToast({
-        kind: "error",
-        message: `Заказ #${activeOrder.order_number}: ответ не получен. Обновите доску перед повтором.`,
-      });
+      resetOrderPriceModal();
+      showOrderToast({ kind: "error", message: `Заказ #${activeOrder.order_number}: ответ не получен. Обновите доску перед повтором.` });
       void refreshOrders({ skipNotify: true });
       return false;
     }
-    const errorMessage = error?.message || "Не удалось применить скидку";
-    showOrderToast({ kind: "error", message: `Заказ #${activeOrder.order_number}: ${errorMessage}` });
+    orderPriceError.value = error?.code === "order_price_locked" || error?.message === "order_price_locked"
+      ? "Для изменения надбавки сначала отмените оплату заказа."
+      : error?.message || "Не удалось сохранить стоимость. Попробуйте ещё раз.";
     return false;
   } finally {
     isApplyingDiscount.value = false;
@@ -3205,48 +3243,10 @@ async function applyDiscount() {
 }
 
 async function removeDiscount() {
-  if (!discountOrder.value) return false;
-  const activeOrder = discountOrder.value;
-  isApplyingDiscount.value = true;
-  try {
-    await crmStore.updateOrder(activeOrder.id, {
-      discount_amount: 0,
-      discount_percent: 0,
-    });
-    // Закрываем модалку напрямую
-    discountModalOpen.value = false;
-    discountOrder.value = null;
-    discountAmount.value = 0;
-    return true;
-  } catch (error: any) {
-    if (error?.code === "shift_required") {
-      discountModalOpen.value = false;
-      void staffShiftBarRef.value?.requestShiftRequired(
-        `Убрать скидку заказа #${activeOrder.order_number}`,
-        async () => {
-          discountOrder.value = activeOrder;
-          discountModalOpen.value = true;
-          await nextTick();
-          return removeDiscount();
-        },
-      );
-      return false;
-    }
-    if (error?.outcomeUnknown) {
-      discountModalOpen.value = false;
-      showOrderToast({
-        kind: "error",
-        message: `Заказ #${activeOrder.order_number}: ответ не получен. Обновите доску перед повтором.`,
-      });
-      void refreshOrders({ skipNotify: true });
-      return false;
-    }
-    const errorMessage = error?.message || "Не удалось убрать скидку";
-    showOrderToast({ kind: "error", message: `Заказ #${activeOrder.order_number}: ${errorMessage}` });
-    return false;
-  } finally {
-    isApplyingDiscount.value = false;
-  }
+  if (!discountOrder.value || isApplyingDiscount.value || orderPriceValidation.value) return false;
+  discountAmount.value = 0;
+  discountPercent.value = 0;
+  return applyDiscount();
 }
 
 // Cancel order modal functions
@@ -3435,4 +3435,35 @@ async function confirmCancelOrder() {
     transform: translateX(100%) scale(0.8);
   }
 }
+</style>
+
+<style scoped>
+.crm-order-price { min-width: 0; color: #081b4b; font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; font-size: 13px; line-height: 1.5; }
+.crm-order-price *, .crm-order-price *::before, .crm-order-price *::after { box-sizing: border-box; }
+.crm-order-price-base { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 16px 18px; margin-bottom: 16px; border: 1px solid #e3ecf9; border-radius: 14px; background: #fff; }
+.crm-order-price-base span { color: #66799e; font-size: 12px; }
+.crm-order-price-base strong { flex-shrink: 0; font-size: 17px; font-weight: 750; font-variant-numeric: tabular-nums; }
+.crm-order-price-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin: 0; padding: 0; border: 0; min-width: 0; }
+.crm-order-price-field { min-width: 0; padding: 16px; border: 1px solid #e3ecf9; border-radius: 14px; background: #fff; }
+.crm-order-price-field label { display: block; margin-bottom: 9px; font-size: 12px; font-weight: 750; }
+.crm-order-price-field label span { margin-left: 4px; color: #8999b7; font-size: 10px; }
+.crm-order-price-field input { width: 100%; min-width: 0; border: 1px solid #dce8fa; border-radius: 10px; background: #f7fbff; padding: 11px 12px; color: #081b4b; font: inherit; font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.crm-order-price-field p, .crm-order-price-hint { margin: 9px 0 0; color: #66799e; font-size: 11px; line-height: 1.5; }
+.crm-order-price-result { margin-top: 16px; padding: 20px; border: 1px solid #dce8fa; border-radius: 16px; background: linear-gradient(140deg, #fff, #edf6ff); }
+.crm-order-price-result > div { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 20px; }
+.crm-order-price-result span { color: #425778; font-size: 12px; font-weight: 600; }
+.crm-order-price-result strong { font-size: 28px; font-weight: 850; letter-spacing: -.035em; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.crm-order-price-result p { margin: 5px 0 0; color: #66799e; font-size: 11px; }
+.crm-order-price-error { padding: 10px 12px; border: 1px solid #ffd4dc; border-radius: 10px; background: #fff4f6; color: #c92b4f; font-size: 12px; }
+.crm-order-price-actions, .crm-order-price-main-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.crm-order-price-actions { margin-top: 20px; justify-content: space-between; }
+.crm-order-price-main-actions { margin-left: auto; }
+.crm-order-price-actions button { min-height: 42px; padding: 10px 16px; border-radius: 11px; font: inherit; font-size: 12px; font-weight: 750; cursor: pointer; }
+.crm-order-price-primary { border: 1px solid transparent; background: linear-gradient(100deg, #05b8ff, #185dff); color: #fff; box-shadow: 0 6px 14px #148cff24; }
+.crm-order-price-secondary { border: 1px solid #dce8fa; background: linear-gradient(#f7faff, #e9f0fa); color: #233e70; }
+.crm-order-price-reset { border: 1px solid #ffd4dc; background: #fff4f6; color: #c92b4f; }
+.crm-order-price :is(input, button):focus-visible { outline: 2px solid #0958ff; outline-offset: 3px; }
+.crm-order-price button:not(:disabled):hover { filter: brightness(1.04); }
+.crm-order-price :disabled { opacity: .6; cursor: not-allowed; }
+@media (max-width: 480px) { .crm-order-price-fields { grid-template-columns: minmax(0, 1fr); } .crm-order-price-base { flex-wrap: wrap; gap: 6px; } .crm-order-price-main-actions { width: 100%; } .crm-order-price-main-actions button { flex: 1; } }
 </style>

@@ -354,6 +354,7 @@ export interface Order {
   total_amount: number;
   discount_amount: number;
   discount_percent: number;
+  additional_cost?: number;
   final_amount: number;
   profit: number;
   notes: string | null;
@@ -4001,6 +4002,7 @@ export const useCrmStore = defineStore("crm", () => {
       notes?: string | null;
       discount_amount?: number;
       discount_percent?: number;
+      additional_cost?: number;
       items?: Array<{
         product_id: string;
         variant_id?: string | null;

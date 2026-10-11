@@ -531,6 +531,10 @@
                     />
                   </dd>
                 </div>
+                <div v-if="currentOrder.additional_cost" class="flex items-center justify-between">
+                  <dt>Добавочная стоимость</dt>
+                  <dd class="font-semibold text-blue-700">+{{ formatCurrency(currentOrder.additional_cost) }}</dd>
+                </div>
                 <div class="flex items-center justify-between border-t border-gray-200 pt-3 text-base font-semibold text-gray-900">
                   <dt>Итого к оплате</dt>
                   <dd>{{ formatCurrency(finalAmount) }}</dd>
@@ -804,7 +808,7 @@ const itemsCost = computed(() => {
   return form.items.reduce((sum, item) => sum + Math.max(item.cost, 0) * Math.max(item.quantity, 0), 0)
 })
 
-const finalAmount = computed(() => applyDiscounts(itemsDiscountedSubtotal.value, form.discountAmount, form.discountPercent))
+const finalAmount = computed(() => Math.round((applyDiscounts(itemsDiscountedSubtotal.value, form.discountAmount, form.discountPercent) + Number(currentOrder.value?.additional_cost || 0)) * 100) / 100)
 const expectedProfit = computed(() => calculateExpectedProfit(finalAmount.value, itemsCost.value))
 
 function originalItemFor(formItem: FormItem) {
