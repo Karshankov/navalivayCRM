@@ -175,11 +175,21 @@
 }
 /* Compact, read-only server card allowance; clicking opens the existing modal. */
 .crm-orders-page .crm-card-limit {
-  display: flex; align-items: center; gap: 9px; flex: 0 1 253px;
+  position: relative; display: flex; align-items: center; gap: 9px; flex: 0 1 253px;
   min-width: 0; max-width: 100%; padding: 7px 12px;
   border: 1px solid #dce8fa; border-radius: 12px;
   background: #f7fbff; color: #081b4b; text-align: left;
   cursor: pointer; transition: background .15s, border-color .15s;
+}
+.crm-orders-page .crm-card-limit--has-requests { padding-right: 38px; }
+.crm-card-limit-request-badge {
+  position: absolute; top: 5px; right: 6px;
+  display: inline-flex; align-items: center; justify-content: center;
+  box-sizing: border-box; min-width: 22px; height: 22px; padding: 0 4px;
+  border: 2px solid #f7fbff; border-radius: 999px;
+  background: #ef4444; color: #fff;
+  font-size: 10px; font-weight: 750; line-height: 1; font-variant-numeric: tabular-nums;
+  pointer-events: none;
 }
 .crm-orders-page .crm-card-limit:hover { background: #edf5ff; border-color: #b8cef5; }
 .crm-card-limit-icon { width: 19px; height: 19px; flex-shrink: 0; color: #1759ed; }

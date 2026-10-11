@@ -117,6 +117,54 @@ describe('CrmOrders: redesign preserves order-card behavior', () => {
     expect(wrapper.findComponent({ name: 'CardPaymentsModal' }).props('isOpen')).toBe(true);
   });
 
+  it('shows only new limit requests and does not clear the badge when they are viewed', async () => {
+    const { store, wrapper } = await setupCardLimit();
+    store.cardPaymentAdminSnapshot = {
+      ...store.cardPaymentAdminSnapshot!,
+      requests: [
+        { id: 'request-1', status: 'new' },
+        { id: 'request-2', status: 'new' },
+        { id: 'request-approved', status: 'approved' },
+        { id: 'request-rejected', status: 'rejected' },
+      ] as NonNullable<typeof store.cardPaymentAdminSnapshot>['requests'],
+    };
+    await flushPromises();
+    const indicator = wrapper.get('[data-test="orders-card-limit"]');
+    expect(indicator.get('[data-test="orders-card-limit-request-count"]').text()).toBe('2');
+    expect(indicator.classes()).toContain('crm-card-limit--has-requests');
+    expect(indicator.attributes('aria-label')).toContain('Новых заявок на увеличение лимита: 2');
+    store.markCardRequestsAsSeen();
+    await indicator.trigger('click');
+    expect(wrapper.findComponent({ name: 'CardPaymentsModal' }).props('isOpen')).toBe(true);
+    expect(indicator.get('[data-test="orders-card-limit-request-count"]').text()).toBe('2');
+  });
+
+  it('updates the request badge with the shared snapshot and hides it at zero', async () => {
+    const { store, wrapper } = await setupCardLimit();
+    const indicator = wrapper.get('[data-test="orders-card-limit"]');
+    expect(indicator.find('[data-test="orders-card-limit-request-count"]').exists()).toBe(false);
+    const setRequests = async (statuses: string[]) => {
+      store.cardPaymentAdminSnapshot = {
+        ...store.cardPaymentAdminSnapshot!,
+        requests: statuses.map((status, index) => ({ id: `request-${index}`, status })) as NonNullable<typeof store.cardPaymentAdminSnapshot>['requests'],
+      };
+      await flushPromises();
+    };
+    await setRequests(['new', 'new']);
+    expect(indicator.get('[data-test="orders-card-limit-request-count"]').text()).toBe('2');
+    await setRequests(['approved', 'new']);
+    expect(indicator.get('[data-test="orders-card-limit-request-count"]').text()).toBe('1');
+    await setRequests(['approved', 'rejected']);
+    expect(indicator.find('[data-test="orders-card-limit-request-count"]').exists()).toBe(false);
+    expect(indicator.classes()).not.toContain('crm-card-limit--has-requests');
+    expect(indicator.attributes('aria-label')).not.toContain('Новых заявок');
+    await setRequests(['new']);
+    expect(indicator.get('[data-test="orders-card-limit-request-count"]').text()).toBe('1');
+    store.cardPaymentAdminSnapshot = null;
+    await flushPromises();
+    expect(indicator.find('[data-test="orders-card-limit-request-count"]').exists()).toBe(false);
+  });
+
   it('reacts to the same snapshot updated by the existing limits modal', async () => {
     const { store, wrapper } = await setupCardLimit();
     store.cardPaymentAdminSnapshot = {

@@ -1,32 +1,34 @@
 <template>
   <AdminModal
     :isOpen="isOpen"
-    title="Свободная продажа"
-    description="Создайте заказ вручную, выбрав клиента и позиции."
+    title="Создать заказ"
+    reference-design
+    description="Добавьте позиции и укажите username клиента — или оставьте поле пустым."
     size="2xl"
     :showActions="false"
     @close="handleClose"
     @cancel="handleClose"
   >
-    <div class="grid max-h-[calc(90vh-5.5rem)] grid-cols-1 gap-6 overflow-y-auto px-6 py-6 lg:grid-cols-[1.3fr_1fr]">
-      <StaffCurrentActorBadge class="lg:col-span-2" />
-      <section class="space-y-6">
-            <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+    <div class="order-create-form">
+      <StaffCurrentActorBadge class="order-create-actor" />
+      <section class="order-create-main space-y-6">
+            <div class="order-create-customer grid grid-cols-1 gap-4 sm:grid-cols-2">
               <label class="flex flex-col gap-2">
-                <span class="text-sm font-medium text-gray-700">Клиент (опционально)</span>
-                <select
-                  v-model="form.customerId"
-                  class="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-                >
-                  <option value="">Гость</option>
-                  <option
-                    v-for="customer in customers"
-                    :key="customer.id"
-                    :value="customer.id"
-                  >
-                    {{ customerLabel(customer) }}
-                  </option>
-                </select>
+                <span class="text-sm font-medium text-gray-700">Telegram username <span class="order-create-optional">необязательно</span></span>
+                <input
+                  id="order-customer-username"
+                  v-model="form.customerUsername"
+                  type="text"
+                  placeholder="@username"
+                  autocomplete="off"
+                  autocapitalize="none"
+                  :spellcheck="false"
+                  :disabled="isSubmitting || Boolean(submitSuccess)"
+                  :aria-invalid="Boolean(customerUsernameError)"
+                  aria-describedby="order-customer-hint order-customer-error"
+                />
+                <span id="order-customer-hint" class="order-create-customer-hint">Пустое поле — заказ без клиента.</span>
+                <span id="order-customer-error" class="order-create-customer-error" role="status">{{ customerUsernameError }}</span>
               </label>
 
               <div class="flex flex-col gap-2">
@@ -88,14 +90,14 @@
 
               <div
                 v-if="productSuggestions.length"
-                class="rounded-xl border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700"
+                class="order-create-suggestions"
               >
                 <p class="mb-2 text-xs font-semibold uppercase text-gray-500">Найдено товаров</p>
                 <ul class="space-y-2">
                   <li
                     v-for="suggestion in productSuggestions"
                     :key="suggestion.id"
-                    class="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-3 py-2"
+                    class="order-create-suggestion"
                   >
                     <div class="flex flex-col">
                       <div>
@@ -109,7 +111,7 @@
                     <div class="flex items-center gap-3">
                       <span class="text-sm font-semibold text-gray-900">{{ formatCurrency(suggestion.priceRub) }}</span>
                       <button
-                        class="rounded-lg bg-blue-600 px-3 py-1 text-xs font-semibold text-white transition hover:bg-blue-700"
+                        class="order-create-add"
                         @click.prevent="addProduct(suggestion)"
                       >
                         Добавить
@@ -128,7 +130,7 @@
 
               <div
                 v-if="!form.items.length"
-                class="rounded-xl border border-dashed border-gray-300 bg-gray-50 px-4 py-6 text-center text-sm text-gray-500"
+                class="order-create-empty"
               >
                 Добавьте товары через поиск выше - они появятся здесь для редактирования количества и цены.
               </div>
@@ -138,7 +140,7 @@
                   <article
                     v-for="item in visibleItems"
                     :key="item.variantId || item.productId"
-                    class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"
+                    class="order-create-item"
                   >
                     <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div class="space-y-1">
@@ -219,8 +221,8 @@
             </div>
           </section>
 
-      <aside class="flex h-full flex-col gap-4">
-            <div class="space-y-4 rounded-2xl border border-gray-200 bg-gray-50 p-5">
+      <aside class="order-create-aside">
+            <div class="order-create-totals space-y-4">
               <header class="flex items-center justify-between">
                 <h3 class="text-sm font-semibold uppercase tracking-wide text-gray-600">Итоги</h3>
                 <span class="text-xs font-medium text-gray-400">Автопересчет</span>
@@ -256,7 +258,7 @@
                     />
                   </dd>
                 </div>
-                <div class="flex items-center justify-between border-t border-gray-200 pt-3 text-base font-semibold text-gray-900">
+                <div class="order-create-total">
                   <dt>Итого к оплате</dt>
                   <dd>{{ formatCurrency(finalAmount) }}</dd>
                 </div>
@@ -337,7 +339,7 @@
                 </div>
               </Transition>
               <button
-                class="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+                class="order-create-submit"
                 :disabled="isSubmitting || !canSubmit || Boolean(submitSuccess)"
                 @click="handleSubmit"
               >
@@ -353,7 +355,7 @@
                 <span>{{ isSubmitting ? 'Создаем...' : 'Создать заказ' }}</span>
               </button>
               <button
-                class="w-full rounded-xl border border-gray-300 px-4 py-3 text-sm font-medium text-gray-600 transition hover:bg-gray-100"
+                class="order-create-cancel"
                 @click="handleClose"
               >
                 Отмена
@@ -365,9 +367,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import { storeToRefs } from 'pinia'
-import { useCrmStore, type CrmProductSummary, type Customer, type Order } from '@/stores/crm'
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import { useCrmStore, type CrmProductSummary, type Order } from '@/stores/crm'
 import AdminModal from '@/components/AdminModal.vue'
 import StaffCurrentActorBadge from '@/components/admin/staff/StaffCurrentActorBadge.vue'
 import { formatBynCurrency as formatCurrency } from '@/utils/currency'
@@ -390,7 +391,6 @@ const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
 
 const crmStore = useCrmStore()
-const { customers } = storeToRefs(crmStore)
 
 const productSearch = ref('')
 const productSuggestions = ref<CrmProductSummary[]>([])
@@ -428,7 +428,7 @@ const shouldShowExpandButton = computed(() => {
 })
 
 const form = reactive({
-  customerId: '',
+  customerUsername: '',
   deliveryType: 'pickup' as 'pickup' | 'delivery',
   deliveryAddress: '',
   discountAmount: 0,
@@ -468,7 +468,16 @@ const finalAmount = computed(() => {
   return Math.max(amount, 0)
 })
 
+const normalizedCustomerUsername = computed(() => form.customerUsername.trim().replace(/^@/, '').toLowerCase())
+const customerUsernameError = computed(() => {
+  if (!form.customerUsername.trim()) return ''
+  return /^[a-z0-9_]{1,32}$/.test(normalizedCustomerUsername.value)
+    ? ''
+    : 'Введите username: латинские буквы, цифры и подчёркивание, до 32 символов.'
+})
+
 const canSubmit = computed(() => {
+  if (customerUsernameError.value) return false
   if (!form.items.length) return false
   if (form.deliveryType === 'delivery' && !form.deliveryAddress.trim()) return false
   return true
@@ -532,7 +541,7 @@ onBeforeUnmount(() => {
 })
 
 function resetForm() {
-  form.customerId = ''
+  form.customerUsername = ''
   form.deliveryType = 'pickup'
   form.deliveryAddress = ''
   form.discountAmount = 0
@@ -551,15 +560,6 @@ function newRequestKey() {
   return typeof crypto !== 'undefined' && 'randomUUID' in crypto
     ? crypto.randomUUID()
     : `${Date.now()}-${Math.random().toString(16).slice(2)}`
-}
-
-function customerLabel(customer: Customer) {
-  if (customer.telegram_username) return `@${customer.telegram_username}`
-  if (customer.first_name || customer.last_name) {
-    return `${customer.first_name ?? ''} ${customer.last_name ?? ''}`.trim()
-  }
-  if (customer.phone) return customer.phone
-  return `Клиент #${customer.id}`
 }
 
 function addProduct(product: CrmProductSummary) {
@@ -615,7 +615,7 @@ async function handleSubmit(): Promise<boolean> {
   try {
     const payload = {
       idempotency_key: createRequestKey.value,
-      customer_id: form.customerId || undefined,
+      customer_username: normalizedCustomerUsername.value || undefined,
       delivery_type: form.deliveryType,
       delivery_address: form.deliveryType === 'delivery' ? form.deliveryAddress.trim() || undefined : undefined,
       discount_amount: Math.max(form.discountAmount, 0) || undefined,
@@ -665,16 +665,6 @@ function handleClose() {
   emit('close')
 }
 
-onMounted(async () => {
-  if (!customers.value.length) {
-    try {
-      await crmStore.fetchCustomers()
-    } catch (error) {
-      console.warn('[CRM] Failed to load customers for order modal:', error)
-    }
-  }
-})
-
 watch(
   () => props.isOpen,
   (open) => {
@@ -701,6 +691,13 @@ function formatErrorMessage(errorMessage: string): string {
   
   // Преобразуем технические сообщения в понятные для менеджеров
   const errorLower = errorMessage.toLowerCase()
+  const customerErrors: Record<string, string> = {
+    customer_username_invalid: 'Проверьте username клиента: используйте латинские буквы, цифры и подчёркивание.',
+    customer_username_not_found: 'Клиент с таким username не найден в CRM. Проверьте написание или очистите поле для заказа без клиента.',
+    customer_username_ambiguous: 'В CRM несколько клиентов с таким username. Заказ не создан — сначала проверьте записи клиентов.',
+    customer_username_mismatch: 'Username не соответствует указанному клиенту. Обновите форму и повторите.',
+  }
+  if (customerErrors[errorLower]) return customerErrors[errorLower]
   
   // Ошибки недостаточного остатка
   if (errorLower.includes('insufficient stock') || errorLower.includes('недостаточно товара')) {
@@ -747,6 +744,51 @@ function formatErrorMessage(errorMessage: string): string {
 </script>
 
 <style scoped>
+.order-create-form { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 20px; color: #081b4b; font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; }
+.order-create-form *, .order-create-form :deep(*) { box-sizing: border-box; }
+.order-create-actor { grid-column: 1 / -1; }
+.order-create-main, .order-create-aside, .order-create-form label, .order-create-form dl, .order-create-form dd { min-width: 0; }
+.order-create-main { padding: 20px; border: 1px solid #eaf0f9; border-radius: 16px; background: #fff; }
+.order-create-optional { display: block; margin-top: 3px; color: #8999b7; font-size: 11px; font-weight: 400; }
+.order-create-customer-hint { color: #66799e; font-size: 11px; line-height: 1.5; }
+.order-create-customer-error { color: #d92342; font-size: 11px; line-height: 1.5; }
+.order-create-customer-error:empty { display: none; }
+.order-create-form input[aria-invalid="true"] { border-color: #e7a4b0; }
+.order-create-aside { display: flex; flex-direction: column; gap: 18px; }
+.order-create-form input:not([type="radio"]), .order-create-form select, .order-create-form textarea { max-width: 100%; min-width: 0; border: 1px solid #dce8fa; border-radius: 10px; background: #f7fbff; color: #081b4b; padding: 10px 12px; font: inherit; font-size: 13px; line-height: 1.4; box-shadow: none; }
+.order-create-form textarea { resize: vertical; min-height: 80px; }
+.order-create-form input::placeholder, .order-create-form textarea::placeholder { color: #8999b7; opacity: 1; }
+.order-create-form input:focus-visible, .order-create-form select:focus-visible, .order-create-form textarea:focus-visible { outline: 2px solid #0958ff; outline-offset: 2px; border-color: #b8cef5; box-shadow: none; }
+.order-create-form input[type="radio"] { accent-color: #1759ed; }
+.order-create-form button { font-family: inherit; cursor: pointer; }
+.order-create-form button:focus-visible { outline: 2px solid #0958ff; outline-offset: 3px; }
+.order-create-form button:disabled { opacity: .5; cursor: not-allowed; }
+.order-create-form .text-gray-700, .order-create-form .text-gray-600 { color: #425778; }
+.order-create-form .text-gray-500, .order-create-form .text-gray-400 { color: #66799e; }
+.order-create-form .text-gray-900 { color: #081b4b; }
+.order-create-form .text-blue-600 { color: #1759ed; }
+.order-create-form h3 { color: #081b4b; font-size: 14px; font-weight: 750; text-transform: none; letter-spacing: -.01em; }
+.order-create-suggestions { padding: 12px; border: 1px solid #dce8fa; border-radius: 13px; background: #f7fbff; font-size: 13px; }
+.order-create-suggestion { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 12px; border: 1px solid #eaf0f9; border-radius: 10px; background: #fff; }
+.order-create-suggestion > div { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+.order-create-add, .order-create-submit { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 0; border-radius: 12px; background: linear-gradient(100deg, #05b8ff, #185dff); color: #fff; font-weight: 750; }
+.order-create-add { min-height: 36px; padding: 9px 12px; font-size: 11px; }
+.order-create-submit { width: 100%; min-height: 44px; padding: 13px 18px; font-size: 13px; box-shadow: 0 8px 16px #148cff30; }
+.order-create-add:hover, .order-create-submit:not(:disabled):hover { filter: brightness(1.05); }
+.order-create-empty { padding: 24px 16px; border: 1px dashed #dce8fa; border-radius: 13px; background: #f7fbff; color: #66799e; font-size: 12px; line-height: 1.6; }
+.order-create-item { padding: 16px; border: 1px solid #dce8fa; border-radius: 13px; background: #f7fbff; overflow-wrap: anywhere; }
+.order-create-item .admin-link-button--danger { color: #d92342; }
+.order-create-item > div:last-child { flex-wrap: wrap; gap: 8px; }
+.order-create-totals { padding: 20px; border: 1px solid #eaf0f9; border-radius: 16px; background: #fff; box-shadow: 0 12px 35px #20386908; }
+.order-create-totals dl > div { gap: 12px; }
+.order-create-total { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px; padding-top: 16px; border-top: 1px solid #eaf0f9; color: #081b4b; font-size: 13px; font-weight: 700; }
+.order-create-total dd { font-size: 27px; line-height: 1.2; font-weight: 900; letter-spacing: -.04em; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.order-create-cancel { width: 100%; min-height: 44px; padding: 13px 18px; border: 1px solid #dce8fa; border-radius: 12px; background: linear-gradient(#f7faff, #e9f0fa); color: #233e70; font-size: 13px; font-weight: 750; }
+.order-create-cancel:hover { background: #eaf1ff; }
+@media (max-width: 800px) { .order-create-form { grid-template-columns: minmax(0, 1fr); gap: 16px; } }
+@media (max-width: 480px) { .order-create-main, .order-create-totals { padding: 14px; } .order-create-item { padding: 12px; } .order-create-form input:not([type="radio"]), .order-create-form select, .order-create-form textarea { font-size: 16px; } .order-create-totals header { flex-wrap: wrap; gap: 6px; } }
+@media (prefers-reduced-motion: reduce) { .order-create-form *, .order-create-form :deep(*) { transition: none !important; animation: none !important; } }
+
 /* TransitionGroup animations for items list */
 .item-list-enter-active {
   transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);

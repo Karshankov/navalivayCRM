@@ -222,6 +222,37 @@ beforeEach(() => {
 const defaultSearchProfile = crmStoreMock.searchCardProfile;
 
 describe("CardPaymentsModal — вкладки и сводка", () => {
+  it("включает новый дизайн локально и сохраняет семантику индикаторов", () => {
+    const wrapper = mountModal();
+    expect(wrapper.find('[data-stub="admin-modal"]').attributes('reference-design')).toBeDefined();
+    expect(wrapper.find('.crm-card-payments').exists()).toBe(true);
+    expect(wrapper.find('.crm-card-tabs').exists()).toBe(true);
+    expect(wrapper.findAll('.crm-card-stat')).toHaveLength(2);
+    const bars = wrapper.findAll('[role="progressbar"]');
+    expect(bars).toHaveLength(2);
+    expect(bars[0].attributes('aria-valuenow')).toBe('50');
+    expect(bars[1].attributes('aria-valuenow')).toBe('40');
+    expect(wrapper.find('.crm-card-workspace').classes()).toContain('overflow-y-auto');
+  });
+
+  it("показывает предупреждение и значок при превышении дневного лимита", () => {
+    const snapshot = snapshotFixture();
+    Object.assign(snapshot.limits, { exceeded_today_minor: 1500 });
+    crmStoreMock.cardPaymentAdminSnapshot = snapshot;
+    const wrapper = mountModal();
+    expect(wrapper.find('[role="alert"]').text()).toContain('Лимит на сегодня превышен на 15.00 BYN');
+    expect(wrapper.find('[role="alert"] svg').exists()).toBe(true);
+  });
+
+  it("ручное пробитие сохраняет исходные сумму и комментарий", async () => {
+    const wrapper = mountModal();
+    await wrapper.find('#card-manual-input').setValue(12.5);
+    await wrapper.find('input[aria-label="Комментарий к пробитию"]').setValue('Проходящий клиент');
+    await wrapper.find('#card-manual-input').element.closest('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await nextTick();
+    expect(crmStoreMock.addManualCardPayment).toHaveBeenCalledWith(12.5, 'Проходящий клиент');
+  });
+
   it("сохраняет фиксированную высоту области контента при переключении вкладок", async () => {
     const wrapper = mountModal();
     const content = wrapper.find(".h-\\[min\\(600px\\,calc\\(100dvh-14rem\\)\\)\\]");

@@ -1,0 +1,73 @@
+/* Shared restriction forms. Scoped by the form class; other customer pickers are unchanged. */
+.crm-restriction-form { display: grid; gap: 16px; min-width: 0; color: #081b4b; font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; font-size: 13px; line-height: 1.5; }
+.crm-restriction-form *, .crm-restriction-form *::before, .crm-restriction-form *::after { box-sizing: border-box; }
+.crm-restriction-fields { display: grid; gap: 14px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.crm-restriction-section { display: grid; gap: 10px; min-width: 0; padding: 18px; border: 1px solid #eaf0f9; border-radius: 16px; background: #fff; box-shadow: 0 10px 30px #20386905; }
+.crm-restriction-form p, .crm-restriction-form h3 { margin: 0; }
+.crm-restriction-label, .crm-restriction-target > label { margin: 0; color: #081b4b; font-size: 13px; font-weight: 750; }
+.crm-restriction-label > span { margin-left: 5px; color: #66799e; font-size: 11px; font-weight: 500; }
+.crm-restriction-section-heading { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.crm-restriction-form input, .crm-restriction-form textarea { width: 100%; min-width: 0; max-width: 100%; margin: 0; padding: 11px 12px; border: 1px solid #dce8fa; border-radius: 10px; background: #f7fbff; color: #081b4b; font: inherit; font-size: 13px; line-height: 1.5; box-shadow: none; }
+.crm-restriction-form textarea { min-height: 88px; resize: vertical; }
+.crm-restriction-form input::placeholder, .crm-restriction-form textarea::placeholder { color: #8999b7; opacity: 1; }
+.crm-restriction-form input:disabled { color: #425778; background: #edf3fb; }
+.crm-restriction-form input:focus, .crm-restriction-form textarea:focus { border-color: #b8cef5; box-shadow: none; }
+.crm-restriction-form input:focus-visible, .crm-restriction-form textarea:focus-visible, .crm-restriction-form button:focus-visible { outline: 2px solid #0958ff; outline-offset: 3px; }
+.crm-restriction-form button { max-width: 100%; font-family: inherit; cursor: pointer; }
+.crm-restriction-form button:disabled { opacity: .5; cursor: not-allowed; }
+.crm-restriction-username { position: relative; }
+.crm-restriction-username > span { position: absolute; top: 50%; left: 12px; transform: translateY(-50%); color: #66799e; pointer-events: none; }
+.crm-restriction-username > input { padding-left: 30px; }
+.crm-restriction-hint { color: #66799e; font-size: 11px; line-height: 1.6; overflow-wrap: anywhere; }
+.crm-restriction-durations { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 8px; }
+.crm-restriction-duration { min-height: 42px; padding: 9px 8px; border: 1px solid #dce8fa; border-radius: 10px; background: #f7fbff; color: #425778; font-size: 12px; font-weight: 650; }
+.crm-restriction-duration:hover { background: #edf5ff; }
+.crm-restriction-duration.is-selected { border-color: transparent; background: linear-gradient(100deg,#05b8ff,#185dff); color: #fff; box-shadow: 0 6px 14px #148cff24; }
+.crm-restriction-quantity { display: flex; align-items: center; gap: 12px; }
+.crm-restriction-quantity > input { width: 104px; }
+.crm-restriction-summary { padding: 12px 14px; border: 1px solid #dce8fa; border-radius: 12px; background: #f7fbff; color: #425778; font-size: 12px; overflow-wrap: anywhere; }
+.crm-restriction-summary strong { color: #081b4b; font-weight: 700; }
+.crm-restriction-summary--notice { display: flex; align-items: flex-start; gap: 10px; background: #fff8ed; border-color: #f4e2c7; color: #7d5d36; }
+.crm-restriction-summary--notice > svg { width: 19px; height: 19px; flex-shrink: 0; margin-top: 2px; color: #b67b31; }
+.crm-restriction-summary--notice strong { display: block; margin-bottom: 3px; color: #7d5d36; }
+.crm-restriction-link { flex-shrink: 0; padding: 3px 0; border: 0; background: transparent; color: #1759ed; font-size: 11px; font-weight: 650; }
+.crm-restriction-link:hover { text-decoration: underline; }
+.crm-restriction-reasons { display: flex; flex-wrap: wrap; gap: 7px; min-width: 0; }
+.crm-restriction-reason-group { display: flex; min-width: 0; max-width: 100%; }
+.crm-restriction-chip { min-height: 36px; max-width: 100%; padding: 8px 11px; border: 1px solid #dce8fa; border-radius: 10px; background: #f7fbff; color: #425778; font-size: 11px; font-weight: 600; text-align: left; white-space: normal; overflow-wrap: anywhere; }
+.crm-restriction-chip:hover { border-color: #b8cef5; background: #edf5ff; color: #1759ed; }
+.crm-restriction-reason-group:has(.crm-restriction-remove) .crm-restriction-chip { border-radius: 10px 0 0 10px; }
+.crm-restriction-remove { display: grid; place-items: center; flex-shrink: 0; min-width: 36px; padding: 8px; border: 1px solid #dce8fa; border-left: 0; border-radius: 0 10px 10px 0; background: #f7fbff; color: #8999b7; }
+.crm-restriction-remove > svg { width: 14px; height: 14px; }
+.crm-restriction-remove:hover { background: #fff1f3; color: #d92342; }
+.crm-restriction-template-editor { display: flex; align-items: stretch; gap: 8px; min-width: 0; }
+.crm-restriction-template-editor > input { flex: 1; }
+.crm-restriction-template-editor > button { flex-shrink: 0; padding: 9px 12px; font-size: 11px; }
+.crm-restriction-actions { display: flex; justify-content: flex-end; gap: 10px; padding-top: 2px; }
+.crm-restriction-secondary, .crm-restriction-danger { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 12px 20px; border-radius: 12px; font-size: 13px; font-weight: 750; line-height: 1.35; text-align: center; }
+.crm-restriction-secondary { border: 1px solid #dce8fa; background: linear-gradient(#f7faff,#e9f0fa); color: #233e70; }
+.crm-restriction-danger { border: 1px solid transparent; background: linear-gradient(115deg,#ff685a,#fa104f); color: #fff; box-shadow: 0 8px 16px #fa104f22; }
+.crm-restriction-actions > button:not(:disabled):hover { filter: brightness(1.04); }
+.crm-restriction-error { padding: 12px 14px; border: 1px solid #f5c9d3; border-radius: 12px; background: #fff1f3; color: #b92444; font-size: 12px; overflow-wrap: anywhere; }
+.crm-restriction-target { min-width: 0; }
+.crm-restriction-target .text-gray-900 { color: #081b4b; }
+.crm-restriction-target .text-gray-500, .crm-restriction-target .text-gray-600 { color: #66799e; }
+.crm-restriction-target .truncate { max-width: 100%; white-space: normal; overflow-wrap: anywhere; overflow: visible; }
+.crm-restriction-target > div:not(.relative) { min-width: 0; border-radius: 12px; }
+.crm-restriction-target > div.border-blue-200 { border-color: #dce8fa; background: #f7fbff; color: #233e70; }
+.crm-restriction-target > div.border-blue-200 > div > div { min-width: 0; overflow-wrap: anywhere; }
+.crm-restriction-target > div[aria-label="Найденные клиенты"] { border-color: #dce8fa; box-shadow: none; }
+.crm-restriction-target > div[aria-label] > button { min-height: 52px; font-family: inherit; }
+.crm-restriction-target > div[aria-label] > button:hover { background: #edf5ff; }
+.crm-restriction-target input[type="search"] { padding-right: 66px; }
+@media (max-width: 480px) {
+  .crm-restriction-section { padding: 14px; }
+  .crm-restriction-form input, .crm-restriction-form textarea { font-size: 16px; }
+  .crm-restriction-durations { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .crm-restriction-actions { flex-direction: column-reverse; }
+  .crm-restriction-actions > button { width: 100%; }
+  .crm-restriction-template-editor { flex-wrap: wrap; }
+  .crm-restriction-template-editor > input { flex-basis: 100%; }
+  .crm-restriction-template-editor > button { width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) { .crm-restriction-form *, .crm-restriction-form *::before { transition: none !important; animation: none !important; } }

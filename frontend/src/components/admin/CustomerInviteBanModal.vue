@@ -2,72 +2,66 @@
   <AdminModal
     :is-open="isOpen"
     title="Запретить приглашать"
-    size="sm"
+    description="Ограничьте приглашения, сохранив доступ к заказам."
+    size="md"
+    reference-design
+    :is-loading="submitting"
     :show-actions="false"
     @close="close"
   >
-    <form class="space-y-4" @submit.prevent="submit">
-      <CustomerTargetPicker
-        v-model:customer-id="formCustomerId"
-        v-model:username="formUsername"
-        v-model:customer="formCustomer"
-        :is-open="isOpen"
-        :initial-label="username"
-        :initial-customer="customer"
-        block-hint="Запрет приглашать не изменит блокировку клиента."
-      />
-      <div class="flex items-center justify-between">
-        <span class="text-sm font-medium text-gray-700">Быстрые причины</span>
-        <button
-          type="button"
-          class="text-xs font-medium text-blue-600 transition-colors hover:text-blue-800 hover:underline focus-visible:text-blue-800 focus-visible:underline"
-          @click="editTemplates = !editTemplates"
-        >
-          {{ editTemplates ? 'Готово' : 'Изменить' }}
-        </button>
-      </div>
-      <div v-if="templates.length" class="flex flex-wrap gap-2">
-        <button
-          v-for="(template, index) in templates"
-          :key="template"
-          type="button"
-          class="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs text-gray-700 hover:border-red-300"
-          @click="editTemplates ? removeTemplate(index) : reason = template"
-        >
-          {{ template }}{{ editTemplates ? ' ×' : '' }}
-        </button>
-      </div>
-      <div v-if="editTemplates" class="flex gap-2">
-        <input v-model.trim="newTemplate" maxlength="200" class="min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm" placeholder="Новая причина" @keyup.enter.prevent="addTemplate" />
-        <button type="button" :disabled="templatesSaving" class="rounded-lg border px-3 py-2 text-sm disabled:opacity-50" @click="addTemplate">Добавить</button>
-      </div>
-      <p v-if="templatesError" class="text-xs text-red-600" role="alert">{{ templatesError }}</p>
-      <textarea
-        v-model.trim="reason"
-        rows="3"
-        maxlength="1000"
-        class="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm focus:border-red-400 focus:outline-none focus:ring-2 focus:ring-red-100"
-        placeholder="Причина запрета"
-      />
-      <p class="text-xs text-gray-500">
-        Клиент сможет делать заказы, но не сможет приглашать. При попытке указать его username спишется одна попытка.
-      </p>
-      <p v-if="error" class="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">{{ error }}</p>
-      <div class="flex justify-end gap-2">
-        <button type="button" class="rounded-lg border px-4 py-2 text-sm focus-visible:outline-2 focus-visible:outline-blue-600" @click="close">Отмена</button>
-        <button
-          type="submit"
-          :disabled="submitting || (!formCustomerId && !formUsername)"
-          class="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-red-700 disabled:opacity-50"
-        >
-          {{ submitting ? 'Сохраняем...' : 'Запретить приглашать' }}
-        </button>
+    <form class="crm-restriction-form" @submit.prevent="submit">
+      <fieldset class="crm-restriction-fields" :disabled="submitting">
+        <section class="crm-restriction-section">
+          <CustomerTargetPicker
+            class="crm-restriction-target"
+            v-model:customer-id="formCustomerId"
+            v-model:username="formUsername"
+            v-model:customer="formCustomer"
+            :is-open="isOpen"
+            :initial-label="username"
+            :initial-customer="customer"
+            block-hint="Запрет приглашать не изменит блокировку клиента."
+          />
+        </section>
+
+        <section class="crm-restriction-section">
+          <div class="crm-restriction-section-heading">
+            <label for="customer-invite-ban-reason" class="crm-restriction-label">Причина запрета</label>
+            <button type="button" class="crm-restriction-link" :aria-expanded="editTemplates" @click="editTemplates = !editTemplates">{{ editTemplates ? 'Готово' : 'Изменить' }}</button>
+          </div>
+          <p class="crm-restriction-hint">Быстрые причины</p>
+          <div v-if="templates.length" class="crm-restriction-reasons">
+            <button v-for="(template, index) in templates" :key="template" type="button" class="crm-restriction-chip"
+              :aria-label="editTemplates ? `Удалить шаблон: ${template}` : template"
+              :disabled="templatesSaving"
+              @click="editTemplates ? removeTemplate(index) : reason = template">
+              {{ template }}{{ editTemplates ? ' ×' : '' }}
+            </button>
+          </div>
+          <div v-if="editTemplates" class="crm-restriction-template-editor">
+            <input v-model.trim="newTemplate" maxlength="200" placeholder="Новая причина" aria-label="Новый шаблон причины запрета" @keyup.enter.prevent="addTemplate" />
+            <button type="button" :disabled="templatesSaving" class="crm-restriction-secondary" @click="addTemplate">Добавить</button>
+          </div>
+          <p v-if="templatesError" class="crm-restriction-error" role="alert">{{ templatesError }}</p>
+          <textarea id="customer-invite-ban-reason" v-model.trim="reason" rows="3" maxlength="1000" placeholder="Причина запрета" />
+        </section>
+
+        <div class="crm-restriction-summary crm-restriction-summary--notice">
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M12 8v4m0 4h.01M10.3 3.8 2.2 18a2 2 0 0 0 1.7 3h16.2a2 2 0 0 0 1.7-3L13.7 3.8a2 2 0 0 0-3.4 0Z" /></svg>
+          <p><strong>Заказы останутся доступны.</strong> Клиент не сможет приглашать. При попытке указать его username спишется одна попытка.</p>
+        </div>
+      </fieldset>
+      <p v-if="error" class="crm-restriction-error" role="alert">{{ error }}</p>
+      <div class="crm-restriction-actions">
+        <button type="button" class="crm-restriction-secondary" :disabled="submitting" @click="close">Отмена</button>
+        <button type="submit" :disabled="submitting || (!formCustomerId && !formUsername)" class="crm-restriction-danger">{{ submitting ? 'Сохраняем…' : 'Запретить приглашать' }}</button>
       </div>
     </form>
   </AdminModal>
 </template>
 
 <script setup lang="ts">
+import '@/styles/crm-restriction-modals.css'
 import { onMounted, ref, watch } from 'vue'
 import AdminModal from '@/components/AdminModal.vue'
 import CustomerTargetPicker from '@/components/admin/CustomerTargetPicker.vue'

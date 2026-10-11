@@ -1485,6 +1485,89 @@ try {
   assert.equal(repeatedCancel.response.status, 409);
   assert.equal(repeatedCancel.data.error, "invalid_status");
 
+  console.log("staff operations: manual order exact username resolution and safe retries");
+  setStaffTrackingEnabled(true);
+  openTestShift("employee_a", "username-orders");
+  db.prepare("INSERT INTO customers (id, telegram_username, telegram_id, first_name, last_name, notes) VALUES (?, ?, ?, ?, ?, ?)")
+    .run("username_customer", "Exact_Client", "987654321", "Username", "test", "Заметка клиента");
+  db.prepare("INSERT INTO customers (id, telegram_username, deleted_at) VALUES (?, ?, DATETIME('now'))")
+    .run("username_deleted", "deleted_client");
+  db.prepare("INSERT INTO customers (id, telegram_username) VALUES (?, ?)")
+    .run("username_partial", "exact_client_extra");
+  let usernameKey = 0;
+  const usernameOrder = async (body, key = `staff-username-${++usernameKey}`) => {
+    const result = await requestJson("/api/admin/crm/orders", {
+      method: "POST", headers: { "Idempotency-Key": key }, body: { ...orderBody(), ...body },
+    });
+    if (result.response.status === 200) {
+      const saved = db.prepare("SELECT customer_id FROM orders WHERE id = ?").get(result.data.id);
+      assert.equal(saved.customer_id, result.data.customer_id);
+      if (result.data.customer_id === "username_customer") {
+        assert.equal(result.data.customer_name, "Username test");
+        assert.equal(result.data.telegram_username, "Exact_Client");
+        assert.equal(String(result.data.customer_telegram_id), "987654321");
+        assert.equal(result.data.customer_notes, "Заметка клиента");
+        assert.equal(result.data.items.length, 1);
+        assert.ok(result.data.pickup_cell_number);
+      } else if (!result.data.customer_id) {
+        assert.equal(result.data.customer_name, null);
+        assert.equal(result.data.telegram_username, null);
+        assert.equal(result.data.customer_telegram_id, null);
+      }
+    }
+    return result;
+  };
+  const rejectedUsernameCases = [
+    [{ customer_username: "missing_client" }, "customer_username_not_found"],
+    [{ customer_username: "exact" }, "customer_username_not_found"],
+    [{ customer_username: "deleted_client" }, "customer_username_not_found"],
+    [{ customer_username: "@" }, "customer_username_invalid"],
+    [{ customer_username: "@@exact_client" }, "customer_username_invalid"],
+    [{ customer_username: "exact%" }, "customer_username_invalid"],
+    [{ customer_username: "x".repeat(33) }, "customer_username_invalid"],
+    [{ customer_username: { username: "exact_client" } }, "customer_username_invalid"],
+    [{ customer_username: "exact_client", customer_id: "username_partial" }, "customer_username_mismatch"],
+  ];
+  const ordersBeforeUsernameErrors = db.prepare("SELECT COUNT(*) AS count FROM orders").get().count;
+  const stockBeforeUsernameErrors = productStock();
+  for (const [body, expectedError] of rejectedUsernameCases) {
+    const result = await usernameOrder(body);
+    assert.equal(result.response.status, 400);
+    assert.equal(result.data.error, expectedError);
+  }
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM orders").get().count, ordersBeforeUsernameErrors);
+  assert.deepEqual(productStock(), stockBeforeUsernameErrors);
+  const byUsername = await usernameOrder({ customer_username: "  @EXACT_CLIENT  " }, "staff-username-replay");
+  assert.equal(byUsername.response.status, 200);
+  assert.equal(byUsername.data.customer_id, "username_customer");
+  assert.equal(db.prepare("SELECT total_orders FROM customers WHERE id = 'username_customer'").get().total_orders, 1);
+  db.prepare("INSERT INTO customers (id, telegram_username) VALUES (?, ?)")
+    .run("username_duplicate", "exact_client");
+  const ordersBeforeAmbiguous = db.prepare("SELECT COUNT(*) AS count FROM orders").get().count;
+  const ambiguousUsername = await usernameOrder({ customer_username: "exact_client" });
+  assert.equal(ambiguousUsername.response.status, 409);
+  assert.equal(ambiguousUsername.data.error, "customer_username_ambiguous");
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM orders").get().count, ordersBeforeAmbiguous);
+  const usernameReplay = await usernameOrder({ customer_username: "  @EXACT_CLIENT  " }, "staff-username-replay");
+  assert.equal(usernameReplay.response.status, 200);
+  assert.equal(usernameReplay.data.id, byUsername.data.id);
+  assert.equal(db.prepare("SELECT total_orders FROM customers WHERE id = 'username_customer'").get().total_orders, 1);
+  const changedUsernameReplay = await usernameOrder({ customer_username: "different_client" }, "staff-username-replay");
+  assert.equal(changedUsernameReplay.response.status, 409);
+  assert.equal(changedUsernameReplay.data.error, "idempotency_key_conflict");
+  db.prepare("DELETE FROM customers WHERE id = 'username_duplicate'").run();
+  const withoutAt = await usernameOrder({ customer_username: "exact_client" });
+  assert.equal(withoutAt.response.status, 200);
+  assert.equal(withoutAt.data.customer_id, "username_customer");
+  for (const customer_username of ["", "   "]) {
+    const guest = await usernameOrder({ customer_username });
+    assert.equal(guest.response.status, 200);
+    assert.equal(guest.data.customer_id, null);
+  }
+  const legacyCustomerId = await usernameOrder({ customer_id: "username_customer" });
+  assert.equal(legacyCustomerId.response.status, 200);
+  assert.equal(legacyCustomerId.data.customer_id, "username_customer");
+
   console.log("staff-operations.test.js: ok");
 } finally {
   await new Promise((resolve) => server.close(resolve));

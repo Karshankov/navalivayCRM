@@ -10,7 +10,7 @@
         leave-from="opacity-100"
         leave-to="opacity-0"
       >
-        <div class="fixed inset-0 bg-white/40 backdrop-blur-sm z-[9998]" aria-hidden="true" />
+        <div class="fixed inset-0 bg-white/40 backdrop-blur-sm z-[9998]" :class="{ 'admin-modal-reference-backdrop': referenceDesign }" aria-hidden="true" />
       </TransitionChild>
 
       <!-- Dialog Panel Container - СТАБИЛЬНЫЙ -->
@@ -26,8 +26,8 @@
         >
           <DialogPanel :class="panelClasses">
             <!-- Header - УЛУЧШЕННЫЙ -->
-            <div class="flex items-start justify-between mb-3 pb-2 border-b border-gray-100 flex-shrink-0">
-                <DialogTitle class="text-base sm:text-lg text-brand-dark leading-tight pr-4" style="font-family: var(--font-display); font-weight: normal; text-transform: uppercase; letter-spacing: 0.05em;">
+            <div class="admin-modal-header flex items-start justify-between mb-3 pb-2 border-b border-gray-100 flex-shrink-0">
+                <DialogTitle class="text-base sm:text-lg text-brand-dark leading-tight pr-4" :style="referenceDesign ? undefined : 'font-family: var(--font-display); font-weight: normal; text-transform: uppercase; letter-spacing: 0.05em;'">
                   {{ title }}
                 </DialogTitle>
                 
@@ -52,13 +52,13 @@
               <!-- Description -->
               <DialogDescription
                 v-if="description"
-                class="mb-2 text-xs text-gray-600 flex-shrink-0"
+                class="admin-modal-description mb-2 text-xs text-gray-600 flex-shrink-0"
               >
                 {{ description }}
               </DialogDescription>
               
               <!-- Content Slot - МОБИЛЬНО АДАПТИВНОЕ -->
-              <div ref="scrollContainerRef" class="flex-1 overflow-y-auto overflow-x-hidden mb-2 w-full -mx-1 px-1">
+              <div ref="scrollContainerRef" class="admin-modal-content flex-1 overflow-y-auto overflow-x-hidden mb-2 w-full -mx-1 px-1">
                 <slot />
               </div>
 
@@ -135,6 +135,7 @@ interface Props {
   isConfirmDisabled?: boolean
   confirmVariant?: 'primary' | 'danger' | 'success'
   persistent?: boolean
+  referenceDesign?: boolean
   initialFocus?: HTMLElement | null
 }
 
@@ -151,6 +152,7 @@ const props = withDefaults(defineProps<Props>(), {
   isConfirmDisabled: false,
   confirmVariant: 'primary',
   persistent: false,
+  referenceDesign: false,
   initialFocus: null
 })
 
@@ -189,7 +191,7 @@ const panelClasses = computed(() => {
     wide: 'sm:!w-[min(96vw,1600px)] sm:!max-w-[min(96vw,1600px)]'
   }
 
-  return `${baseClasses} ${sizeClasses[props.size]}`
+  return `${baseClasses} ${sizeClasses[props.size]} ${props.referenceDesign ? `admin-modal-reference admin-modal-reference--${props.size}` : ""}`
 })
 
 const confirmButtonClasses = computed(() => {
@@ -269,3 +271,26 @@ function handleConfirm() {
   emit('confirm')
 }
 </script>
+
+<style scoped>
+.admin-modal-reference-backdrop { background: rgb(8 27 75 / 38%); backdrop-filter: blur(9px); }
+.admin-modal-reference {
+  width: min(980px, calc(100vw - 32px)); max-width: calc(100vw - 32px);
+  max-height: calc(100dvh - 32px); padding: 24px;
+  border: 1px solid #eaf0f9; border-radius: 20px;
+  background: radial-gradient(ellipse at 75% 0%, #e7f1ff 0%, transparent 60%), #f6f9fc;
+  color: #081b4b; font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  box-shadow: 0 24px 70px #03071140;
+}
+.admin-modal-reference--sm { width: min(520px, calc(100vw - 32px)); }
+.admin-modal-reference--md { width: min(620px, calc(100vw - 32px)); }
+.admin-modal-reference .admin-modal-header { align-items: center; margin-bottom: 8px; padding-bottom: 12px; border-color: #dce8fa; gap: 12px; }
+.admin-modal-reference .admin-modal-header > :first-child { margin: 0; color: #081b4b; font-family: inherit; font-size: 24px; line-height: 1.2; font-weight: 800; letter-spacing: -.03em; text-transform: none; overflow-wrap: anywhere; }
+.admin-modal-reference .admin-modal-header button { display: grid; place-items: center; width: 40px; height: 40px; padding: 8px; border: 1px solid #dce8fa; border-radius: 12px; background: #f7fbff; color: #233e70; }
+.admin-modal-reference .admin-modal-header button:hover { background: #eaf1ff; }
+.admin-modal-reference .admin-modal-description { margin-bottom: 20px; color: #66799e; font-size: 12px; line-height: 1.5; }
+.admin-modal-reference .admin-modal-content { min-height: 0; margin-bottom: 0; scrollbar-color: #8999b7 #f0f4fa; scrollbar-width: thin; }
+.admin-modal-reference button:focus-visible { outline: 2px solid #0958ff; outline-offset: 3px; }
+@media (max-width: 640px) { .admin-modal-reference { padding: 16px; } .admin-modal-reference .admin-modal-header > :first-child { font-size: 21px; } }
+@media (prefers-reduced-motion: reduce) { .admin-modal-reference { transition: none; } }
+</style>

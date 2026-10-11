@@ -3950,6 +3950,7 @@ export const useCrmStore = defineStore("crm", () => {
   async function createOrder(data: {
     idempotency_key?: string;
     customer_id?: string;
+    customer_username?: string;
     delivery_type: "pickup" | "delivery";
     delivery_address?: string;
     discount_amount?: number;

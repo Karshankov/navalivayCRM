@@ -136,25 +136,8 @@ function isStaffServiceError(error) {
 }
 
 function getCreatedOrderPayload(orderId) {
-  const order = db
-    .prepare("SELECT * FROM orders WHERE id = ?")
-    .get(orderId);
-  if (!order) return null;
-  const orderItems = db
-    .prepare(`
-      SELECT oi.*, p.description as product_description
-      FROM order_items oi
-      LEFT JOIN products p ON oi.product_id = p.id
-      WHERE oi.order_id = ?
-    `)
-    .all(orderId);
-  const pickupCell = getActivePickupCellAssignment(orderId);
-  return {
-    ...order,
-    pickup_cell_number: pickupCell?.cell_number ?? null,
-    pickup_cell_assignment_id: pickupCell?.id ?? null,
-    items: orderItems,
-  };
+  // Return the same customer identity and relations as the board, including on replay.
+  return fetchEnrichedOrdersByIds({ db, orderIds: [orderId] })[0] ?? null;
 }
 
 crmOperationsRouter.get(
@@ -969,7 +952,8 @@ crmOperationsRouter.post(
   (req, res) => {
     try {
       const {
-        customer_id,
+        customer_id: requestedCustomerId,
+        customer_username,
         delivery_type = "pickup",
         delivery_address,
         items,
@@ -1002,6 +986,35 @@ crmOperationsRouter.post(
           throw new StaffServiceError("idempotency_entity_missing", 409);
         }
         return res.json(replayPayload);
+      }
+
+      // Resolve only an existing CRM customer, never a fuzzy search or Telegram API lookup.
+      // Replay above intentionally precedes resolution: a retry must keep the original recipient.
+      let customer_id = requestedCustomerId;
+      if (customer_username != null && typeof customer_username !== "string") {
+        return res.status(400).json({ error: "customer_username_invalid" });
+      }
+      const rawUsername = (customer_username || "").trim();
+      if (rawUsername) {
+        const username = rawUsername.replace(/^@/, "").toLowerCase();
+        if (!/^[a-z0-9_]{1,32}$/.test(username)) {
+          return res.status(400).json({ error: "customer_username_invalid" });
+        }
+        const matches = db.prepare(`
+          SELECT id FROM customers
+          WHERE deleted_at IS NULL
+            AND LOWER(LTRIM(TRIM(COALESCE(telegram_username, '')), '@')) = ?
+          LIMIT 2
+        `).all(username);
+        if (matches.length !== 1) {
+          return res.status(matches.length ? 409 : 400).json({
+            error: matches.length ? "customer_username_ambiguous" : "customer_username_not_found",
+          });
+        }
+        if (requestedCustomerId && requestedCustomerId !== matches[0].id) {
+          return res.status(400).json({ error: "customer_username_mismatch" });
+        }
+        customer_id = matches[0].id;
       }
 
       let orderId = generateId("order");

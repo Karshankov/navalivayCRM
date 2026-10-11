@@ -1,154 +1,89 @@
 <template>
-  <AdminModal :is-open="isOpen" title="Заблокировать клиента" size="md" :show-actions="false" @close="handleClose">
-    <form class="space-y-4" @submit.prevent="submit">
-      <div class="space-y-1.5">
-        <label class="block text-sm font-medium text-gray-700">Telegram username</label>
-        <div class="relative">
-          <span class="absolute inset-y-0 left-3 flex items-center text-gray-400">@</span>
-          <input
-            ref="usernameInputRef"
-            v-model.trim="formUsername"
-            type="text"
-            placeholder="polizhzw"
-            autocomplete="off"
-            :disabled="Boolean(customerId)"
-            class="w-full rounded-lg border border-gray-300 bg-white pl-7 pr-3 py-2 text-sm focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/30 disabled:bg-gray-50 disabled:text-gray-500"
-            required
-          />
-        </div>
-        <p class="text-xs text-gray-500">
-          Если клиент уже есть в базе, блок навесится на его аккаунт по telegram_id.
-          Если клиента нет, будет создан превентивный бан и активируется при первом заходе в миниапку.
-        </p>
-      </div>
+  <AdminModal
+    :is-open="isOpen"
+    title="Заблокировать клиента"
+    description="Ограничьте доступ к заказам на выбранный срок."
+    size="md"
+    reference-design
+    :is-loading="submitting"
+    :show-actions="false"
+    @close="handleClose"
+  >
+    <form class="crm-restriction-form" @submit.prevent="submit">
+      <fieldset class="crm-restriction-fields" :disabled="submitting">
+        <section class="crm-restriction-section">
+          <label for="customer-block-username" class="crm-restriction-label">Telegram username</label>
+          <div class="crm-restriction-username">
+            <span aria-hidden="true">@</span>
+            <input
+              id="customer-block-username"
+              ref="usernameInputRef"
+              v-model.trim="formUsername"
+              type="text"
+              placeholder="username"
+              autocomplete="off"
+              autocapitalize="none"
+              :spellcheck="false"
+              :disabled="Boolean(customerId)"
+              aria-describedby="customer-block-hint"
+              required
+            />
+          </div>
+          <p v-if="customerId" id="customer-block-hint" class="crm-restriction-hint">Блокировка применяется к выбранному клиенту из карточки, а не к совпавшему username.</p>
+          <p v-else id="customer-block-hint" class="crm-restriction-hint">Клиент из базы будет заблокирован по Telegram ID. Если его ещё нет, запрет активируется при первом входе в миниапку.</p>
+        </section>
 
-      <div class="space-y-1.5">
-        <label class="block text-sm font-medium text-gray-700">Длительность</label>
-        <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <button
-            v-for="option in DURATION_OPTIONS"
-            :key="option.value"
-            type="button"
-            class="rounded-lg border px-3 py-2 text-xs font-semibold transition"
-            :class="
-              durationUnit === option.value
-                ? 'border-brand-primary bg-brand-primary/10 text-brand-dark'
-                : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
-            "
-            @click="durationUnit = option.value"
-          >
-            {{ option.label }}
-          </button>
-        </div>
-        <div v-if="durationUnit !== 'forever'" class="mt-2">
-          <label class="block text-xs font-medium text-gray-500">
-            Сколько {{ unitLabelGenitive }}
-          </label>
-          <input
-            v-model.number="durationValue"
-            type="number"
-            min="1"
-            step="1"
-            class="mt-1 w-32 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/30"
-            required
-          />
-        </div>
-      </div>
+        <section class="crm-restriction-section">
+          <h3 class="crm-restriction-label">Длительность блокировки</h3>
+          <div class="crm-restriction-durations" role="group" aria-label="Единица длительности">
+            <button v-for="option in DURATION_OPTIONS" :key="option.value" type="button"
+              class="crm-restriction-duration" :class="{ 'is-selected': durationUnit === option.value }"
+              :aria-pressed="durationUnit === option.value" @click="durationUnit = option.value">
+              {{ option.label }}
+            </button>
+          </div>
+          <div v-if="durationUnit !== 'forever'" class="crm-restriction-quantity">
+            <label for="customer-block-duration" class="crm-restriction-hint">Сколько {{ unitLabelGenitive }}</label>
+            <input id="customer-block-duration" v-model.number="durationValue" type="number" min="1" step="1" required />
+          </div>
+          <p v-if="previewLabel" class="crm-restriction-summary" role="status">
+            Доступ к заказам будет открыт <strong>{{ previewLabel }}</strong>
+          </p>
+        </section>
 
-      <div class="space-y-1.5">
-        <div class="flex items-center justify-between">
-          <label class="block text-sm font-medium text-gray-700">Причина (видна клиенту)</label>
-          <button
-            type="button"
-            class="text-xs font-medium text-blue-600 transition-colors hover:text-blue-800 hover:underline focus-visible:text-blue-800 focus-visible:underline"
-            @click="editTemplates = !editTemplates"
-            title="Редактировать шаблоны"
-          >
-            {{ editTemplates ? 'Готово' : 'Изменить' }}
-          </button>
-        </div>
+        <section class="crm-restriction-section">
+          <div class="crm-restriction-section-heading">
+            <label for="customer-block-reason" class="crm-restriction-label">Причина <span>видна клиенту</span></label>
+            <button type="button" class="crm-restriction-link" :aria-expanded="editTemplates" @click="editTemplates = !editTemplates" title="Редактировать шаблоны">{{ editTemplates ? 'Готово' : 'Изменить' }}</button>
+          </div>
+          <div v-if="templates.length > 0" class="crm-restriction-reasons">
+            <div v-for="(t, i) in templates" :key="i" class="crm-restriction-reason-group">
+              <button type="button" class="crm-restriction-chip" @click="reason = t">{{ t }}</button>
+              <button v-if="editTemplates" type="button" class="crm-restriction-remove" :aria-label="`Удалить шаблон: ${t}`" @click="removeTemplate(i)">
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+          </div>
+          <div v-if="editTemplates" class="crm-restriction-template-editor">
+            <input v-model.trim="newTemplate" type="text" placeholder="Добавить шаблон…" aria-label="Новый шаблон причины блокировки" @keyup.enter.prevent="addTemplate" />
+            <button type="button" class="crm-restriction-secondary" @click="addTemplate">Добавить</button>
+          </div>
+          <p v-if="templates.length === 0 && !editTemplates" class="crm-restriction-hint">Нет шаблонов. Нажмите «Изменить», чтобы добавить.</p>
+          <textarea id="customer-block-reason" v-model.trim="reason" rows="3" placeholder="Например: флуд заказами, неадекватное поведение" />
+        </section>
+      </fieldset>
 
-        <!-- Шаблоны причин (всегда видны, клик → подстановка в textarea) -->
-        <div v-if="templates.length > 0" class="flex flex-wrap gap-1.5">
-          <button
-            v-for="(t, i) in templates"
-            :key="i"
-            type="button"
-            class="group inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-600 shadow-sm transition hover:border-brand-primary hover:text-brand-dark"
-            @click="reason = t"
-          >
-            <span class="max-w-[200px] truncate">{{ t }}</span>
-            <svg
-              v-if="editTemplates"
-              class="h-3 w-3 flex-shrink-0 text-gray-300 hover:text-red-500 transition"
-              fill="none" stroke="currentColor" viewBox="0 0 24 24"
-              @click.stop="removeTemplate(i)"
-            >
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-
-        <!-- Режим редактирования: добавление нового шаблона -->
-        <div v-if="editTemplates" class="flex gap-2">
-          <input
-            v-model.trim="newTemplate"
-            type="text"
-            placeholder="Добавить шаблон..."
-            class="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/30"
-            @keyup.enter.prevent="addTemplate"
-          />
-          <button
-            type="button"
-            class="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:border-brand-primary hover:text-brand-dark"
-            @click="addTemplate"
-          >
-            + Добавить
-          </button>
-        </div>
-
-        <p
-          v-if="templates.length === 0 && !editTemplates"
-          class="text-xs text-gray-400"
-        >Нет шаблонов. Нажмите «Изменить» чтобы добавить.</p>
-
-        <textarea
-          v-model.trim="reason"
-          rows="2"
-          placeholder="Например: флуд заказами, неадекватное поведение"
-          class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/30"
-        />
-      </div>
-
-      <div v-if="previewLabel" class="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600">
-        Доступ к заказам будет открыт <span class="font-semibold text-gray-900">{{ previewLabel }}</span>
-      </div>
-
-      <div v-if="errorMessage" class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-        {{ errorMessage }}
-      </div>
-
-      <div class="flex items-center justify-end gap-2 pt-2">
-        <button
-          type="button"
-          class="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-          @click="handleClose"
-        >
-          Отмена
-        </button>
-        <button
-          type="submit"
-          :disabled="!canSubmit || submitting"
-          class="rounded-lg bg-red-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {{ submitting ? 'Блокируем…' : 'Заблокировать' }}
-        </button>
+      <p v-if="errorMessage" class="crm-restriction-error" role="alert">{{ errorMessage }}</p>
+      <div class="crm-restriction-actions">
+        <button type="button" class="crm-restriction-secondary" :disabled="submitting" @click="handleClose">Отмена</button>
+        <button type="submit" class="crm-restriction-danger" :disabled="!canSubmit || submitting">{{ submitting ? 'Блокируем…' : 'Заблокировать' }}</button>
       </div>
     </form>
   </AdminModal>
 </template>
 
 <script setup lang="ts">
+import '@/styles/crm-restriction-modals.css'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import AdminModal from '@/components/AdminModal.vue'
 import { useCrmStore, type CustomerBlockDuration } from '@/stores/crm'

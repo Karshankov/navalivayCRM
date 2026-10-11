@@ -41,6 +41,39 @@ describe("AdminModal", () => {
     wrapper.unmount();
   });
 
+  it("применяет новый дизайн только при явном включении", async () => {
+    for (const referenceDesign of [false, true]) {
+      const wrapper = mount(AdminModal, {
+        attachTo: document.body,
+        props: { isOpen: true, title: "Создать заказ", showActions: false, referenceDesign },
+        slots: { default: '<button type="button">Действие</button>' },
+      });
+      await flushPromises();
+      const panel = document.body.querySelector('.admin-modal-header')?.parentElement;
+      expect(panel).toBeTruthy();
+      const title = panel?.querySelector('h2');
+      expect(panel?.classList.contains('admin-modal-reference')).toBe(referenceDesign);
+      expect(Boolean(document.body.querySelector('.admin-modal-reference-backdrop'))).toBe(referenceDesign);
+      expect(title?.getAttribute('style')?.includes('var(--font-display)') ?? false).toBe(!referenceDesign);
+      document.body.querySelector<HTMLButtonElement>('button[aria-label="Закрыть модальное окно"]')?.click();
+      await flushPromises();
+      expect(wrapper.emitted('close')).toHaveLength(1);
+      wrapper.unmount();
+    }
+  });
+
+  it.each(['sm', 'md', '2xl'] as const)("сохраняет размер %s в новой теме", async size => {
+    const wrapper = mount(AdminModal, {
+      attachTo: document.body,
+      props: { isOpen: true, title: 'Проверка размера', referenceDesign: true, size, showActions: false },
+      slots: { default: '<button type="button">Действие</button>' },
+    });
+    await flushPromises();
+    const panel = document.body.querySelector('.admin-modal-header')?.parentElement;
+    expect(panel?.classList.contains(`admin-modal-reference--${size}`)).toBe(true);
+    wrapper.unmount();
+  });
+
   it("ставит фокус в явно указанное поле", async () => {
     const Host = defineComponent({
       components: { AdminModal },

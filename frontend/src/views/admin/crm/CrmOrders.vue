@@ -169,15 +169,23 @@
             :class="{
               'crm-card-limit--exhausted': toolbarCardLimitState === 'ready' && toolbarCardLimits?.remaining_today_minor === 0,
               'crm-card-limit--unavailable': toolbarCardLimitState === 'error' || toolbarCardLimitState === 'unavailable',
+              'crm-card-limit--has-requests': toolbarCardNewRequestCount > 0,
             }"
             data-test="orders-card-limit"
             :aria-busy="refreshingCardLimit || crmStore.loadingCardPaymentAdmin"
-            :aria-label="toolbarCardLimitState === 'ready'
+            :aria-label="(toolbarCardLimitState === 'ready'
               ? `По карте сегодня осталось ${toolbarCardRemaining}. Открыть оплату картой и лимиты`
-              : `${toolbarCardLimitMessage}. Открыть оплату картой и лимиты`"
+              : `${toolbarCardLimitMessage}. Открыть оплату картой и лимиты`)
+              + (toolbarCardNewRequestCount > 0 ? `. Новых заявок на увеличение лимита: ${toolbarCardNewRequestCount}` : '')"
             title="Оплата картой и лимиты · остаток учитывает выданные оплаты и резервы"
             @click="openCardPaymentsModal()"
           >
+            <span
+              v-if="toolbarCardNewRequestCount > 0"
+              class="crm-card-limit-request-badge"
+              data-test="orders-card-limit-request-count"
+              aria-hidden="true"
+            >{{ toolbarCardNewRequestCount }}</span>
             <svg class="crm-card-limit-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
               <rect x="3" y="5" width="18" height="14" rx="3" />
               <path d="M3 10h18M7 15h3" stroke-linecap="round" />
@@ -2045,6 +2053,10 @@ function currentCardBusinessDate() {
   return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 const cardLimitBusinessDate = ref(currentCardBusinessDate());
+// Считаем необработанные заявки, а не непросмотренные уведомления.
+const toolbarCardNewRequestCount = computed(() =>
+  crmStore.cardPaymentAdminSnapshot?.requests?.filter((request) => request.status === "new").length || 0,
+);
 const toolbarCardLimits = computed(() => {
   const limits = crmStore.cardPaymentAdminSnapshot?.limits;
   if (!limits || limits.business_date !== cardLimitBusinessDate.value) return null;

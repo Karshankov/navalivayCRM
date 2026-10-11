@@ -4,10 +4,12 @@
     title="Оплата картой и лимиты"
     :description="tabDescription"
     size="wide"
+    reference-design
     :showActions="false"
     @close="requestClose"
     @cancel="requestClose"
   >
+    <div class="crm-card-payments">
     <div v-if="loadingCardPaymentAdmin" class="py-12 text-center text-sm text-gray-500">
       Загружаем лимиты…
     </div>
@@ -32,7 +34,7 @@
 
       <!-- Вкладки -->
       <nav
-        class="mb-4 grid grid-cols-4 gap-1 rounded-xl border border-slate-200 bg-slate-50 p-1 sm:flex sm:gap-1.5"
+        class="crm-card-tabs mb-4 grid grid-cols-4 gap-1 rounded-xl border border-slate-200 bg-slate-50 p-1 sm:flex sm:gap-1.5"
         aria-label="Разделы окна"
       >
         <button
@@ -58,13 +60,13 @@
       </nav>
 
       <!-- Фиксированная высота рабочей области: вкладки не меняют размер модального окна -->
-      <div class="h-[min(600px,calc(100dvh-14rem))] overflow-y-auto">
+      <div class="crm-card-workspace h-[min(600px,calc(100dvh-14rem))] overflow-y-auto">
         <!-- ======================= ВКЛАДКА: ЛИМИТЫ ======================= -->
         <div v-if="activeTab === 'limits'" class="space-y-4">
         <!-- Прогресс-карточки -->
         <div class="grid gap-3 sm:grid-cols-2">
           <!-- Сегодня -->
-          <div class="rounded-xl border border-blue-100 bg-blue-50/60 p-4">
+          <div class="crm-card-stat crm-card-stat--day rounded-xl border border-blue-100 bg-blue-50/60 p-4">
             <div class="flex items-baseline justify-between gap-2">
               <div class="text-xs font-medium text-blue-700">Занято сегодня</div>
               <div class="text-xs font-semibold text-blue-700">{{ money(limits.remaining_today_minor) }} свободно</div>
@@ -86,7 +88,7 @@
           </div>
 
           <!-- Месяц -->
-          <div class="rounded-xl border border-violet-100 bg-violet-50/60 p-4">
+          <div class="crm-card-stat crm-card-stat--month rounded-xl border border-violet-100 bg-violet-50/60 p-4">
             <div class="flex items-baseline justify-between gap-2">
               <div class="text-xs font-medium text-violet-700">Месяц {{ limits.month_key }}</div>
               <div class="text-xs font-semibold text-violet-700">{{ money(limits.remaining_month_minor) }} остаток</div>
@@ -121,7 +123,7 @@
         <!-- Действия с лимитами -->
         <div class="grid gap-3 lg:grid-cols-3">
           <!-- Месяцы списком -->
-          <section class="rounded-xl border border-gray-200 bg-white p-4">
+          <section class="crm-card-section rounded-xl border border-gray-200 bg-white p-4">
             <label class="block text-sm font-semibold text-gray-800">Месячные лимиты</label>
             <p class="mt-0.5 text-xs text-gray-500">Текущий и следующий месяц; план дня пересчитывается сразу.</p>
             <div class="mt-3 space-y-2">
@@ -143,7 +145,7 @@
                     <div class="text-xs text-gray-500">Лимит: {{ money(month.limit_minor) }}</div>
                   </div>
                   <CrmButton
-                    variant="soft" size="sm" class="w-full sm:!w-auto"
+                    variant="soft" size="sm" class="crm-card-button crm-card-button--soft w-full sm:!w-auto"
                     @click="startEditMonth(month)"
                   >Изменить</CrmButton>
                 </div>
@@ -151,21 +153,21 @@
                   <input v-model.number="editingMonthLimit" type="number" min="0" step="0.01" inputmode="decimal"
                     class="w-full rounded-lg border border-violet-300 px-3 py-2 text-sm focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-100 sm:min-w-0 sm:flex-1 sm:py-1.5"
                     :aria-label="`Лимит месяца ${monthName(month.month_key)} BYN`">
-                  <CrmButton type="submit" variant="muted" size="sm" class="w-full sm:!w-auto" :loading="busyForm === 'monthly'">Сохранить</CrmButton>
-                  <CrmButton variant="ghost" size="sm" class="w-full sm:!w-auto" @click="editingMonthKey = ''">Отмена</CrmButton>
+                  <CrmButton type="submit" variant="muted" size="sm" class="crm-card-button crm-card-button--muted w-full sm:!w-auto" :loading="busyForm === 'monthly'">Сохранить</CrmButton>
+                  <CrmButton variant="ghost" size="sm" class="crm-card-button crm-card-button--ghost w-full sm:!w-auto" @click="editingMonthKey = ''">Отмена</CrmButton>
                 </form>
               </div>
             </div>
           </section>
 
           <!-- День: ± -->
-          <form class="rounded-xl border border-gray-200 bg-white p-4" @submit.prevent="adjustDaily">
+          <form class="crm-card-section rounded-xl border border-gray-200 bg-white p-4" @submit.prevent="adjustDaily">
             <label class="block text-sm font-semibold text-gray-800" for="card-daily-input">Лимит на сегодня · {{ money(limits.daily_limit_minor) }}</label>
             <div class="mt-2 flex gap-2">
               <input id="card-daily-input" v-model.number="dailyDelta" type="number" step="0.01" inputmode="decimal" placeholder="± Сумма"
                 class="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
                 aria-label="Изменение дневного лимита BYN, минус для уменьшения">
-              <CrmButton type="submit" variant="soft" size="sm" :loading="busyForm === 'daily'">Применить</CrmButton>
+              <CrmButton class="crm-card-button crm-card-button--soft" type="submit" variant="soft" size="sm" :loading="busyForm === 'daily'">Применить</CrmButton>
             </div>
             <p class="mt-2 text-xs text-gray-500">
               Увеличьте или уменьшите (минус) лимит сегодняшнего дня. Месяц не меняется: план будущих дней
@@ -173,7 +175,7 @@
             </p>
           </form>
 
-          <form class="rounded-xl border border-gray-200 bg-white p-4" @submit.prevent="addManual">
+          <form class="crm-card-section rounded-xl border border-gray-200 bg-white p-4" @submit.prevent="addManual">
             <label class="block text-sm font-semibold text-gray-800" for="card-manual-input">Ручное пробитие · проходящий клиент</label>
             <div class="mt-2 flex flex-wrap gap-2">
               <input id="card-manual-input" v-model.number="manualAmount" type="number" min="0.01" step="0.01" inputmode="decimal" placeholder="Сумма"
@@ -182,14 +184,14 @@
               <input v-model="manualNote" type="text" placeholder="Комментарий (необязательно)"
                 class="w-full min-w-0 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 sm:flex-1"
                 aria-label="Комментарий к пробитию">
-              <CrmButton type="submit" variant="success" size="sm" class="w-full sm:!w-auto" :loading="busyForm === 'manual'">Внести</CrmButton>
+              <CrmButton type="submit" variant="success" size="sm" class="crm-card-button crm-card-button--success w-full sm:!w-auto" :loading="busyForm === 'manual'">Внести</CrmButton>
             </div>
             <p class="mt-2 text-xs text-gray-500">Разрешено сверх дневного плана; уменьшает остаток месяца.</p>
           </form>
         </div>
 
         <!-- Операции за сегодня -->
-        <section class="rounded-xl border border-gray-200 bg-white p-4">
+        <section class="crm-card-section rounded-xl border border-gray-200 bg-white p-4">
           <div class="mb-3 flex items-center justify-between">
             <h3 class="text-sm font-bold text-gray-900">Операции за {{ limits.business_date }}</h3>
             <span class="text-xs text-gray-500">{{ todayOperationsTotal }}</span>
@@ -217,7 +219,7 @@
 
       <!-- ======================= ВКЛАДКА: АККАУНТЫ ======================= -->
       <div v-else-if="activeTab === 'accounts'" class="space-y-4">
-        <form class="rounded-xl border border-gray-200 bg-white p-4" @submit.prevent="searchProfile">
+        <form class="crm-card-section rounded-xl border border-gray-200 bg-white p-4" @submit.prevent="searchProfile">
           <h3 class="mb-1 text-sm font-bold text-gray-900">Проверить и настроить клиента</h3>
           <p class="mb-3 text-xs text-gray-500">
             Введите @username — увидите статус оплаты картой, лимиты, тариф и паузу.
@@ -229,7 +231,7 @@
               class="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
               :class="{ 'border-rose-400': accountError }"
               aria-label="Telegram username без собаки">
-            <CrmButton type="submit" variant="primary" size="sm" :loading="profileSearching">Найти</CrmButton>
+            <CrmButton class="crm-card-button crm-card-button--primary" type="submit" variant="primary" size="sm" :loading="profileSearching">Найти</CrmButton>
           </div>
           <p v-if="accountError" class="mt-2 text-xs font-medium text-rose-700">{{ accountError }}</p>
         </form>
@@ -237,7 +239,7 @@
         <!-- Карточка найденного клиента -->
         <section
           v-if="foundProfile"
-          class="rounded-xl border p-4"
+          class="crm-card-profile rounded-xl border p-4"
           :class="foundProfile.enabled ? 'border-emerald-200 bg-emerald-50/50' : 'border-gray-200 bg-gray-50'"
           aria-live="polite"
         >
@@ -265,7 +267,7 @@
               </div>
             </div>
             <!-- Разрешение/запрет в одно нажатие: на телефоне на всю ширину -->
-            <CrmButton
+            <CrmButton :class="foundProfile.enabled ? 'crm-card-button crm-card-button--danger' : 'crm-card-button crm-card-button--success'"
               :variant="foundProfile.enabled ? 'danger' : 'success'"
               size="sm"
               block
@@ -306,7 +308,7 @@
             </div>
             <CrmButton
               variant="soft" size="sm"
-              class="w-full sm:!w-auto"
+              class="crm-card-button crm-card-button--soft w-full sm:!w-auto"
               :loading="profileToggling"
               title="Снять паузу, как будто срок уже прошёл. После следующей выдачи пауза вернётся."
               @click="confirmCooldownClear = true"
@@ -316,7 +318,7 @@
           <!-- Длительность паузы для будущих выдач -->
           <div class="mt-3 rounded-lg border border-gray-200 bg-white px-3 py-2.5">
             <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <label class="flex min-w-0 flex-1 items-center gap-2">
+              <label class="crm-card-cooldown-input flex min-w-0 flex-1 items-center gap-2">
                 <span class="shrink-0 text-xs font-medium text-gray-600">Пауза после выдачи</span>
                 <input
                   v-model.number="profileCooldownDays"
@@ -327,10 +329,10 @@
                 <span class="shrink-0 text-xs text-gray-500">дней · 0 = без паузы</span>
               </label>
               <div v-if="cooldownDaysChanged" class="flex gap-2 sm:shrink-0">
-                <CrmButton variant="success" size="sm" class="flex-1 sm:!w-auto" :loading="profileToggling" @click="saveCooldownDays">
+                <CrmButton variant="success" size="sm" class="crm-card-button crm-card-button--success flex-1 sm:!w-auto" :loading="profileToggling" @click="saveCooldownDays">
                   Сохранить
                 </CrmButton>
-                <CrmButton variant="ghost" size="sm" class="flex-1 sm:!w-auto" @click="resetCooldownDays">Отмена</CrmButton>
+                <CrmButton variant="ghost" size="sm" class="crm-card-button crm-card-button--ghost flex-1 sm:!w-auto" @click="resetCooldownDays">Отмена</CrmButton>
               </div>
               <div v-else class="text-[11px] text-gray-400">
                 {{ foundProfile.cooldown_days === 0 ? 'Пауза отключена' : `Сейчас ${pluralDays(foundProfile.cooldown_days)} после каждой выдачи` }}
@@ -365,13 +367,13 @@
             </label>
           </div>
           <div class="mt-2 flex sm:justify-end">
-            <CrmButton variant="muted" size="sm" class="w-full sm:!w-auto" :loading="profileToggling" @click="saveProfileOrderLimit">Сохранить лимит заказа</CrmButton>
+            <CrmButton variant="muted" size="sm" class="crm-card-button crm-card-button--muted w-full sm:!w-auto" :loading="profileToggling" @click="saveProfileOrderLimit">Сохранить лимит заказа</CrmButton>
           </div>
         </section>
 
         <!-- Последние разрешения: клик открывает карточку в поиске выше.
              Список отдаёт сервер: 3 последних по updated_at (включая отключённых). -->
-        <section class="rounded-xl border border-gray-200 bg-white p-4">
+        <section class="crm-card-section rounded-xl border border-gray-200 bg-white p-4">
           <div class="mb-2.5 flex items-center justify-between">
             <h3 class="text-sm font-bold text-gray-900">Последние разрешения</h3>
             <span class="text-[11px] text-gray-400">{{ snapshot.accounts.length }}</span>
@@ -412,7 +414,7 @@
       </div>
 
       <!-- ======================= ВКЛАДКА: ЗАЯВКИ ======================= -->
-      <div v-else-if="activeTab === 'requests'" class="rounded-xl border border-gray-200 bg-white p-4">
+      <div v-else-if="activeTab === 'requests'" class="crm-card-section rounded-xl border border-gray-200 bg-white p-4">
         <div class="mb-3 flex items-center justify-between">
           <h3 class="text-sm font-bold text-gray-900">Заявки на увеличение лимита</h3>
           <span v-if="newRequestCount" class="rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-semibold text-blue-800">
@@ -442,10 +444,10 @@
               </span>
             </div>
             <div v-if="request.status === 'new'" class="mt-2.5 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
-              <CrmButton variant="primary" size="sm" class="w-full sm:!w-auto" :loading="busyRequest === request.id" title="Применить лимиты тарифа к аккаунту автоматически" @click="approveRequest(request)">
+              <CrmButton variant="primary" size="sm" class="crm-card-button crm-card-button--primary w-full sm:!w-auto" :loading="busyRequest === request.id" title="Применить лимиты тарифа к аккаунту автоматически" @click="approveRequest(request)">
                 Одобрить
               </CrmButton>
-              <CrmButton variant="danger" size="sm" class="w-full sm:!w-auto" :loading="busyRequest === request.id" @click="confirmRejectRequest = request">
+              <CrmButton variant="danger" size="sm" class="crm-card-button crm-card-button--danger w-full sm:!w-auto" :loading="busyRequest === request.id" @click="confirmRejectRequest = request">
                 Отклонить
               </CrmButton>
               <a
@@ -463,13 +465,13 @@
       </div>
 
       <!-- ======================= ВКЛАДКА: ТАРИФЫ ======================= -->
-      <div v-else class="rounded-xl border border-gray-200 bg-white p-4">
+      <div v-else class="crm-card-section rounded-xl border border-gray-200 bg-white p-4">
         <div class="mb-3 flex items-center justify-between">
           <div>
             <h3 class="text-sm font-bold text-gray-900">Тарифы для заявок</h3>
             <p class="mt-0.5 text-xs text-gray-500">Варианты, которые клиент видит при запросе увеличения лимита.</p>
           </div>
-          <CrmButton variant="soft" size="sm" @click="newTariff">+ Добавить</CrmButton>
+          <CrmButton class="crm-card-button crm-card-button--soft" variant="soft" size="sm" @click="newTariff">+ Добавить</CrmButton>
         </div>
 
         <form v-if="editingTariff" class="mb-3 grid grid-cols-1 gap-2 rounded-xl bg-gray-50 p-3 sm:grid-cols-2" @submit.prevent="saveTariff">
@@ -491,8 +493,8 @@
               class="mt-0.5 w-full rounded-lg border border-gray-300 px-2.5 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100">
           </label>
           <div class="flex gap-2 sm:col-span-2">
-            <CrmButton type="submit" variant="primary" size="sm" :loading="busyForm === 'tariff'">Сохранить</CrmButton>
-            <CrmButton variant="ghost" size="sm" @click="editingTariff = null">Отмена</CrmButton>
+            <CrmButton class="crm-card-button crm-card-button--primary" type="submit" variant="primary" size="sm" :loading="busyForm === 'tariff'">Сохранить</CrmButton>
+            <CrmButton class="crm-card-button crm-card-button--ghost" variant="ghost" size="sm" @click="editingTariff = null">Отмена</CrmButton>
           </div>
         </form>
 
@@ -503,8 +505,8 @@
               <div class="text-xs text-gray-500">{{ tariff.transition_cost_text || 'Без текста о стоимости' }}</div>
             </div>
             <div class="flex w-full gap-2 sm:w-auto">
-              <CrmButton variant="soft" size="sm" class="flex-1 sm:!w-auto" @click="editTariff(tariff)">Изменить</CrmButton>
-              <CrmButton variant="danger" size="sm" class="flex-1 sm:!w-auto" :loading="busyTariffId === tariff.id" @click="confirmTariffRemoval = tariff">
+              <CrmButton variant="soft" size="sm" class="crm-card-button crm-card-button--soft flex-1 sm:!w-auto" @click="editTariff(tariff)">Изменить</CrmButton>
+              <CrmButton variant="danger" size="sm" class="crm-card-button crm-card-button--danger flex-1 sm:!w-auto" :loading="busyTariffId === tariff.id" @click="confirmTariffRemoval = tariff">
                 Удалить
               </CrmButton>
             </div>
@@ -525,11 +527,11 @@
     <!-- Подтверждение отклонения заявки -->
     <div
       v-if="confirmRejectRequest"
-      class="fixed inset-0 z-[60] flex items-center justify-center bg-black/30 p-4"
+      class="crm-card-confirm-overlay fixed inset-0 z-[60] flex items-center justify-center bg-black/30 p-4"
       role="dialog" aria-modal="true" aria-label="Подтверждение отклонения заявки"
       @click.self="confirmRejectRequest = null"
     >
-      <div class="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl">
+      <div class="crm-card-confirm-panel w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl">
         <h4 class="text-sm font-bold text-gray-900">Отклонить заявку?</h4>
         <p class="mt-1.5 text-sm text-gray-600">
           @{{ confirmRejectRequest.telegram_username || confirmRejectRequest.telegram_id }} —
@@ -537,8 +539,8 @@
           {{ money(confirmRejectRequest.requested_limit_minor) }}
         </p>
         <div class="mt-4 flex justify-end gap-2">
-          <CrmButton variant="ghost" size="sm" @click="confirmRejectRequest = null">Отмена</CrmButton>
-          <CrmButton variant="danger-solid" size="sm" :loading="busyRequest === confirmRejectRequest.id"
+          <CrmButton class="crm-card-button crm-card-button--ghost" variant="ghost" size="sm" @click="confirmRejectRequest = null">Отмена</CrmButton>
+          <CrmButton class="crm-card-button crm-card-button--danger-solid" variant="danger-solid" size="sm" :loading="busyRequest === confirmRejectRequest.id"
             @click="rejectRequest(confirmRejectRequest)">Отклонить</CrmButton>
         </div>
       </div>
@@ -547,11 +549,11 @@
     <!-- Подтверждение принудительного снятия паузы -->
     <div
       v-if="confirmCooldownClear && foundProfile"
-      class="fixed inset-0 z-[60] flex items-center justify-center bg-black/30 p-4"
+      class="crm-card-confirm-overlay fixed inset-0 z-[60] flex items-center justify-center bg-black/30 p-4"
       role="dialog" aria-modal="true" aria-label="Подтверждение снятия паузы"
       @click.self="confirmCooldownClear = false"
     >
-      <div class="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl">
+      <div class="crm-card-confirm-panel w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl">
         <h4 class="text-sm font-bold text-gray-900">Снять паузу принудительно?</h4>
         <p class="mt-1.5 text-sm text-gray-600">
           @{{ foundProfile.telegram_username }} сможет платить картой сразу, как будто
@@ -559,8 +561,8 @@
           После следующей выдачи пауза вернётся на установленное время.
         </p>
         <div class="mt-4 flex justify-end gap-2">
-          <CrmButton variant="ghost" size="sm" @click="confirmCooldownClear = false">Отмена</CrmButton>
-          <CrmButton variant="primary" size="sm" :loading="profileToggling" @click="clearCooldown">Снять паузу</CrmButton>
+          <CrmButton class="crm-card-button crm-card-button--ghost" variant="ghost" size="sm" @click="confirmCooldownClear = false">Отмена</CrmButton>
+          <CrmButton class="crm-card-button crm-card-button--primary" variant="primary" size="sm" :loading="profileToggling" @click="clearCooldown">Снять паузу</CrmButton>
         </div>
       </div>
     </div>
@@ -568,21 +570,22 @@
     <!-- Подтверждение удаления тарифа -->
     <div
       v-if="confirmTariffRemoval"
-      class="fixed inset-0 z-[60] flex items-center justify-center bg-black/30 p-4"
+      class="crm-card-confirm-overlay fixed inset-0 z-[60] flex items-center justify-center bg-black/30 p-4"
       role="dialog" aria-modal="true" aria-label="Подтверждение удаления тарифа"
       @click.self="confirmTariffRemoval = null"
     >
-      <div class="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl">
+      <div class="crm-card-confirm-panel w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl">
         <h4 class="text-sm font-bold text-gray-900">Удалить тариф?</h4>
         <p class="mt-1.5 text-sm text-gray-600">
           «{{ confirmTariffRemoval.title }}» · {{ money(confirmTariffRemoval.limit_minor) }} — действие нельзя отменить.
         </p>
         <div class="mt-4 flex justify-end gap-2">
-          <CrmButton variant="ghost" size="sm" @click="confirmTariffRemoval = null">Отмена</CrmButton>
-          <CrmButton variant="danger-solid" size="sm" :loading="busyTariffId === confirmTariffRemoval.id"
+          <CrmButton class="crm-card-button crm-card-button--ghost" variant="ghost" size="sm" @click="confirmTariffRemoval = null">Отмена</CrmButton>
+          <CrmButton class="crm-card-button crm-card-button--danger-solid" variant="danger-solid" size="sm" :loading="busyTariffId === confirmTariffRemoval.id"
             @click="removeTariff(confirmTariffRemoval.id)">Удалить</CrmButton>
         </div>
       </div>
+    </div>
     </div>
   </AdminModal>
 </template>
@@ -591,6 +594,7 @@
 import { computed, ref, watch } from "vue";
 import {
   ExclamationCircleIcon,
+  ExclamationTriangleIcon,
   MagnifyingGlassIcon,
   ClockIcon,
   ChartBarIcon,
@@ -1060,3 +1064,48 @@ async function removeTariff(id: string) {
   }
 }
 </script>
+
+
+<style scoped>
+.crm-card-payments { min-width: 0; color: #081b4b; font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; font-size: 13px; line-height: 1.5; }
+.crm-card-payments *, .crm-card-payments :deep(*) { box-sizing: border-box; }
+.crm-card-payments h3, .crm-card-payments h4 { color: #081b4b; font-weight: 750; letter-spacing: -.01em; }
+.crm-card-payments .text-gray-900, .crm-card-payments .text-gray-800 { color: #081b4b; }
+.crm-card-payments .text-gray-600, .crm-card-payments .text-slate-600 { color: #425778; }
+.crm-card-payments .text-gray-500, .crm-card-payments .text-gray-400 { color: #66799e; }
+.crm-card-payments .bg-gray-50 { background: #f7fbff; }
+.crm-card-payments .border-gray-200, .crm-card-payments .border-gray-100 { border-color: #e3ecf9; }
+.crm-card-section { min-width: 0; padding: 20px; border-color: #eaf0f9; border-radius: 16px; background: #fff; box-shadow: 0 10px 30px #20386905; }
+.crm-card-tabs { padding: 5px; gap: 5px; border-color: #dce8fa; border-radius: 14px; background: #edf3fb; }
+.crm-card-tabs > button { min-height: 44px; border-radius: 10px; color: #425778; font-family: inherit; font-size: 12px; font-weight: 700; }
+.crm-card-tabs > button[aria-current="page"] { background: linear-gradient(100deg, #05b8ff, #185dff); color: #fff; box-shadow: 0 6px 14px #148cff24; }
+.crm-card-tabs > button:not([aria-current="page"]):hover { background: #f7fbff; color: #081b4b; }
+.crm-card-workspace { padding: 2px 5px 5px 2px; scrollbar-color: #8999b7 #f0f4fa; scrollbar-width: thin; }
+.crm-card-stat { min-width: 0; padding: 20px; border-color: #dce8fa; border-radius: 16px; background: linear-gradient(140deg, #fff, #edf6ff); }
+.crm-card-stat--month { background: linear-gradient(140deg, #fff, #eaf0ff); }
+.crm-card-stat :is(.text-blue-700, .text-violet-700, .text-violet-800\/80, .text-blue-800\/80) { color: #425778; }
+.crm-card-stat :is(.text-blue-950, .text-violet-950) { color: #081b4b; font-size: 30px; font-weight: 850; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
+.crm-card-stat :is(.text-blue-950, .text-violet-950) > span { font-size: 13px; letter-spacing: 0; }
+.crm-card-stat [role="progressbar"] { height: 5px; background: #dce8fa; }
+.crm-card-stat [role="progressbar"] > div { background: linear-gradient(100deg, #05b8ff, #185dff); }
+.crm-card-profile { min-width: 0; border-radius: 16px; }
+.crm-card-payments input, .crm-card-payments select { max-width: 100%; min-width: 0; border: 1px solid #dce8fa; border-radius: 10px; background: #f7fbff; color: #081b4b; padding: 10px 12px; font: inherit; font-size: 13px; line-height: 1.5; box-shadow: none; }
+.crm-card-payments input::placeholder { color: #8999b7; opacity: 1; }
+.crm-card-payments input:focus, .crm-card-payments select:focus { border-color: #b8cef5; box-shadow: none; }
+.crm-card-payments :is(input, select, button, a):focus-visible, .crm-card-payments :deep(button:focus-visible) { outline: 2px solid #0958ff; outline-offset: 3px; }
+.crm-card-payments :deep(.crm-card-button) { min-height: 40px; border-radius: 11px; font-family: inherit; font-size: 12px; font-weight: 750; box-shadow: none; transition: filter .15s, background .15s; }
+.crm-card-payments :deep(.crm-card-button--primary), .crm-card-payments :deep(.crm-card-button--muted) { border: 1px solid transparent; background: linear-gradient(100deg, #05b8ff, #185dff); color: #fff; box-shadow: 0 6px 14px #148cff24; }
+.crm-card-payments :deep(.crm-card-button--soft), .crm-card-payments :deep(.crm-card-button--ghost) { border: 1px solid #dce8fa; background: linear-gradient(#f7faff, #e9f0fa); color: #233e70; }
+.crm-card-payments :deep(.crm-card-button--success) { border: 1px solid transparent; background: linear-gradient(110deg, #20bd9a, #12866a); color: #fff; }
+.crm-card-payments :deep(.crm-card-button--danger) { border: 1px solid #ffd4dc; background: #fff4f6; color: #c92b4f; }
+.crm-card-payments :deep(.crm-card-button--danger-solid) { border: 1px solid transparent; background: linear-gradient(115deg, #ff685a, #fa104f); color: #fff; }
+.crm-card-payments :deep(.crm-card-button:not(:disabled):hover) { filter: brightness(1.04); }
+.crm-card-payments :deep(button:disabled) { cursor: not-allowed; }
+.crm-card-confirm-overlay { background: rgb(8 27 75 / 38%); backdrop-filter: blur(6px); }
+.crm-card-confirm-panel { border: 1px solid #eaf0f9; border-radius: 18px; background: radial-gradient(ellipse at 75% 0%, #e7f1ff, transparent 65%), #f6f9fc; color: #081b4b; box-shadow: 0 24px 70px #03071140; }
+.crm-card-confirm-panel h4 { font-size: 18px; font-weight: 800; letter-spacing: -.025em; }
+@media (max-width: 640px) { .crm-card-section, .crm-card-stat { padding: 14px; } .crm-card-stat :is(.text-blue-950, .text-violet-950) { font-size: 26px; } }
+@media (max-width: 480px) { .crm-card-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); } .crm-card-payments input, .crm-card-payments select { font-size: 16px; } .crm-card-confirm-panel > div:last-child { flex-wrap: wrap; } .crm-card-confirm-panel :deep(.crm-card-button) { flex: 1 1 100px; } }
+@media (max-width: 640px) { .crm-card-cooldown-input { flex-wrap: wrap; } .crm-card-cooldown-input > span:first-child { flex: 1 1 100%; white-space: normal; overflow-wrap: anywhere; } .crm-card-cooldown-input > input { width: 80px; flex: 0 0 80px; } .crm-card-cooldown-input > span:last-child { min-width: 0; flex: 1 1 70px; white-space: normal; overflow-wrap: anywhere; } }
+@media (prefers-reduced-motion: reduce) { .crm-card-payments *, .crm-card-payments :deep(*) { transition: none !important; animation: none !important; } }
+</style>
