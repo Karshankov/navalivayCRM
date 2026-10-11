@@ -123,7 +123,7 @@ interface Props {
   isOpen: boolean
   title: string
   description?: string
-  size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | 'wide'
+  size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | 'wide' | 'screen'
   showCloseButton?: boolean
   showActions?: boolean
   showCancelButton?: boolean
@@ -188,7 +188,8 @@ const panelClasses = computed(() => {
     lg: 'sm:max-w-xl lg:max-w-2xl',
     xl: 'sm:max-w-2xl lg:max-w-3xl',
     '2xl': 'sm:max-w-3xl lg:max-w-4xl',
-    wide: 'sm:!w-[min(96vw,1600px)] sm:!max-w-[min(96vw,1600px)]'
+    wide: 'sm:!w-[min(96vw,1600px)] sm:!max-w-[min(96vw,1600px)]',
+    screen: '!w-[calc(100vw-2rem)] !max-w-[calc(100vw-2rem)] !h-[calc(100dvh-2rem)] !max-h-[calc(100dvh-2rem)]'
   }
 
   return `${baseClasses} ${sizeClasses[props.size]} ${props.referenceDesign ? `admin-modal-reference admin-modal-reference--${props.size}` : ""}`
@@ -292,5 +293,12 @@ function handleConfirm() {
 .admin-modal-reference .admin-modal-content { min-height: 0; margin-bottom: 0; scrollbar-color: #8999b7 #f0f4fa; scrollbar-width: thin; }
 .admin-modal-reference button:focus-visible { outline: 2px solid #0958ff; outline-offset: 3px; }
 @media (max-width: 640px) { .admin-modal-reference { padding: 16px; } .admin-modal-reference .admin-modal-header > :first-child { font-size: 21px; } }
+/* Opt-in near-fullscreen layout; other modal sizes remain unchanged. */
+.admin-modal-reference.admin-modal-reference--screen { padding: 8px 12px; border-radius: 12px; }
+.admin-modal-reference--screen .admin-modal-header { margin-bottom: 4px; padding-bottom: 4px; gap: 6px; }
+.admin-modal-reference--screen .admin-modal-header > :first-child { font-size: 18px; line-height: 1.25; }
+.admin-modal-reference--screen .admin-modal-description { margin-bottom: 4px; font-size: 11px; }
+.admin-modal-reference--screen .admin-modal-content { display: flex; flex-direction: column; overflow: hidden; }
+@media (max-width: 640px) { .admin-modal-reference.admin-modal-reference--screen { padding: 8px 10px; } }
 @media (prefers-reduced-motion: reduce) { .admin-modal-reference { transition: none; } }
 </style>

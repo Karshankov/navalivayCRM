@@ -939,7 +939,7 @@
 
     <!-- Category Groups Modal -->
     <AdminModal
-      v-if="showGroupModal && !showWholesaleLinksModal && !minStockEditorOpen"
+      v-if="showGroupModal && !showWholesaleLinksModal && !minStockEditorOpen && !showGroupOrderModal"
       ref="groupModalRef"
       :isOpen="true"
       :title="activeGroupCategory ? `Линейки: ${activeGroupCategory.name}` : 'Линейки'"
@@ -955,6 +955,12 @@
             <p class="text-lg font-semibold text-gray-900">{{ activeGroupCategory.name }}</p>
           </div>
           <div class="flex flex-wrap items-center gap-2">
+            <button type="button" data-test="group-order-open"
+              class="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-40"
+              :disabled="groupModalLoading || editableGroups.length < 2" @click="openGroupOrder">
+              <svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M5 3v14m-3-3 3 3 3-3M11 5h7M11 10h5M11 15h3" /></svg>
+              Порядок
+            </button>
             <button
               class="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg border border-gray-300 bg-white text-gray-700 hover:border-gray-400 hover:text-gray-900 transition-colors"
               @click="openWholesaleLinksModal"
@@ -1098,6 +1104,11 @@
         <p v-else class="text-sm text-gray-500">Линеек пока нет. Создайте первую.</p>
       </div>
     </AdminModal>
+
+    <AdminCategoryGroupOrderModal v-if="showGroupOrderModal && activeGroupCategory"
+      :is-open="true" :category-name="activeGroupCategory.name" :groups="editableGroups"
+      :busy="groupModalLoading" :error-text="groupOrderError"
+      @close="closeGroupOrder" @reorder="reorderGroups" />
 
     <!-- Пока открыт быстрый редактор, окно линеек размонтировано: иначе его
          ловушка фокуса перехватывает ввод в Teleport-окне. -->
@@ -1291,6 +1302,7 @@ import AdminProductsTable from '@/components/admin/AdminProductsTable.vue'
 import AdminStockTransferModal from '@/components/admin/AdminStockTransferModal.vue'
 import AdminCategoryGroupForm from '@/components/admin/AdminCategoryGroupForm.vue'
 import AdminGroupMinStockEditor from '@/components/admin/AdminGroupMinStockEditor.vue'
+import AdminCategoryGroupOrderModal from '@/components/admin/AdminCategoryGroupOrderModal.vue'
 import ProductDiscountModal from '@/components/admin/ProductDiscountModal.vue'
 import AdminWholesaleLinksPanel from '@/components/admin/AdminWholesaleLinksPanel.vue'
 import IncompleteGroupsPanel from '@/components/admin/IncompleteGroupsPanel.vue'
@@ -1439,6 +1451,8 @@ const editingGroup = ref<CategoryGroup | null>(null)
 const editableGroups = ref<CategoryGroupWithDepth[]>([])
 const groupModalRef = ref<InstanceType<typeof AdminModal> | null>(null)
 const savedGroupModalScrollTop = ref(0)
+const showGroupOrderModal = ref(false)
+const groupOrderError = ref('')
 
 // Quick-edit мин. остатка из строки линейки (без открытия большой формы).
 // Хранит ссылку на CategoryGroupWithDepth (для актуального totalStockSum
@@ -2688,12 +2702,8 @@ function syncEditableGroups(categoryId: string, restoreScroll = false) {
     : 0
   
   const groups = flattenGroupTree(buildGroupTreeForCategory(categoryId))
-  // Сортируем: сначала с остатком, потом без остатка (учитываем totalStockSum)
-  groups.sort((a, b) => {
-    const aEmpty = (a.totalStockSum ?? a.stockSum ?? 0) === 0 ? 1 : 0
-    const bEmpty = (b.totalStockSum ?? b.stockSum ?? 0) === 0 ? 1 : 0
-    return aEmpty - bEmpty
-  })
+  // Keep depth-first order intact: sorting empty rows separately splits subtrees.
+  // Storefront visibility and parked positions are handled by the existing API.
   editableGroups.value = groups
   
   if (restoreScroll && scrollPos > 0) {
@@ -2926,18 +2936,63 @@ async function handleGroupFormSubmit(payload: { name: string; slug?: string; cov
   }
 }
 
+function openGroupOrder() {
+  if (!activeGroupCategory.value || groupModalLoading.value) return
+  savedGroupModalScrollTop.value = groupModalRef.value?.scrollContainer?.scrollTop ?? 0
+  syncEditableGroups(activeGroupCategory.value.id)
+  groupOrderError.value = ''
+  showGroupOrderModal.value = true
+}
+
+async function closeGroupOrder() {
+  if (groupModalLoading.value) return
+  showGroupOrderModal.value = false
+  await nextTick()
+  const container = groupModalRef.value?.scrollContainer
+  if (container) container.scrollTop = savedGroupModalScrollTop.value
+  document.querySelector<HTMLButtonElement>('[data-test="group-order-open"]')?.focus({ preventScroll: true })
+}
+
 async function reorderGroups(newOrder: CategoryGroupWithDepth[]) {
-  if (!activeGroupCategory.value) return
+  const categoryId = activeGroupCategory.value?.id
+  if (!categoryId || groupModalLoading.value) return
+  const current = flattenGroupTree(buildGroupTreeForCategory(categoryId))
+  const byId = new Map(current.map(group => [group.id, group]))
+  if (newOrder.length !== current.length || new Set(newOrder.map(group => group.id)).size !== current.length
+    || newOrder.some(group => group.categoryId !== categoryId || !byId.has(group.id)
+      || (byId.get(group.id)!.parentId ?? null) !== (group.parentId ?? null))) {
+    groupOrderError.value = 'Список линеек изменился. Закройте окно и откройте его заново.'
+    return
+  }
+  if (newOrder.every((group, index) => group.id === current[index]?.id)) return
   groupModalLoading.value = true
+  groupOrderError.value = ''
+  editableGroups.value = [...newOrder]
   try {
-    const payload = newOrder.map((group, idx) => ({ id: group.id!, order: idx + 1 }))
+    const payload = newOrder.map((group, idx) => ({ id: group.id, order: idx + 1 }))
     await adminStore.reorderCategoryGroups(payload)
-    await adminStore.fetchCategoryGroups(activeGroupCategory.value.id)
-    syncEditableGroups(activeGroupCategory.value.id, true)
   } catch (error) {
     console.error('Failed to reorder groups:', error)
-    showToast('Не удалось изменить порядок линеек', 'error')
+    // A lost response can hide a successful write. Reconcile rather than blindly retry.
+    let reconciled = false
+    try { await adminStore.fetchCategoryGroups(categoryId); reconciled = true } catch { /* keep the last confirmed snapshot */ }
+    if (activeGroupCategory.value?.id === categoryId) {
+      editableGroups.value = reconciled ? flattenGroupTree(buildGroupTreeForCategory(categoryId)) : current
+      groupOrderError.value = reconciled
+        ? 'Сбой при сохранении. Показан актуальный порядок с сервера; при необходимости повторите перемещение.'
+        : 'Не удалось подтвердить сохранение. Проверьте соединение и откройте список заново.'
+    }
+    showToast('Не удалось подтвердить порядок линеек', 'error')
+    groupModalLoading.value = false
+    return
+  }
+  try {
+    await adminStore.fetchCategoryGroups(categoryId)
+  } catch (error) {
+    console.error('Failed to refresh saved group order:', error)
+    if (activeGroupCategory.value?.id === categoryId) groupOrderError.value = 'Порядок сохранён, но список не удалось обновить. Откройте его заново при восстановлении соединения.'
   } finally {
+    if (activeGroupCategory.value?.id === categoryId) syncEditableGroups(categoryId, true)
     groupModalLoading.value = false
   }
 }
