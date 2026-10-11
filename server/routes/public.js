@@ -1,6 +1,7 @@
 import express from "express";
 import rateLimit from "express-rate-limit";
 import { db } from "../db.js";
+import { snapshotOrder, recordOrderAudit, verifiedRequestAuditActor } from "../utils/order-audit.js";
 import {
   applyOrderLoyaltyReservations,
   buildLoyaltyApplication,
@@ -2757,6 +2758,7 @@ publicRouter.post(
       }
 
       const tx = db.transaction(() => {
+        const auditBefore = snapshotOrder(db, id);
         reverseCardOrder(id);
         releaseOrderLoyaltyReservations(id);
 
@@ -2802,10 +2804,14 @@ publicRouter.post(
         db.prepare(
           `UPDATE orders SET ${updateFields.join(", ")} WHERE id = ?`,
         ).run(...updateValues);
+        recordOrderStatusChange(id, auditBefore.order.status, "cancelled", "Клиент отменил заказ");
+        recordOrderAudit(db, {
+          orderId: id, before: auditBefore,
+          actor: verifiedRequestAuditActor(req), source: "miniapp.cancel",
+        });
       });
 
-      tx();
-      recordOrderStatusChange(id, order.status, "cancelled", "Клиент отменил заказ");
+      tx.immediate();
 
       return res.json({
         success: true,
@@ -2912,16 +2918,18 @@ publicRouter.put(
       let nextCardAmountMinor = 0;
       let nextCashDueMinor = 0;
       const tx = db.transaction(() => {
+        const auditBefore = snapshotOrder(db, id);
         // Re-check under the write transaction: the seller may have issued or
         // cancelled the order while username verification was in flight.
         const freshOrder = db
-          .prepare("SELECT status, paid_amount, updated_at FROM orders WHERE id = ?")
+          .prepare("SELECT status, paid_amount, updated_at, audit_revision FROM orders WHERE id = ?")
           .get(id);
         if (
           !freshOrder ||
           !ACTIVE_CUSTOMER_ORDER_STATUSES.has(freshOrder.status) ||
           Number(freshOrder.paid_amount || 0) > 0 ||
-          freshOrder.updated_at !== order.updated_at
+          freshOrder.updated_at !== order.updated_at ||
+          freshOrder.audit_revision !== order.audit_revision
         ) {
           const error = new Error("order_not_modifiable");
           error.code = "order_not_modifiable";
@@ -3172,10 +3180,14 @@ publicRouter.put(
             idFactory: () => generateId("pu"),
           });
         }
+        recordOrderStatusChange(id, auditBefore.order.status, "new", "Клиент изменил заказ");
+        recordOrderAudit(db, {
+          orderId: id, before: auditBefore,
+          actor: verifiedRequestAuditActor(req), source: "miniapp.modify",
+        });
       });
 
-      tx();
-      recordOrderStatusChange(id, previousStatus, "new", "Клиент изменил заказ");
+      tx.immediate();
 
       return res.json({
         success: true,
@@ -3720,6 +3732,10 @@ publicRouter.post(
         }
 
         const pickupCell = assignLowestAvailablePickupCell(createdOrderId);
+        recordOrderAudit(db, {
+          orderId: createdOrderId, before: null,
+          actor: verifiedRequestAuditActor(req), source: "miniapp.create",
+        });
 
         return {
           orderId: createdOrderId,

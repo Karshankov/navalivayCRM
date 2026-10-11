@@ -79,9 +79,9 @@ describe("ProfileView loyalty section", () => {
           monthly_used_minor: 35000,
           monthly_remaining_minor: 65000,
           max_order_minor: 4500,
-          cooldown_until: null,
+          cooldown_until: "2098-12-31T22:30:00.000Z",
           request_cooldown_until: null,
-          card_available: true,
+          card_available: false,
           limits: {
             monthly_limit_minor: 100000,
             spent_month_minor: 35000,
@@ -119,6 +119,9 @@ describe("ProfileView loyalty section", () => {
     expect(wrapper.find(".card-limit-card").text()).toContain("350 BYN");
     expect(wrapper.find(".card-limit-card").text()).toContain("650 BYN");
     expect(wrapper.find(".card-limit-card").text()).toContain("Лимит одного заказа:");
+    // The Minsk date crosses into January; only day and month are shown.
+    expect(wrapper.get(".card-limit-pause__row").text()).toBe("Оплата по карте станет доступна 1 января");
+    expect(wrapper.get(".card-limit-pause__row").text()).not.toMatch(/2098|2099/);
     expect(wrapper.find(".bonus-popup-stub").exists()).toBe(false);
 
     await wrapper.find(".loyalty-rules-link").trigger("click");

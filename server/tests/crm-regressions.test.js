@@ -998,7 +998,68 @@ async function testOrderCardAdditionalCost() {
   console.log('crm-regressions: надбавка не увеличивает карточный резерв, снижение суммы освобождает резерв');
 }
 
+async function testOrderAuditRouteAndConflict() {
+  const productId = insertProduct({ stock: 10, price: 20, cost: 12 });
+  const orderId = insertOrder({
+    orderNumber: 99003, status: 'new', stockDeducted: 0,
+    createdAt: '2026-10-11 07:00:00',
+    items: [{ productId, quantity: 1, price: 20, cost: 12 }],
+  });
+  const route = `/api/admin/crm/orders/${orderId}`;
+  const auditRoute = `${route}/audit`;
+  const journal = async () => {
+    const result = await requestJson(auditRoute, { headers: authHeaders() });
+    assert.equal(result.response.status, 200);
+    assert.ok(Array.isArray(result.data));
+    return result.data;
+  };
+  const patch = (body) => requestJson(route, {
+    method: 'PATCH', headers: authHeaders(), body: JSON.stringify(body),
+  });
+  assert.equal((await requestJson(auditRoute)).response.status, 401);
+  assert.deepEqual(await journal(), [], 'Legacy rows must not acquire fabricated events');
+
+  const first = await patch({ notes: 'Проверенный комментарий', expected_audit_revision: 0,
+    actor_name: 'Поддельный автор', actor_type: 'customer' });
+  assert.equal(first.response.status, 200);
+  assert.equal(first.data.audit_revision, 1);
+  const events = await journal();
+  assert.equal(events.length, 1);
+  assert.equal(events[0].field, 'notes');
+  assert.equal(events[0].before, null);
+  assert.equal(events[0].after, 'Проверенный комментарий');
+  assert.equal(events[0].actor_type, 'admin');
+  assert.equal(events[0].actor_name, 'test-admin');
+  assert.match(events[0].occurred_at, /^\d{4}-\d{2}-\d{2}T.*\.\d{3}Z$/);
+
+  const stale = await patch({ notes: 'Устаревшая правка', expected_audit_revision: 0 });
+  assert.equal(stale.response.status, 409);
+  assert.equal(getOrder(orderId).notes, 'Проверенный комментарий');
+  assert.deepEqual(await journal(), events);
+  assert.equal((await patch({ additional_cost: -1 })).response.status, 400);
+  assert.deepEqual(await journal(), events);
+  assert.equal((await patch({ notes: 'Проверенный комментарий', expected_audit_revision: 1 })).response.status, 200);
+  assert.deepEqual(await journal(), events, 'Unchanged retry must not add events');
+  assert.equal(getOrder(orderId).audit_revision, 1);
+
+  const beforeFailure = getOrder(orderId);
+  db.exec(`CREATE TRIGGER test_order_audit_failure BEFORE INSERT ON order_audit_events
+    WHEN NEW.order_id = '${orderId}' BEGIN SELECT RAISE(ABORT, 'test_audit_failure'); END`);
+  try {
+    const failed = await patch({ notes: 'Не должен сохраниться', expected_audit_revision: 1 });
+    assert.equal(failed.response.status, 500);
+    assert.deepEqual(getOrder(orderId), beforeFailure, 'Audit failure must roll back the order');
+    assert.deepEqual(await journal(), events);
+  } finally {
+    db.exec('DROP TRIGGER test_order_audit_failure');
+  }
+  assert.equal((await requestJson(auditRoute, { method: 'DELETE', headers: authHeaders() })).response.status, 404);
+  assert.deepEqual(await journal(), events, 'The audit API is read-only');
+  console.log('crm-regressions: аудит защищён авторизацией, конфликтом версии и атомарным откатом');
+}
+
 async function main() {
+  await testOrderAuditRouteAndConflict();
   await testOrderCardAdditionalCost();
   await testOrderAdditionalCost();
   await testDashboardUsesBusinessDayBoundary();

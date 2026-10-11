@@ -117,6 +117,23 @@ describe("App shell visibility", () => {
     wrapper.unmount();
   });
 
+  it("uses the desktop admin shell only on admin routes", async () => {
+    for (const path of ["/admin", "/admin/crm/orders", "/admin/crm/orders/order-1"]) {
+      routePath.value = path;
+      const wrapper = mountApp();
+      await flushPromises();
+      expect(wrapper.get(".app-shell").classes()).toContain("app-shell--admin");
+      expect(wrapper.get(".app-shell").classes()).not.toContain("app-shell--with-tab-bar");
+      wrapper.unmount();
+    }
+    routePath.value = "/";
+    const wrapper = mountApp();
+    await flushPromises();
+    expect(wrapper.get(".app-shell").classes()).not.toContain("app-shell--admin");
+    expect(wrapper.get(".app-shell").classes()).toContain("app-shell--with-tab-bar");
+    wrapper.unmount();
+  });
+
   it("does not apply tab bar padding reserve on checkout", async () => {
     routePath.value = "/checkout";
     const wrapper = mountApp();

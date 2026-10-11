@@ -1,6 +1,9 @@
 import crypto from "node:crypto";
 import express from "express";
 import { db } from "../db.js";
+import { refreshCrmCustomerProfile, crmOrderItemImageSources } from "../utils/crm-customer-profile.js";
+import { resolveCoverImage } from "../services/image-thumbnail-service.js";
+import { snapshotOrder, recordOrderAudit, verifiedRequestAuditActor } from "../utils/order-audit.js";
 import {
   applyDiscountToPrice,
   resolveDiscountPrice,
@@ -735,7 +738,12 @@ crmOperationsRouter.get(
         const itemsRows = db
           .prepare(
             `
-        SELECT oi.*, p.description as product_description 
+        SELECT oi.*, p.description as product_description,
+             COALESCE(
+               (SELECT url FROM product_images WHERE productId = oi.product_id AND variant_id = oi.variant_id ORDER BY position LIMIT 1),
+               (SELECT url FROM product_images WHERE productId = oi.product_id AND variant_id IS NULL ORDER BY position LIMIT 1),
+               (SELECT url FROM product_images WHERE productId = oi.product_id ORDER BY position LIMIT 1)
+             ) AS product_image_url
         FROM order_items oi
         LEFT JOIN products p ON oi.product_id = p.id
         WHERE oi.order_id IN (${placeholders})
@@ -852,7 +860,12 @@ crmOperationsRouter.get(
         const placeholders = orderIds.map(() => "?").join(",");
         const itemsRows = db
           .prepare(
-            `SELECT oi.*, p.description as product_description
+            `SELECT oi.*, p.description as product_description,
+             COALESCE(
+               (SELECT url FROM product_images WHERE productId = oi.product_id AND variant_id = oi.variant_id ORDER BY position LIMIT 1),
+               (SELECT url FROM product_images WHERE productId = oi.product_id AND variant_id IS NULL ORDER BY position LIMIT 1),
+               (SELECT url FROM product_images WHERE productId = oi.product_id ORDER BY position LIMIT 1)
+             ) AS product_image_url
             FROM order_items oi
             LEFT JOIN products p ON oi.product_id = p.id
             WHERE oi.order_id IN (${placeholders})`,
@@ -892,7 +905,7 @@ crmOperationsRouter.get(
 crmOperationsRouter.get(
   "/api/admin/crm/orders/:id",
   authMiddleware,
-  (req, res) => {
+  async (req, res) => {
     try {
       const { id } = req.params;
 
@@ -904,6 +917,12 @@ crmOperationsRouter.get(
         COALESCE(o.telegram_username, c.telegram_username) as telegram_username,
         c.first_name,
         c.last_name,
+        c.telegram_id AS customer_telegram_id,
+        CASE WHEN c.telegram_id IS NOT NULL THEN '/api/customer-photo/' || c.id ELSE NULL END AS customer_photo_url,
+        COALESCE(NULLIF(TRIM(COALESCE(c.first_name, '') || ' ' || COALESCE(c.last_name, '')), ''),
+          NULLIF(TRIM(COALESCE(c.telegram_username, o.telegram_username, '')), ''),
+          CASE WHEN c.telegram_id IS NOT NULL OR NULLIF(TRIM(COALESCE(o.telegram_username, '')), '') IS NOT NULL
+            THEN 'Пользователь Telegram' ELSE 'Гость' END) AS customer_name,
         c.phone,
         COALESCE(pc.has_gift, 0) as promo_has_gift,
         pc.manager_description as promo_manager_description,
@@ -923,7 +942,14 @@ crmOperationsRouter.get(
       const items = db
         .prepare(
           `
-      SELECT oi.*, p.description as product_description 
+      SELECT oi.*, p.description as product_description,
+             p.use_category_image AS product_use_category_image,
+             (SELECT cover_image FROM category_groups WHERE id = p.groupId) AS group_image,
+             (SELECT cover_image FROM categories WHERE id = p.categoryId) AS category_image,
+             COALESCE(
+               (SELECT url FROM product_images WHERE productId = oi.product_id AND variant_id = oi.variant_id ORDER BY position LIMIT 1),
+               (SELECT url FROM product_images WHERE productId = oi.product_id AND variant_id IS NULL ORDER BY position LIMIT 1)
+             ) AS product_image_url
       FROM order_items oi
       LEFT JOIN products p ON oi.product_id = p.id
       WHERE oi.order_id = ?
@@ -931,12 +957,26 @@ crmOperationsRouter.get(
         )
         .all(id);
 
+      const profile = await refreshCrmCustomerProfile(db, order.customer_id);
+      const presentationItems = [];
+      for (const { product_use_category_image, group_image, category_image, ...item } of items) {
+        const sources = crmOrderItemImageSources({ ...item, product_use_category_image, group_image, category_image });
+        let imageUrl = null;
+        for (const source of sources) {
+          imageUrl = await resolveCoverImage(source);
+          if (imageUrl) break;
+        }
+        presentationItems.push({ ...item, product_image_url: imageUrl });
+      }
       const pickupCell = getActivePickupCellAssignment(id);
       res.json({
         ...order,
+        ...(profile || {}),
+        telegram_username: profile?.customer_telegram_id ? (profile.telegram_username || undefined) : order.telegram_username,
+        customer_name: profile?.customer_telegram_id ? profile.customer_name : order.customer_name,
         pickup_cell_number: pickupCell?.cell_number ?? null,
         pickup_cell_assignment_id: pickupCell?.id ?? null,
-        items,
+        items: presentationItems,
       });
     } catch (error) {
       console.error("[crm] Get order error:", error);
@@ -1254,6 +1294,11 @@ crmOperationsRouter.post(
           });
         }
 
+        recordStatusChange(orderId, null, "new", "Создан заказ");
+        recordOrderAudit(db, {
+          orderId, before: null,
+          actor: verifiedRequestAuditActor(req, shiftActor), source: "crm.create",
+        });
         return { id: orderId, replayed: false };
       });
 
@@ -1263,14 +1308,6 @@ crmOperationsRouter.post(
       const createdPayload = getCreatedOrderPayload(orderId);
       if (!createdPayload) {
         throw new StaffServiceError("idempotency_entity_missing", 409);
-      }
-      if (!createResult.replayed) {
-        recordStatusChange(
-          orderId,
-          null,
-          createdPayload.status,
-          "Создан заказ",
-        );
       }
 
       res.json(createdPayload);
@@ -1399,6 +1436,7 @@ crmOperationsRouter.patch(
 
       const tx = db.transaction(() => {
         const shiftActor = recheckOrderShift(req);
+        const auditBefore = snapshotOrder(db, id);
         // Перечитываем статус под write-лок'ом транзакции. better-sqlite3
         // в WAL-режиме выполняет db.transaction() как IMMEDIATE — write-лок
         // берётся при первой записи, но мы хотим дополнительно убедиться,
@@ -1413,6 +1451,15 @@ crmOperationsRouter.patch(
         const fresh = db
           .prepare("SELECT * FROM orders WHERE id = ?")
           .get(id);
+        const expectedRevision = req.body?.expected_audit_revision;
+        if (expectedRevision !== undefined) {
+          if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) {
+            throw new StaffServiceError("invalid_order_revision", 400);
+          }
+          if (!fresh || fresh.audit_revision !== expectedRevision) {
+            throw new StaffServiceError("order_conflict", 409);
+          }
+        }
         if (fresh) {
           order = fresh;
           statusAtTxStart = fresh.status;
@@ -1983,6 +2030,14 @@ crmOperationsRouter.patch(
           // and S10 audit note).
           awardLoyaltyForOrder(id);
         }
+        const auditAfter = db.prepare("SELECT status FROM orders WHERE id = ?").get(id);
+        if (auditAfter.status !== statusAtTxStart) {
+          recordStatusChange(id, statusAtTxStart, auditAfter.status, statusChangeNote || "Изменение статуса");
+        }
+        recordOrderAudit(db, {
+          orderId: id, before: auditBefore,
+          actor: verifiedRequestAuditActor(req, shiftActor), source: "crm.update",
+        });
       });
 
       tx.immediate();
@@ -2008,23 +2063,18 @@ crmOperationsRouter.patch(
         .get(id);
       const updatedItems = db
         .prepare(`
-          SELECT oi.*, p.description as product_description 
+          SELECT oi.*, p.description as product_description,
+             COALESCE(
+               (SELECT url FROM product_images WHERE productId = oi.product_id AND variant_id = oi.variant_id ORDER BY position LIMIT 1),
+               (SELECT url FROM product_images WHERE productId = oi.product_id AND variant_id IS NULL ORDER BY position LIMIT 1),
+               (SELECT url FROM product_images WHERE productId = oi.product_id ORDER BY position LIMIT 1)
+             ) AS product_image_url
           FROM order_items oi
           LEFT JOIN products p ON oi.product_id = p.id
           WHERE oi.order_id = ?
         `)
         .all(id);
 
-      // Используем statusAtTxStart (свежее SELECT под write-лок'ом транзакции),
-      // а не order.status (снимок до tx). См. комментарий внутри tx().
-      if (updated.status !== statusAtTxStart) {
-        recordStatusChange(
-          id,
-          statusAtTxStart,
-          updated.status,
-          statusChangeNote || "Изменение статуса",
-        );
-      }
 
       // Авто-уведомление клиенту при смене статуса (Костя 8.05.2026: «нужно
       // нажали собрано → ему отослалось»). Любая ошибка отправки не должна
@@ -2037,15 +2087,9 @@ crmOperationsRouter.patch(
       // выполнил переход. Второй увидит updated.status === statusAtTxStart
       // и пропустит отправку — клиенту не уйдёт дубль.
       //
-      // Race window (acknowledged): tx() со сменой статуса уже зафиксирован
-      // выше, recordStatusChange() — отдельная вставка после tx(). Если
-      // процесс упадёт здесь, в БД может оказаться new статус без записи
-      // в bot_message_log, а у клиента — отправленное сообщение Telegram
-      // (или наоборот). Это допустимо: альтернатива (sendMessage внутри
-      // транзакции SQLite) держала бы блокировку на сетевом таймауте, что
-      // куда хуже. Менеджер видит факт отправки/skip в UI по плашке
-      // saveSuccess сразу после ответа, может перезапустить через
-      // /bot/send-custom если что-то не дошло.
+      // Status history and detailed audit commit atomically with the order.
+      // Telegram delivery remains outside SQLite transactions: a network
+      // failure must not undo an already committed order mutation.
       const statusChanged = updated.status !== statusAtTxStart;
       const activePickupCell = getActivePickupCellAssignment(id);
       res.json({
@@ -2115,6 +2159,31 @@ crmOperationsRouter.patch(
   },
 );
 
+// Read-only detailed audit; same verified admin access as order history.
+crmOperationsRouter.get(
+  "/api/admin/crm/orders/:id/audit",
+  authMiddleware,
+  (req, res) => {
+    try {
+      const { id } = req.params;
+      if (!db.prepare("SELECT 1 FROM orders WHERE id = ?").get(id)) {
+        return res.status(404).json({ error: "not_found" });
+      }
+      const events = db.prepare(`
+        SELECT * FROM order_audit_events WHERE order_id = ? ORDER BY sequence ASC
+      `).all(id).map(({ before_json, after_json, ...event }) => ({
+        ...event,
+        before: JSON.parse(before_json),
+        after: JSON.parse(after_json),
+      }));
+      res.json(events);
+    } catch (error) {
+      console.error("[crm] Fetch order audit error:", error);
+      res.status(500).json({ error: "failed" });
+    }
+  },
+);
+
 // История статусов заказа (must be after /delivered to avoid route conflict)
 crmOperationsRouter.get(
   "/api/admin/crm/orders/:id/history",
@@ -2154,7 +2223,8 @@ crmOperationsRouter.post(
       }
 
       const tx = db.transaction(() => {
-        recheckOrderShift(req);
+        const shiftActor = recheckOrderShift(req);
+        const auditBefore = snapshotOrder(db, id);
         const freshOrder = db
           .prepare("SELECT * FROM orders WHERE id = ?")
           .get(id);
@@ -2221,6 +2291,10 @@ crmOperationsRouter.post(
             throw new StaffServiceError("no_action_required", 409);
           }
         }
+        recordOrderAudit(db, {
+          orderId: id, before: auditBefore,
+          actor: verifiedRequestAuditActor(req, shiftActor), source: "crm.resolve_action",
+        });
       });
 
       tx.immediate();
@@ -2246,7 +2320,12 @@ crmOperationsRouter.post(
         .get(id);
       const updatedItems = db
         .prepare(`
-          SELECT oi.*, p.description as product_description
+          SELECT oi.*, p.description as product_description,
+             COALESCE(
+               (SELECT url FROM product_images WHERE productId = oi.product_id AND variant_id = oi.variant_id ORDER BY position LIMIT 1),
+               (SELECT url FROM product_images WHERE productId = oi.product_id AND variant_id IS NULL ORDER BY position LIMIT 1),
+               (SELECT url FROM product_images WHERE productId = oi.product_id ORDER BY position LIMIT 1)
+             ) AS product_image_url
           FROM order_items oi
           LEFT JOIN products p ON oi.product_id = p.id
           WHERE oi.order_id = ?
@@ -2325,6 +2404,7 @@ crmOperationsRouter.post(
 
       const tx = db.transaction(() => {
         const shiftActor = recheckOrderShift(req);
+        const auditBefore = snapshotOrder(db, id);
         const freshOrder = db
           .prepare("SELECT * FROM orders WHERE id = ?")
           .get(id);
@@ -2462,6 +2542,13 @@ crmOperationsRouter.post(
         } catch (wheelError) {
           console.error("[wheel] accrual on /issue failed", wheelError);
         }
+        recordStatusChange(id, auditBefore.order.status,
+          db.prepare("SELECT status FROM orders WHERE id = ?").get(id).status,
+          "Выдача заказа");
+        recordOrderAudit(db, {
+          orderId: id, before: auditBefore,
+          actor: verifiedRequestAuditActor(req, shiftActor), source: "crm.issue",
+        });
       });
 
       tx.immediate();
@@ -2494,12 +2581,6 @@ crmOperationsRouter.post(
         .get(transactionId)
         : null;
 
-      recordStatusChange(
-        id,
-        previousStatus,
-        updatedOrder.status,
-        "Выдача заказа",
-      );
 
       // Авто-уведомление клиенту о выдаче (Pavel 10.05.2026: «когда пробил
       // заказ — не отправляет»). Раньше /issue имел отдельный поток без
@@ -2574,7 +2655,8 @@ crmOperationsRouter.delete(
       );
 
       const tx = db.transaction(() => {
-        recheckOrderShift(req);
+        const shiftActor = recheckOrderShift(req);
+        const auditBefore = snapshotOrder(db, id);
         const freshOrder = db
           .prepare("SELECT * FROM orders WHERE id = ?")
           .get(id);
@@ -2657,6 +2739,13 @@ crmOperationsRouter.delete(
             });
           }
         }
+        recordStatusChange(id, auditBefore.order.status,
+          db.prepare("SELECT status FROM orders WHERE id = ?").get(id).status,
+          "Оплата отменена");
+        recordOrderAudit(db, {
+          orderId: id, before: auditBefore,
+          actor: verifiedRequestAuditActor(req, shiftActor), source: "crm.remove_payment",
+        });
       });
 
       tx.immediate();
@@ -2666,19 +2755,18 @@ crmOperationsRouter.delete(
         .get(id);
       const updatedItems = db
         .prepare(`
-          SELECT oi.*, p.description as product_description 
+          SELECT oi.*, p.description as product_description,
+             COALESCE(
+               (SELECT url FROM product_images WHERE productId = oi.product_id AND variant_id = oi.variant_id ORDER BY position LIMIT 1),
+               (SELECT url FROM product_images WHERE productId = oi.product_id AND variant_id IS NULL ORDER BY position LIMIT 1),
+               (SELECT url FROM product_images WHERE productId = oi.product_id ORDER BY position LIMIT 1)
+             ) AS product_image_url
           FROM order_items oi
           LEFT JOIN products p ON oi.product_id = p.id
           WHERE oi.order_id = ?
         `)
         .all(id);
 
-      recordStatusChange(
-        id,
-        order.status,
-        updatedOrder.status,
-        "Оплата отменена",
-      );
 
       const restoredCell = getActivePickupCellAssignment(id);
       res.json({
@@ -3725,7 +3813,7 @@ crmOperationsRouter.post(
       let ordersToFix = [];
 
       const tx = db.transaction(() => {
-        recheckOrderShift(req);
+        const shiftActor = recheckOrderShift(req);
         ordersToFix = db
           .prepare(
             `
@@ -3736,6 +3824,7 @@ crmOperationsRouter.post(
           )
           .all();
         for (const order of ordersToFix) {
+          const auditBefore = snapshotOrder(db, order.id);
           const completedDate = order.paid_at || order.created_at;
           let isoDate;
 
@@ -3751,6 +3840,10 @@ crmOperationsRouter.post(
             isoDate,
             order.id,
           );
+          recordOrderAudit(db, {
+            orderId: order.id, before: auditBefore,
+            actor: verifiedRequestAuditActor(req, shiftActor), source: "crm.fix_completed_at",
+          });
         }
       });
 

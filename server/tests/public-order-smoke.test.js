@@ -885,6 +885,56 @@ async function testReferralAuthorizationOrderFlow() {
   setReferralAuthorizationEnabled(false);
 }
 
+async function testCustomerOrderAudit() {
+  const identity = { telegram_id: '9900001', telegram_username: 'audit_customer' };
+  const created = await createOrder(identity);
+  assert.equal(created.response.status, 200);
+  const orderId = created.data.order_id;
+  const journal = () => db.prepare('SELECT * FROM order_audit_events WHERE order_id = ? ORDER BY sequence').all(orderId);
+  const creation = journal();
+  assert.equal(creation.length, 1);
+  assert.equal(creation[0].event_type, 'order_created');
+  assert.equal(creation[0].actor_type, 'customer');
+  assert.equal(creation[0].actor_id, identity.telegram_id);
+  assert.equal(creation[0].source, 'miniapp.create');
+  assert(Number.isFinite(Date.parse(creation[0].occurred_at)));
+  const modify = (quantity, headers = telegramHeaders(identity)) => requestJson(`/api/orders/${orderId}/modify-by-customer`, {
+    method: 'PUT', headers,
+    body: JSON.stringify({
+      ...identity, delivery_type: 'pickup', actor_id: 'forged-author', actor_name: 'Forged',
+      items: [{ product_id: 'product-1', variant_id: null, quantity, price_per_unit: 15 }],
+    }),
+  });
+  assert.equal((await modify(2)).response.status, 200);
+  const quantityEvent = journal().find(event => event.event_type === 'item_quantity_changed');
+  assert(quantityEvent);
+  assert.equal(JSON.parse(quantityEvent.before_json), 1);
+  assert.equal(JSON.parse(quantityEvent.after_json), 2);
+  assert.equal(quantityEvent.actor_id, identity.telegram_id);
+  assert.equal(quantityEvent.source, 'miniapp.modify');
+  const beforeFailure = { order: getOrderById(orderId), items: getOrderItems(orderId), events: journal() };
+  assert.equal((await modify(3, { 'Content-Type': 'application/json' })).response.status, 401);
+  assert.deepEqual(journal(), beforeFailure.events);
+  db.exec(`CREATE TRIGGER fail_customer_order_audit BEFORE INSERT ON order_audit_events BEGIN SELECT RAISE(ABORT, 'test_customer_audit_failure'); END`);
+  try {
+    assert.equal((await modify(3)).response.status, 500);
+    assert.deepEqual(getOrderById(orderId), beforeFailure.order);
+    assert.deepEqual(getOrderItems(orderId), beforeFailure.items);
+    assert.deepEqual(journal(), beforeFailure.events);
+  } finally {
+    db.exec('DROP TRIGGER fail_customer_order_audit');
+  }
+  const cancelled = await requestJson(`/api/orders/${orderId}/cancel-by-customer`, {
+    method: 'POST', headers: telegramHeaders(identity), body: JSON.stringify(identity),
+  });
+  assert.equal(cancelled.response.status, 200);
+  const cancellation = journal().find(event => event.event_type === 'status_changed' && JSON.parse(event.after_json) === 'cancelled');
+  assert(cancellation);
+  assert.equal(cancellation.actor_id, identity.telegram_id);
+  assert.equal(cancellation.source, 'miniapp.cancel');
+  console.log('public-order-smoke: автор клиентского аудита подтверждён, ошибки откатывают заказ и события');
+}
+
 async function main() {
   seedProduct();
 
@@ -900,6 +950,7 @@ async function main() {
   await testBodyIdentitySpoofIsIgnored();
   await testForeignOrderAccessIsRejected();
   await testReferralAuthorizationOrderFlow();
+  await testCustomerOrderAudit();
 
   console.log("[public-order-smoke] OK");
 }

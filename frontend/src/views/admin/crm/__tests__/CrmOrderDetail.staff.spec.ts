@@ -47,6 +47,7 @@ function setupOrder(order: Order, tracking = true) {
   });
   vi.spyOn(store, "fetchOrder").mockResolvedValue(order);
   vi.spyOn(store, "fetchOrderHistory").mockResolvedValue([]);
+  vi.spyOn(store, "fetchOrderAudit").mockResolvedValue([]);
   vi.spyOn(store, "fetchStaffSettings").mockResolvedValue({
     trackingEnabled: tracking,
   });
@@ -116,7 +117,7 @@ describe("CrmOrderDetail: обязательная смена", () => {
       .map((option) => option.text());
     expect(trackedOptions).not.toContain("Завершён");
     expect(trackedOptions).not.toContain("Выдан");
-    expect(tracked.wrapper.text()).toContain(
+    expect(tracked.wrapper.text()).not.toContain(
       "Сборка и выдача выполняются с доски заказов",
     );
 

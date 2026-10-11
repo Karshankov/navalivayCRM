@@ -74,6 +74,7 @@ import { migrateReferralWelcomeNotifications } from './migrations/add_referral_w
 import { migratePickupCells } from './migrations/add_pickup_cells.js';
 import { migrateRoundMoneyColumns } from './migrations/round_money_columns.js';
 import { migrateOrderAdditionalCost } from './migrations/add_order_additional_cost.js';
+import { migrateOrderAudit } from './migrations/add_order_audit.js';
 import { migrateStaffManagement } from './migrations/add_staff_management.js';
 import { migrateInternalNotifications } from './migrations/add_internal_notifications.js';
 
@@ -251,6 +252,7 @@ export function initDb() {
   migratePickupCells();
   migrateRoundMoneyColumns();
   migrateOrderAdditionalCost();
+  migrateOrderAudit(db);
 
   seedIfEmpty();
   seedDefaultLoyaltyData();

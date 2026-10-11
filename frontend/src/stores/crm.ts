@@ -343,6 +343,25 @@ export interface CreateCustomerBlockPayload {
   duration: CustomerBlockDuration;
 }
 
+export interface OrderAuditEvent {
+  sequence: number;
+  id: string;
+  order_id: string;
+  operation_id: string;
+  event_type: string;
+  occurred_at: string;
+  actor_type: 'employee' | 'admin' | 'customer' | 'system';
+  actor_id: string;
+  actor_name: string;
+  source: string;
+  field: string | null;
+  product_id: string | null;
+  variant_id: string | null;
+  product_title: string | null;
+  before: unknown;
+  after: unknown;
+}
+
 export interface Order {
   id: string;
   order_number: number;
@@ -360,6 +379,7 @@ export interface Order {
   notes: string | null;
   created_at: string;
   updated_at: string;
+  audit_revision?: number;
   completed_at: string | null;
   pickup_cell_number?: number | null;
   pickup_cell_assignment_id?: string | null;
@@ -375,6 +395,9 @@ export interface Order {
   payment_notes?: string | null;
   telegram_username?: string;
   customer_name?: string;
+  first_name?: string | null;
+  last_name?: string | null;
+  customer_photo_url?: string | null;
   phone?: string | null;
   needs_manager_action?: number;
   manager_action_type?: 'modified' | 'cancelled_by_customer' | null;
@@ -456,6 +479,7 @@ export interface OrderItem {
   variant_id?: string | null;
   product_title: string;
   product_description?: string | null;
+  product_image_url?: string | null;
   group_name?: string | null;
   base_product_id?: string | null;
   base_product_title?: string | null;
@@ -1065,6 +1089,10 @@ function clearStoredStaffAccess() {
 
 function clearStoredShiftToken() {
   inMemoryShiftToken = "";
+}
+
+export function getCrmRequestHeaders(): Record<string, string> {
+  return staffHeaders();
 }
 
 export function getInMemoryStaffHeaders(): Record<string, string> {
@@ -3897,6 +3925,10 @@ export const useCrmStore = defineStore("crm", () => {
     return currentOrder.value;
   }
 
+  async function fetchOrderAudit(id: string) {
+    return await fetchAPI<OrderAuditEvent[]>(`${API_BASE}/orders/${id}/audit`);
+  }
+
   async function fetchOrderHistory(id: string) {
     return await fetchAPI<Array<{
       id: string;
@@ -3997,6 +4029,7 @@ export const useCrmStore = defineStore("crm", () => {
   async function updateOrder(
     id: string,
     data: {
+      expected_audit_revision?: number;
       status?: string;
       delivery_address?: string | null;
       notes?: string | null;
@@ -5533,6 +5566,7 @@ export const useCrmStore = defineStore("crm", () => {
     syncKanbanBoardSince,
     fetchOrder,
     fetchOrderHistory,
+    fetchOrderAudit,
     deliveredOrders,
     loadingDelivered,
     deliveredStats,

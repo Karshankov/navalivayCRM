@@ -1,5 +1,5 @@
 <template>
-  <div class="min-h-screen bg-gray-50 p-6">
+  <div class="crm-order-detail">
     <div class="mx-auto max-w-6xl space-y-6">
       <div class="flex flex-wrap items-center justify-between gap-3">
         <button @click="$router.back()" class="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-100">
@@ -66,6 +66,7 @@
             Сбросить изменения
           </button>
           <button
+            data-test="order-save"
             @click="saveChanges"
             class="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
             :disabled="!canSave"
@@ -79,8 +80,7 @@
       </div>
 
       <p
-        v-if="saveBlockReason"
-        class="text-sm text-gray-500"
+        class="order-detail-save-hint text-sm text-gray-500"
         role="status"
       >
         {{ saveBlockReason }}
@@ -206,17 +206,31 @@
 
       <div v-else class="space-y-6">
         <section class="rounded-2xl bg-white p-6 shadow-sm">
-          <div class="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <h1 class="text-2xl font-bold text-gray-900">Заказ #{{ currentOrder.order_number }}</h1>
-              <p class="mt-1 text-sm text-gray-500">Создан {{ formatFullDate(currentOrder.created_at) }}</p>
-              <p class="mt-2 text-sm text-gray-700">
-                Клиент: <span class="font-semibold text-gray-900">{{ currentOrder.customer_name || 'Гость' }}</span>
-              </p>
-              <p v-if="currentOrder.phone" class="text-sm text-gray-600">Телефон: {{ currentOrder.phone }}</p>
-              <p v-if="currentOrder.telegram_username" class="text-sm text-blue-600">
-                <a :href="`https://t.me/${currentOrder.telegram_username}`" target="_blank" class="hover:underline">@{{ currentOrder.telegram_username }}</a>
-              </p>
+          <div class="order-detail-hero-grid">
+            <div class="order-detail-hero">
+              <svg aria-hidden="true" class="order-detail-hero-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="m12 3 9 5v8l-9 5-9-5V8l9-5Zm0 9v9M3 8l9 4 9-4M7.5 5.5l9 5" /></svg>
+              <div>
+                <h1>Заказ #{{ currentOrder.order_number }}</h1>
+                <p>Создан {{ formatFullDate(currentOrder.created_at) }}</p>
+                <span class="order-detail-cell" data-test="order-detail-cell">{{ currentOrder.pickup_cell_number ? `Ячейка ${currentOrder.pickup_cell_number}` : 'Ячейка не назначена' }}</span>
+              </div>
+            </div>
+            <div class="order-detail-customer">
+              <div class="order-detail-customer-main">
+                <div class="order-detail-customer-avatar" data-test="customer-avatar">
+                  <img v-if="customerAvatarUrl && !customerAvatarFailed" :key="customerAvatarUrl" :src="customerAvatarUrl" alt="Фото клиента" referrerpolicy="no-referrer" @error="customerAvatarFailed = true" />
+                  <svg v-else data-test="customer-avatar-fallback" role="img" aria-label="Стандартный аватар клиента" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+                    <circle cx="12" cy="8" r="4" /><path d="M4 21v-2a8 8 0 0 1 16 0v2" />
+                  </svg>
+                </div>
+                <div class="order-detail-customer-info">
+                  <h2 data-test="customer-display-name">{{ customerDisplayName }}</h2>
+                  <p v-if="currentOrder.telegram_username" class="order-detail-telegram">
+                    <a :href="`https://t.me/${currentOrder.telegram_username}`" target="_blank" rel="noopener noreferrer">@{{ currentOrder.telegram_username }}</a>
+                  </p>
+                  <p v-if="currentOrder.phone" class="order-detail-customer-phone">{{ currentOrder.phone }}</p>
+                </div>
+              </div>
               <div v-if="currentOrder.promo_code_text" class="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-blue-50 border border-blue-200 px-3 py-1.5">
                 <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
@@ -267,20 +281,13 @@
                 </span>
               </div>
             </div>
-            <div class="text-right">
-              <span :class="statusBadgeClass(editableStatus)" class="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide">{{ statusLabel(editableStatus, deliveryType) }}</span>
-              <div v-if="hasPayment" class="mt-2 text-sm text-emerald-600">
-                Оплачено: {{ formatCurrency(currentOrder.paid_amount || 0) }}
-                <div class="text-xs text-gray-500">{{ paymentDescription }}</div>
-              </div>
-            </div>
-          </div>
-
-          <div class="mt-6 grid gap-4 md:grid-cols-2">
+            <div class="order-detail-status-picker">
+              <span class="order-detail-round-icon"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2h-3M8 2h8v4H8V2ZM7 11h10M7 15h7" /></svg></span>
             <label class="flex flex-col gap-2 text-sm font-medium text-gray-700">
-              Статус заказа
+              <span class="order-detail-status-label">Статус заказа</span>
               <select
                 v-model="editableStatus"
+                :disabled="isSaving"
                 class="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
               >
                 <option
@@ -292,11 +299,35 @@
                   {{ option.label }}
                 </option>
               </select>
-              <span v-if="staffTrackingEnabled" class="text-xs font-normal leading-5 text-gray-500">
-                Сборка и выдача выполняются с доски заказов: система отдельно запишет сборщика и выдавшего.
-              </span>
             </label>
-            <div class="flex flex-col gap-2 text-sm text-gray-600">
+            </div>
+            <div class="order-detail-current-status" :class="statusBadgeClass(editableStatus)" :data-status="editableStatus" aria-live="polite" aria-atomic="true">
+              <span class="order-detail-status-tick" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                  <path v-if="editableStatus === 'in_progress' || editableStatus === 'completed' || editableStatus === 'delivered'" d="m5 12 4 4L19 6" />
+                  <path v-else-if="editableStatus === 'cancelled'" d="m6 6 12 12M18 6 6 18" />
+                  <g v-else><circle cx="12" cy="12" r="8" /><path d="M12 7v5l3 2" /></g>
+                </svg>
+              </span>
+              <span class="order-detail-status-caption">Статус заказа</span>
+              <strong data-test="order-detail-status">{{ statusLabel(editableStatus, deliveryType) }}</strong>
+              <span class="order-detail-status-draft" :class="{ 'order-detail-status-draft-hidden': editableStatus === originalOrder?.status }" :aria-hidden="editableStatus === originalOrder?.status">Не сохранён</span>
+              <div v-if="hasPayment" class="order-detail-status-payment mt-2 text-sm">
+                Оплачено: {{ formatCurrency(currentOrder.paid_amount || 0) }}
+                <div class="order-detail-status-payment-description text-xs">{{ paymentDescription }}</div>
+              </div>
+            </div>
+          </div>
+
+          <OrderAuditTimeline
+            class="order-detail-top-timeline"
+            :events="orderAudit" :history="orderHistory"
+            :loading="historyLoading" :error="historyError" @retry="loadHistory"
+          />
+
+          <div v-show="showOrderServiceFields || deliveryType === 'delivery'" class="mt-6 grid gap-4 md:grid-cols-2">
+
+            <div v-show="showOrderServiceFields" data-test="order-delivery-type" class="flex flex-col gap-2 text-sm text-gray-600">
               <span class="font-medium text-gray-700">Тип отдачи</span>
               <div class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
                 {{ deliveryLabel }}
@@ -311,7 +342,7 @@
                 placeholder="Улица, дом, подъезд, комментарии"
               />
             </label>
-            <label class="md:col-span-2 flex flex-col gap-2 text-sm font-medium text-gray-700">
+            <label v-show="showOrderServiceFields" data-test="order-manager-comment" class="md:col-span-2 flex flex-col gap-2 text-sm font-medium text-gray-700">
               Комментарий менеджера
               <textarea
                 v-model="form.notes"
@@ -324,12 +355,14 @@
         </section>
 
         <section class="rounded-2xl bg-white p-6 shadow-sm">
-          <div class="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-            <div>
-              <h2 class="text-xl font-semibold text-gray-900">Позиции заказа</h2>
-              <p class="text-sm text-gray-500">Редактируйте количество, цены и добавляйте новые товары.</p>
+          <div class="order-detail-section-heading order-detail-products-heading">
+            <div class="order-detail-heading-main">
+              <span class="order-detail-heading-icon"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="m12 3 9 5v8l-9 5-9-5V8l9-5Zm0 9v9M3 8l9 4 9-4M7.5 5.5l9 5" /></svg></span>
+              <div><h2>Позиции заказа</h2><p>Редактируйте количество, цены и добавляйте новые товары.</p></div>
             </div>
-            <div class="w-full max-w-md">
+            <div class="order-detail-add-product">
+              <span class="order-detail-plus-badge"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14" /></svg></span>
+              <div class="order-detail-search-field">
               <label class="block text-sm font-medium text-gray-700">Добавить товар</label>
               <input
                 v-model="productSearch"
@@ -338,6 +371,7 @@
                 class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
               />
               <p v-if="showSearchHint" class="mt-1 text-xs text-gray-500">Для поиска введите минимум 2 символа.</p>
+              </div>
             </div>
           </div>
 
@@ -370,7 +404,7 @@
             </ul>
           </div>
 
-          <div class="mt-6 space-y-4">
+          <div id="order-detail-product-list" class="order-detail-product-list">
             <div
               v-if="!form.items.length"
               class="rounded-xl border border-dashed border-gray-300 bg-gray-50 px-4 py-6 text-center text-sm text-gray-500"
@@ -379,218 +413,101 @@
             </div>
 
             <article
-              v-for="item in form.items"
+              v-for="item in visibleItems"
               :key="item.productId"
-              class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"
-              :class="{
-                'border-red-300 bg-red-50/40': item.quantity <= 0 || item.manualDiscount + item.loyaltyDiscount > item.price * item.quantity
-              }"
+              class="order-detail-product"
+              :class="{ 'order-detail-product-invalid': item.quantity <= 0 || item.manualDiscount + item.loyaltyDiscount > item.price * item.quantity }"
             >
-                <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <p class="text-base font-semibold text-gray-900">
-                      <span v-if="item.groupName" class="text-blue-600">{{ item.groupName }} - </span>{{ item.baseProductTitle || item.title }}
-                      <span v-if="item.variantName" class="text-sm text-gray-600"> - {{ item.variantName }}</span>
-                    </p>
-                    <p v-if="item.description" class="text-[11px] text-gray-400 leading-tight mt-0.5">
-                      {{ item.description }}
-                    </p>
-                  <p class="text-xs text-gray-500">
-                    Себестоимость: {{ formatCurrency(item.cost) }}
-                    <span v-if="item.stock !== null && item.stock !== undefined" class="ml-2">Остаток: {{ item.stock }}</span>
-                  </p>
-                  <p v-if="catalogDiscountOf(item)" class="text-xs text-red-600 mt-0.5">
-                    Обычная цена: {{ formatCurrency(item.basePrice!) }} · Скидка каталога:
-                    −{{ formatCurrency(catalogDiscountOf(item)) }}
-                    <span v-if="catalogDiscountPercentOf(item)">({{ catalogDiscountPercentOf(item) }}%)</span>
-                  </p>
-                  <p v-if="managerPriceChangeOf(item)" class="text-xs text-amber-600 mt-0.5">
-                    Цену менял менеджер:
-                    {{ managerPriceChangeOf(item)! > 0 ? '−' : '+' }}{{ formatCurrency(Math.abs(managerPriceChangeOf(item)!)) }}
-                  </p>
+              <div class="order-detail-product-thumb">
+                <img v-if="item.imageUrl" :src="item.imageUrl" :alt="item.title" width="64" height="64" loading="lazy" @error="item.imageUrl = null" />
+                <svg v-else aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="m12 3 9 5v8l-9 5-9-5V8l9-5Zm0 9v9M3 8l9 4 9-4" /></svg>
+              </div>
+              <div class="order-detail-product-info">
+                <p class="order-detail-product-name"><span v-if="item.groupName">{{ item.groupName }} - </span>{{ item.baseProductTitle || item.title }}<span v-if="item.variantName"> - {{ item.variantName }}</span></p>
+                <p class="order-detail-product-meta">Себестоимость: {{ formatCurrency(item.cost) }}<span v-if="item.stock !== null && item.stock !== undefined"> · Остаток: {{ item.stock }}</span></p>
+                <p v-if="item.description" class="order-detail-product-description">{{ item.description }}</p>
+                <p v-if="catalogDiscountOf(item)" class="order-detail-product-note">Обычная цена: {{ formatCurrency(item.basePrice!) }} · Скидка каталога: −{{ formatCurrency(catalogDiscountOf(item)) }}<span v-if="catalogDiscountPercentOf(item)"> ({{ catalogDiscountPercentOf(item) }}%)</span></p>
+                <p v-if="managerPriceChangeOf(item)" class="order-detail-product-note">Цену менял менеджер: {{ managerPriceChangeOf(item)! > 0 ? '−' : '+' }}{{ formatCurrency(Math.abs(managerPriceChangeOf(item)!)) }}</p>
+                <p v-if="item.loyaltyDiscount > 0" class="order-detail-product-loyalty">Скидка за покупки: -{{ formatCurrency(item.loyaltyDiscount) }} · Списано бонусов: {{ item.loyaltyUnitsApplied }}</p>
+              </div>
+              <label class="order-detail-product-field">
+                <span>Количество</span>
+                <div class="order-detail-quantity">
+                  <button type="button" :aria-label="`Уменьшить количество: ${item.title}`" :disabled="isSaving || item.quantity <= 1" @click="adjustQuantity(item, -1)">−</button>
+                  <input v-model.number="item.quantity" type="number" min="1" step="1" :aria-label="`Количество: ${item.title}`" :disabled="isSaving" @blur="normalizeItem(item)" />
+                  <button type="button" :aria-label="`Увеличить количество: ${item.title}`" :disabled="isSaving" @click="adjustQuantity(item, 1)">+</button>
                 </div>
-                <button
-                  class="admin-link-button admin-link-button--danger"
-                  @click="removeItem(item.productId)"
-                >
-                  Удалить
-                </button>
+              </label>
+              <label class="order-detail-product-field">
+                <span>Цена, BYN</span>
+                <input v-model.number="item.price" type="number" min="0" step="0.01" :aria-label="`Цена, BYN: ${item.title}`" :disabled="isSaving" @blur="normalizeItem(item)" />
+              </label>
+              <label class="order-detail-product-field">
+                <span>Ручная скидка, BYN</span>
+                <input v-model.number="item.manualDiscount" type="number" min="0" step="0.01" :aria-label="`Ручная скидка на позицию, BYN: ${item.title}`" :disabled="isSaving" @blur="normalizeItem(item)" />
+              </label>
+              <div class="order-detail-product-sum" :title="`Максимальная ручная скидка: ${formatCurrency(Math.max(item.price * Math.max(item.quantity, 0) - item.loyaltyDiscount, 0))}`">
+                <span>Сумма</span><strong>{{ formatCurrency(itemSubtotal(item)) }}</strong>
               </div>
-
-              <div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
-                <label class="flex flex-col gap-1 text-xs font-medium text-gray-600">
-                  Количество
-                  <input
-                    v-model.number="item.quantity"
-                    type="number"
-                    min="1"
-                    class="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-                    @blur="normalizeItem(item)"
-                  />
-                </label>
-                <label class="flex flex-col gap-1 text-xs font-medium text-gray-600">
-                  Цена, BYN
-                  <input
-                    v-model.number="item.price"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    class="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-                    @blur="normalizeItem(item)"
-                  />
-                </label>
-                <label class="flex flex-col gap-1 text-xs font-medium text-gray-600">
-                  Ручная скидка на позицию, BYN
-                  <input
-                    v-model.number="item.manualDiscount"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    class="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-                    @blur="normalizeItem(item)"
-                  />
-                </label>
-              </div>
-
-              <div
-                v-if="item.loyaltyDiscount > 0"
-                class="mt-3 flex flex-wrap items-center gap-2 text-xs text-violet-700"
-              >
-                <span class="rounded-full bg-violet-50 px-2.5 py-1 font-semibold">
-                  Скидка за покупки: -{{ formatCurrency(item.loyaltyDiscount) }}
-                </span>
-                <span>Списано бонусов: {{ item.loyaltyUnitsApplied }}</span>
-              </div>
-
-              <div class="mt-3 flex flex-wrap items-center justify-between text-sm text-gray-600">
-                <span>Всего: <span class="font-semibold text-gray-900">{{ formatCurrency(itemSubtotal(item)) }}</span></span>
-                <span>Максимальная ручная скидка: {{ formatCurrency(Math.max(item.price * Math.max(item.quantity, 0) - item.loyaltyDiscount, 0)) }}</span>
-              </div>
+              <button type="button" class="order-detail-trash" :aria-label="`Удалить позицию: ${item.title}`" :disabled="isSaving" @click="removeItem(item.productId)">
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6" /></svg><span class="sr-only">Удалить</span>
+              </button>
             </article>
           </div>
-        </section>
-
-        <section class="rounded-2xl bg-white p-6 shadow-sm">
-          <div class="grid gap-6 lg:grid-cols-[1.2fr,1fr]">
-            <div class="space-y-4 rounded-xl border border-gray-200 bg-gray-50 p-5">
-              <header class="flex items-center justify-between">
-                <h3 class="text-sm font-semibold uppercase tracking-wide text-gray-600">Финансовые итоги</h3>
-                <span class="text-xs font-medium text-gray-400">Автоматический пересчет</span>
-              </header>
-              <dl class="space-y-3 text-sm text-gray-600">
-                <div v-if="catalogDiscountTotal > 0" class="flex items-center justify-between">
-                  <dt>Сумма по обычной цене</dt>
-                  <dd class="font-semibold text-gray-900">{{ formatCurrency(itemsBaseSubtotal) }}</dd>
-                </div>
-                <div v-if="catalogDiscountTotal > 0" class="flex items-center justify-between">
-                  <!-- Скидка каталога уже сидит внутри цены продажи. Не пометь
-                       её справочной, и менеджер вычтет её второй раз глазами. -->
-                  <dt>Скидка каталога <span class="text-xs text-gray-400">справочно</span></dt>
-                  <dd class="font-semibold text-red-600">−{{ formatCurrency(catalogDiscountTotal) }}</dd>
-                </div>
-                <div class="flex items-center justify-between">
-                  <dt>Сумма позиций (по цене продажи)</dt>
-                  <dd class="font-semibold text-gray-900">{{ formatCurrency(itemsSubtotal) }}</dd>
-                </div>
-                <div class="flex items-center justify-between">
-                  <dt>Сумма позиций (со скидками)</dt>
-                  <dd class="font-semibold text-gray-900">{{ formatCurrency(itemsDiscountedSubtotal) }}</dd>
-                </div>
-                <div class="flex items-center justify-between">
-                  <dt>Скидка за покупки</dt>
-                  <dd class="font-semibold text-violet-700">{{ formatCurrency(loyaltyDiscountTotal) }}</dd>
-                </div>
-                <div class="flex items-center justify-between">
-                  <dt>Ручные скидки по позициям</dt>
-                  <dd class="font-semibold text-gray-900">{{ formatCurrency(manualItemDiscountTotal) }}</dd>
-                </div>
-                <div class="flex items-center justify-between">
-                  <dt>Скидка BYN</dt>
-                  <dd>
-                    <input
-                      v-model.number="form.discountAmount"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      class="w-24 rounded border border-gray-300 px-2 py-1 text-right text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-                      @blur="normalizeDiscounts"
-                    />
-                  </dd>
-                </div>
-                <div class="flex items-center justify-between">
-                  <dt>Скидка %</dt>
-                  <dd>
-                    <input
-                      v-model.number="form.discountPercent"
-                      type="number"
-                      min="0"
-                      max="100"
-                      step="0.1"
-                      class="w-24 rounded border border-gray-300 px-2 py-1 text-right text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-                      @blur="normalizeDiscounts"
-                    />
-                  </dd>
-                </div>
-                <div v-if="currentOrder.additional_cost" class="flex items-center justify-between">
-                  <dt>Добавочная стоимость</dt>
-                  <dd class="font-semibold text-blue-700">+{{ formatCurrency(currentOrder.additional_cost) }}</dd>
-                </div>
-                <div class="flex items-center justify-between border-t border-gray-200 pt-3 text-base font-semibold text-gray-900">
-                  <dt>Итого к оплате</dt>
-                  <dd>{{ formatCurrency(finalAmount) }}</dd>
-                </div>
-                <div class="flex items-center justify-between text-xs text-gray-500">
-                  <dt>Ожидаемая прибыль</dt>
-                  <dd :class="expectedProfit < 0 ? 'font-semibold text-red-600' : ''">
-                    {{ formatCurrency(expectedProfit) }}
-                  </dd>
-                </div>
-              </dl>
-            </div>
-            <div class="space-y-3 text-sm text-gray-600">
-              <div class="rounded-xl border border-gray-200 bg-white p-4">
-                <p>
-                  Номер заказа: <span class="font-medium text-gray-900">#{{ currentOrder.order_number }}</span>
-                </p>
-                <p>
-                  Статус оплаты: <span class="font-medium" :class="hasPayment ? 'text-emerald-600' : 'text-gray-700'">
-                    {{ hasPayment ? 'Оплачен' : 'Не оплачен' }}
-                  </span>
-                </p>
-                <p v-if="currentOrder.completed_at">Выдан: {{ formatFullDate(currentOrder.completed_at) }}</p>
-              </div>
-            </div>
+          <div class="order-detail-product-summary">
+            <span>Общее количество товаров: <strong>{{ totalItemUnits }}</strong></span>
+            <button v-if="form.items.length > 3" type="button" class="order-detail-show-more" :aria-expanded="itemsExpanded" aria-controls="order-detail-product-list" @click="itemsExpanded = !itemsExpanded">
+              {{ itemsExpanded ? 'Скрыть дополнительные позиции' : `Показать ещё ${form.items.length - 3} позиций` }}
+            </button>
+            <span>Сумма позиций: <strong>{{ formatCurrency(itemsDiscountedSubtotal) }}</strong></span>
           </div>
         </section>
 
-        <!-- История изменений статуса -->
-        <section v-if="orderHistory.length" class="rounded-2xl bg-white p-6 shadow-sm">
-          <h2 class="mb-4 text-lg font-semibold text-gray-900">История изменений</h2>
-          <div class="relative space-y-0">
-            <div
-              v-for="(entry, idx) in orderHistory"
-              :key="entry.id"
-              class="relative flex gap-4 pb-4"
-            >
-              <!-- Timeline line -->
-              <div class="flex flex-col items-center">
-                <div class="h-3 w-3 rounded-full border-2 border-blue-400 bg-white" :class="idx === 0 ? 'bg-blue-400' : ''"></div>
-                <div v-if="idx < orderHistory.length - 1" class="w-0.5 flex-1 bg-gray-200"></div>
-              </div>
-              <div class="flex-1 -mt-0.5">
-                <div class="flex items-center gap-2">
-                  <span v-if="entry.previous_status" class="rounded bg-gray-100 px-1.5 py-0.5 text-[11px] font-medium text-gray-600">{{ statusLabel(entry.previous_status as Order['status']) }}</span>
-                  <svg v-if="entry.previous_status" class="h-3 w-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-                  </svg>
-                  <span class="rounded bg-blue-100 px-1.5 py-0.5 text-[11px] font-medium text-blue-700">{{ statusLabel(entry.new_status as Order['status']) }}</span>
-                </div>
-                <p v-if="entry.note" class="mt-1 text-xs text-gray-500">{{ entry.note }}</p>
-                <p class="mt-0.5 text-[11px] text-gray-400">{{ formatFullDate(entry.changed_at) }}</p>
+        <section class="order-detail-finance rounded-2xl bg-white shadow-sm" aria-labelledby="order-detail-finance-heading">
+          <header class="order-detail-section-heading">
+            <div class="order-detail-heading-main">
+              <span class="order-detail-heading-icon"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V4M4 20h16M8 16v-5M13 16V7M18 16v-9" /></svg></span>
+              <div>
+                <h2 id="order-detail-finance-heading">Финансовые итоги</h2>
+                <p>Предварительный расчёт по текущим изменениям</p>
               </div>
             </div>
+            <div class="order-detail-discounts">
+              <label><span class="order-detail-discount-icon" aria-hidden="true">ⓑ</span>Скидка BYN<input v-model.number="form.discountAmount" type="number" min="0" step="0.01" :disabled="isSaving" @blur="normalizeDiscounts" /></label>
+              <label><span class="order-detail-discount-icon" aria-hidden="true">%</span>Скидка %<input v-model.number="form.discountPercent" type="number" min="0" max="100" step="0.1" :disabled="isSaving" @blur="normalizeDiscounts" /></label>
+            </div>
+          </header>
+          <div class="order-detail-financial-grid">
+            <div class="order-detail-pay">
+              <span class="order-detail-pay-icon"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h2l3 12h10l3-8H6M9 20h.01M18 20h.01" /></svg></span>
+              <span>Итого к оплате</span>
+              <strong data-test="order-final-amount">{{ formatCurrency(finalAmount) }}</strong>
+              <div class="order-detail-profit">
+                <span>Ожидаемая прибыль</span>
+                <strong data-test="order-expected-profit" :class="{ 'order-detail-profit-negative': expectedProfit < 0 }">{{ formatCurrency(expectedProfit) }}</strong>
+              </div>
+            </div>
+            <dl class="order-detail-stat-grid">
+              <div><dt><span class="order-detail-stat-icon order-detail-icon-blue"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 9 5v8l-9 5-9-5V8l9-5Zm0 9v9M3 8l9 4 9-4" /></svg></span>Сумма позиций (по цене продажи)</dt><dd>{{ formatCurrency(itemsSubtotal) }}</dd></div>
+              <div><dt><span class="order-detail-stat-icon order-detail-icon-green"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h7l11 11-7 7L3 10V3ZM7 7h.01" /></svg></span>Сумма позиций (со скидками)</dt><dd>{{ formatCurrency(itemsDiscountedSubtotal) }}</dd></div>
+              <div><dt><span class="order-detail-stat-icon order-detail-icon-purple"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H5v4M15 5h4v4M19 15v4h-4M9 19H5v-4M8 12h8" /></svg></span>Ручные скидки по позициям</dt><dd>{{ formatCurrency(manualItemDiscountTotal) }}</dd></div>
+              <div><dt><span class="order-detail-stat-icon order-detail-icon-red"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m6 18 12-12M7 5a2 2 0 1 0 0 4 2 2 0 0 0 0-4ZM17 15a2 2 0 1 0 0 4 2 2 0 0 0 0-4Z" /></svg></span>Скидка за покупки</dt><dd>{{ formatCurrency(loyaltyDiscountTotal) }}</dd></div>
+              <div><dt><span class="order-detail-stat-icon order-detail-icon-orange"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h18v12H3V7ZM7 7V5h10v2M3 11h18M8 15h3" /></svg></span>Скидка на заказ BYN / %</dt><dd>{{ formatCurrency(form.discountAmount) }} / {{ form.discountPercent }}%</dd></div>
+              <div><dt><span class="order-detail-stat-icon order-detail-icon-gray"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h2l3 12h10l3-8H6M9 20h.01M18 20h.01" /></svg></span>Количество товаров</dt><dd>{{ totalItemUnits }} шт.</dd></div>
+              <div><dt><span class="order-detail-stat-icon order-detail-icon-blue"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18v14H3V6ZM3 10h18M7 15h3M16 3v3M8 3v3" /></svg></span>Себестоимость заказа</dt><dd>{{ formatCurrency(itemsCost) }}</dd></div>
+              <div v-if="currentOrder.additional_cost"><dt><span class="order-detail-stat-icon order-detail-icon-orange"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v16M4 12h16" /></svg></span>Добавочная стоимость</dt><dd>+{{ formatCurrency(currentOrder.additional_cost) }}</dd></div>
+              <div v-if="catalogDiscountTotal > 0"><dt><span class="order-detail-stat-icon order-detail-icon-gray"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h14v18l-3-2-4 2-4-2-3 2V3ZM8 7h8M8 11h8M8 15h4" /></svg></span>Сумма по обычной цене</dt><dd>{{ formatCurrency(itemsBaseSubtotal) }}</dd></div>
+              <div v-if="catalogDiscountTotal > 0"><dt><span class="order-detail-stat-icon order-detail-icon-green"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h7l11 11-7 7L3 10V3ZM7 7h.01" /></svg></span>Скидка каталога · справочно, включена в цену</dt><dd>{{ formatCurrency(catalogDiscountTotal) }}</dd></div>
+            </dl>
+          </div>
+          <div class="order-detail-payment-meta">
+            <span :class="hasPayment ? 'text-emerald-700' : 'text-gray-600'">Статус оплаты: {{ hasPayment ? 'Оплачен' : 'Не оплачен' }}</span>
+            <span v-if="hasPayment">{{ paymentDescription }}</span>
+            <span v-if="currentOrder.completed_at">Выдан: {{ formatFullDate(currentOrder.completed_at) }}</span>
           </div>
         </section>
+
+
       </div>
     </div>
   </div>
@@ -599,8 +516,9 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
-import { useCrmStore, type CrmProductSummary, type Order, type AutoNotificationResult } from '@/stores/crm'
+import { useCrmStore, type CrmProductSummary, type Order, type AutoNotificationResult, type OrderAuditEvent } from '@/stores/crm'
 import ManagerActionSummary from '@/components/crm/ManagerActionSummary.vue'
+import OrderAuditTimeline from '@/components/crm/OrderAuditTimeline.vue'
 import StaffShiftBar from '@/components/admin/staff/StaffShiftBar.vue'
 import { formatBynCurrency as formatCurrency } from '@/utils/currency'
 import { calculateExpectedProfit } from '@/utils/orderProfit'
@@ -622,6 +540,7 @@ type FormItem = {
   baseProductTitle?: string | null
   variantName?: string | null
   description?: string | null
+  imageUrl?: string | null
   quantity: number
   price: number
   manualDiscount: number
@@ -641,7 +560,30 @@ const {
   staffTrackingEnabled,
 } = storeToRefs(crmStore)
 
+const customerDisplayName = computed(() => {
+  const order = currentOrder.value
+  if (!order) return ''
+  const name = [order.first_name, order.last_name].filter(Boolean).join(' ').trim()
+  if (name) return name
+  if (order.customer_name?.trim() && order.customer_name.trim() !== 'Гость') return order.customer_name.trim()
+  if (order.telegram_username?.trim()) return `@${order.telegram_username.replace(/^@+/, '')}`
+  return order.customer_telegram_id ? 'Пользователь Telegram' : 'Гость'
+})
+const customerAvatarFailed = ref(false)
+const customerAvatarUrl = computed(() => {
+  const order = currentOrder.value
+  return order?.customer_id && order.customer_telegram_id
+    ? `/api/customer-photo/${encodeURIComponent(order.customer_id)}` : ''
+})
+watch(customerAvatarUrl, () => { customerAvatarFailed.value = false })
+
+// Service fields are retained for future use; existing order data stays intact.
+const showOrderServiceFields = false
 const loading = ref(false)
+const originalOrder = ref<Order | null>(null)
+const itemsExpanded = ref(false)
+const visibleItems = computed(() => itemsExpanded.value ? form.items : form.items.slice(0, 3))
+const totalItemUnits = computed(() => form.items.reduce((sum, item) => sum + Math.max(Number(item.quantity) || 0, 0), 0))
 const editableStatus = ref<Order['status']>('new')
 const form = reactive({
   deliveryAddress: '',
@@ -670,6 +612,10 @@ const deletingPayment = ref(false)
 const reactivating = ref(false)
 const isGeneratingMessage = ref(false)
 const isResolvingAction = ref(false)
+const orderAudit = ref<OrderAuditEvent[]>([])
+const historyLoading = ref(false)
+const historyError = ref('')
+let historyRequestId = 0
 const orderHistory = ref<Array<{
   id: string;
   order_id: string;
@@ -718,7 +664,7 @@ async function resolveAction() {
 
 const allStatusOptions: Array<{ value: Order['status']; label: string }> = [
   { value: 'new', label: 'Новый' },
-  { value: 'in_progress', label: 'В работе' },
+  { value: 'in_progress', label: 'Собран' },
   { value: 'completed', label: 'Завершён' },
   { value: 'delivered', label: 'Выдан' },
   { value: 'cancelled', label: 'Отменён' }
@@ -812,7 +758,7 @@ const finalAmount = computed(() => Math.round((applyDiscounts(itemsDiscountedSub
 const expectedProfit = computed(() => calculateExpectedProfit(finalAmount.value, itemsCost.value))
 
 function originalItemFor(formItem: FormItem) {
-  return (currentOrder.value?.items || []).find((item) => {
+  return (originalOrder.value?.items || []).find((item) => {
     const itemKey = item.variant_id
       ? `${item.product_id}:${item.variant_id}`
       : item.product_id
@@ -831,17 +777,20 @@ function itemChanged(formItem: FormItem) {
 }
 
 const changedItems = computed(() => form.items.filter(itemChanged))
+const itemsHaveChanges = computed(() =>
+  form.items.length !== (originalOrder.value?.items || []).length || changedItems.value.length > 0,
+)
 
 const hasChanges = computed(() => {
-  if (!currentOrder.value) return false
+  if (!originalOrder.value) return false
 
-  if (editableStatus.value !== currentOrder.value.status) return true
-  if (form.deliveryAddress !== (currentOrder.value.delivery_address || '')) return true
-  if (form.notes !== (currentOrder.value.notes || '')) return true
-  if (form.discountAmount !== Number(currentOrder.value.discount_amount || 0)) return true
-  if (form.discountPercent !== Number(currentOrder.value.discount_percent || 0)) return true
+  if (editableStatus.value !== originalOrder.value.status) return true
+  if (form.deliveryAddress !== (originalOrder.value.delivery_address || '')) return true
+  if (form.notes !== (originalOrder.value.notes || '')) return true
+  if (form.discountAmount !== Number(originalOrder.value.discount_amount || 0)) return true
+  if (form.discountPercent !== Number(originalOrder.value.discount_percent || 0)) return true
 
-  if (form.items.length !== (currentOrder.value.items || []).length) return true
+  if (form.items.length !== (originalOrder.value.items || []).length) return true
   return changedItems.value.length > 0
 })
 
@@ -923,32 +872,50 @@ onMounted(() => {
 })
 
 async function loadHistory() {
-  try {
-    orderHistory.value = await crmStore.fetchOrderHistory(props.id)
-  } catch (error) {
-    console.error('[CRM] Failed to load order history:', error)
+  const requestId = ++historyRequestId
+  historyLoading.value = true
+  historyError.value = ''
+  const results = await Promise.allSettled([
+    crmStore.fetchOrderHistory(props.id), crmStore.fetchOrderAudit(props.id),
+  ])
+  if (requestId !== historyRequestId) return
+  const [legacy, audit] = results
+  if (legacy.status === 'fulfilled' && Array.isArray(legacy.value)) orderHistory.value = legacy.value
+  if (audit.status === 'fulfilled' && Array.isArray(audit.value)) orderAudit.value = audit.value
+  if (legacy.status === 'rejected' || audit.status === 'rejected'
+    || (legacy.status === 'fulfilled' && !Array.isArray(legacy.value))
+    || (audit.status === 'fulfilled' && !Array.isArray(audit.value))) {
+    historyError.value = 'Не удалось загрузить полную историю. Показаны ранее загруженные события; попробуйте обновить историю.'
   }
+  historyLoading.value = false
 }
 
 onBeforeUnmount(() => {
+  historyRequestId += 1
   if (searchTimer) clearTimeout(searchTimer)
   if (successTimer) clearTimeout(successTimer)
   clearProductSearchState()
 })
 
 async function refreshOrder() {
+  if (isSaving.value) return
+  if (hasChanges.value && !confirm('Обновить заказ и сбросить несохранённые изменения?')) return
   loading.value = true
   try {
     const order = await crmStore.fetchOrder(props.id)
+    customerAvatarFailed.value = false
     if (order) {
       initializeForm(order)
     }
+  } catch (error: any) {
+    saveError.value = error?.message || 'Не удалось загрузить заказ. Попробуйте обновить страницу.'
   } finally {
     loading.value = false
   }
 }
 
 function initializeForm(order: Order) {
+  originalOrder.value = JSON.parse(JSON.stringify(order)) as Order
   editableStatus.value = order.status
   form.deliveryAddress = order.delivery_address || ''
   form.notes = order.notes || ''
@@ -969,6 +936,7 @@ function initializeForm(order: Order) {
       baseProductTitle: item.base_product_title || null,
       variantName: item.variant_name || null,
       description: item.product_description || null,
+      imageUrl: item.product_image_url || null,
       quantity: Number(item.quantity || 0),
       price: Number(item.price_per_unit || 0),
       manualDiscount: Number(item.manual_discount_amount || 0),
@@ -1008,6 +976,7 @@ async function loadProducts(query: string) {
 }
 
 function addProduct(product: CrmProductSummary) {
+  if (isSaving.value) return
   // Для вариантов базовый товар и вариант должны отличаться
   const baseProductId = product.productId || product.id
   const variantId = product.isVariant ? product.id : null
@@ -1031,6 +1000,7 @@ function addProduct(product: CrmProductSummary) {
     baseProductTitle: product.isVariant ? undefined : product.title,
     variantName: product.variantName || (product.isVariant ? product.title : null),
     description: product.description || null,
+    imageUrl: product.image || product.imageUrl || null,
     quantity: 1,
     price: product.priceRub,
     manualDiscount: 0,
@@ -1044,7 +1014,14 @@ function addProduct(product: CrmProductSummary) {
 }
 
 function removeItem(productId: string) {
+  if (isSaving.value) return
   form.items = form.items.filter((item) => item.productId !== productId)
+}
+
+function adjustQuantity(item: FormItem, delta: number) {
+  if (isSaving.value) return
+  item.quantity = Math.max(1, Math.round(Number(item.quantity) || 1) + delta)
+  normalizeItem(item)
 }
 
 function normalizeItem(item: FormItem) {
@@ -1116,19 +1093,30 @@ async function saveChanges() {
   const trimmedDeliveryAddress = form.deliveryAddress.trim()
   const trimmedNotes = form.notes.trim()
 
+  const baseline = originalOrder.value
+  if (!baseline) {
+    isSaving.value = false
+    saveError.value = 'Исходные данные заказа не загружены. Обновите страницу.'
+    return false
+  }
   const payload = {
-    status: editableStatus.value,
-    delivery_address: trimmedDeliveryAddress ? trimmedDeliveryAddress : null,
-    notes: trimmedNotes ? trimmedNotes : null,
-    discount_amount: Math.min(discountAmount, itemsDiscountedSubtotal.value),
-    discount_percent: discountPercent,
-    items: sanitizedItems
+    ...(baseline.audit_revision !== undefined ? { expected_audit_revision: baseline.audit_revision } : {}),
+    ...(editableStatus.value !== baseline.status ? { status: editableStatus.value } : {}),
+    ...(form.deliveryAddress !== (baseline.delivery_address || '')
+      ? { delivery_address: trimmedDeliveryAddress || null } : {}),
+    ...(form.notes !== (baseline.notes || '') ? { notes: trimmedNotes || null } : {}),
+    ...(form.discountAmount !== Number(baseline.discount_amount || 0)
+      ? { discount_amount: Math.min(discountAmount, itemsDiscountedSubtotal.value) } : {}),
+    ...(form.discountPercent !== Number(baseline.discount_percent || 0)
+      ? { discount_percent: discountPercent } : {}),
+    ...(itemsHaveChanges.value ? { items: sanitizedItems } : {}),
   }
 
   try {
     const updated = await crmStore.updateOrder(currentOrder.value.id, payload)
     currentOrder.value = updated
     initializeForm(updated)
+    await loadHistory()
     saveSuccess.value = buildSaveSuccessMessage(updated.auto_notification)
     if (successTimer) clearTimeout(successTimer)
     successTimer = setTimeout(() => {
@@ -1142,7 +1130,9 @@ async function saveChanges() {
       saveChanges,
     )) return false
     console.error('[CRM] update order error', error)
-    saveError.value = formatErrorMessage(error?.message || error?.error || 'Не удалось сохранить изменения')
+    saveError.value = error?.code === 'order_conflict' || error?.error === 'order_conflict'
+      ? 'Заказ изменён другим сотрудником или покупателем. Ваш черновик сохранён. Обновите заказ и сверьте изменения перед повторным сохранением.'
+      : formatErrorMessage(error?.message || error?.error || 'Не удалось сохранить изменения')
     return false
   } finally {
     isSaving.value = false
@@ -1286,7 +1276,6 @@ function statusBadgeClass(status: Order['status']) {
     case 'new':
       return 'bg-amber-100 text-amber-700'
     case 'in_progress':
-      return 'bg-blue-100 text-blue-700'
     case 'completed':
     case 'delivered':
       return 'bg-emerald-100 text-emerald-700'
@@ -1307,7 +1296,10 @@ function statusLabel(status: Order['status'], deliveryType?: 'pickup' | 'deliver
 
 function formatFullDate(dateString?: string | null) {
   if (!dateString) return '—'
-  return new Date(dateString).toLocaleString('ru-RU', {
+  const normalized = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(dateString)
+    ? dateString.replace(' ', 'T') + 'Z' : dateString
+  return new Date(normalized).toLocaleString('ru-RU', {
+    timeZone: 'Europe/Minsk',
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
@@ -1396,3 +1388,282 @@ const showSearchHint = computed(() => {
   return length > 0 && length < 2
 })
 </script>
+
+<style scoped>
+.order-detail-product-image { float: left; width: 64px; height: 64px; margin: 0 12px 8px 0; object-fit: contain; border: 1px solid #e3ebf6; border-radius: 12px; background: #f7faff; }
+
+.order-detail-hero-grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 1.15fr) minmax(0, .9fr); gap: 12px; align-items: stretch; }
+.order-detail-hero, .order-detail-customer, .order-detail-status-picker, .order-detail-current-status { min-width: 0; border-radius: 16px; padding: 16px; overflow-wrap: anywhere; }
+.order-detail-hero { display: flex; gap: 14px; align-items: center; background: linear-gradient(110deg, #05b8ff, #538eed); color: white; }
+.order-detail-hero h1 { font-size: 22px; font-weight: 800; line-height: 1.25; }
+.order-detail-hero p { font-size: 12px; margin-top: 6px; }
+.order-detail-hero-icon { width: 44px; height: 44px; flex-shrink: 0; padding: 8px; border-radius: 12px; background: rgb(255 255 255 / 16%); }
+.order-detail-cell { display: inline-flex; margin-top: 10px; padding: 6px 10px; border: 1px solid rgb(255 255 255 / 25%); background: rgb(255 255 255 / 15%); border-radius: 999px; font-size: 12px; font-weight: 650; }
+.order-detail-customer, .order-detail-status-picker { border: 1px solid #e3ebf6; background: #fbfdff; }
+.order-detail-customer h2 { font-size: 12px; font-weight: 700; color: #718198; }
+.order-detail-customer-name { font-size: 15px; font-weight: 700; margin-top: 6px; }
+.order-detail-telegram { margin-top: 6px; font-size: 14px; font-weight: 650; color: #2066c8; }
+.order-detail-telegram a { text-decoration: none; text-underline-offset: 3px; text-decoration-thickness: 1px; }
+.order-detail-telegram a:hover, .order-detail-telegram a:focus-visible { text-decoration: underline; }
+.order-detail-status-picker select { width: 100%; min-width: 0; }
+.order-detail-current-status { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 8px; text-align: center; }
+.order-detail-current-status strong { font-size: 20px; font-weight: 800; }
+.order-detail-status-caption, .order-detail-status-draft { font-size: 11px; }
+@media (max-width: 1200px) { .order-detail-hero-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .order-detail-hero-grid { grid-template-columns: 1fr; } .order-detail-current-status { min-height: 90px; } }
+
+.crm-order-detail { flex-shrink: 0; padding: 18px 20px 26px; background: #f4f8fd; color: #26334b; }
+.crm-order-detail > div { max-width: 1440px; }
+.crm-order-detail :deep(button), .crm-order-detail :deep(input), .crm-order-detail :deep(select), .crm-order-detail :deep(textarea) { font: inherit; }
+.crm-order-detail button:focus-visible, .crm-order-detail input:focus-visible, .crm-order-detail select:focus-visible, .crm-order-detail textarea:focus-visible { outline: 3px solid #05b8ff; outline-offset: 3px; }
+.crm-order-detail button:disabled { cursor: not-allowed; opacity: .55; }
+.crm-order-detail section { border: 1px solid #e3ebf6; border-radius: 18px; padding: 18px; box-shadow: 0 8px 24px rgb(51 82 135 / 5%); }
+.order-detail-product-list { display: grid; gap: 10px; margin-top: 16px; }
+.order-detail-product { min-width: 0; padding: 12px; }
+.order-detail-product p { overflow-wrap: anywhere; }
+.order-detail-product input { min-width: 0; width: 100%; }
+.order-detail-quantity { display: grid; grid-template-columns: 30px minmax(36px, 1fr) 30px; border: 1px solid #d8e4f7; border-radius: 10px; min-height: 38px; overflow: hidden; background: white; }
+.order-detail-quantity button { background: #f7faff; border: 0; font-size: 20px; color: #3268ba; }
+.order-detail-quantity input { text-align: center; border: 0; background: white; appearance: textfield; padding: 6px 2px; }
+.order-detail-quantity input::-webkit-inner-spin-button, .order-detail-quantity input::-webkit-outer-spin-button { appearance: none; margin: 0; }
+.order-detail-trash { display: grid; place-items: center; flex-shrink: 0; width: 34px; height: 34px; border-radius: 10px; border: 1px solid #ffd8df; background: #fff1f3; color: #e84463; }
+.order-detail-trash svg { width: 18px; height: 18px; }
+.order-detail-product-summary { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-top: 12px; padding: 12px; border: 1px solid #e0eafb; border-radius: 12px; background: #f5f9ff; font-size: 13px; }
+.order-detail-show-more { border: 1px solid #cfe0ff; border-radius: 10px; padding: 7px 12px; color: #2066c8; background: white; }
+.order-detail-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
+.order-detail-section-heading h2 { font-size: 18px; font-weight: 750; }
+.order-detail-section-heading p { margin-top: 3px; font-size: 12px; color: #718198; }
+.order-detail-discounts { display: flex; gap: 10px; flex-wrap: wrap; }
+.order-detail-discounts label { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border: 1px solid #e3ebf6; border-radius: 12px; background: #f8fbff; font-size: 13px; font-weight: 600; }
+.order-detail-discounts input { width: 88px; min-width: 0; border: 1px solid #d8e4f7; border-radius: 8px; padding: 7px 8px; background: white; text-align: right; }
+.order-detail-financial-grid { display: grid; grid-template-columns: minmax(260px, .95fr) minmax(0, 1.5fr); gap: 14px; align-items: start; }
+.order-detail-pay { display: flex; flex-direction: column; padding: 22px; border-radius: 16px; background: linear-gradient(110deg, #05b8ff, #538eed); color: white; box-shadow: 0 10px 22px rgb(47 132 255 / 15%); }
+.order-detail-pay > span { font-size: 14px; font-weight: 600; }
+.order-detail-pay > strong { font-size: clamp(28px, 3vw, 38px); line-height: 1.2; margin: 10px 0 20px; overflow-wrap: anywhere; }
+.order-detail-profit { display: flex; flex-direction: column; gap: 6px; padding-top: 14px; border-top: 1px solid rgb(255 255 255 / 30%); }
+.order-detail-profit span { font-size: 13px; }
+.order-detail-profit strong { font-size: 23px; }
+.order-detail-profit-negative { color: #fff0cd; }
+.order-detail-stat-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.order-detail-stat-grid > div { min-width: 0; padding: 12px; border: 1px solid #e3ebf6; border-radius: 12px; background: #fbfdff; }
+.order-detail-stat-grid dt { font-size: 11px; line-height: 1.4; color: #718198; }
+.order-detail-stat-grid dd { margin-top: 7px; font-size: 15px; font-weight: 700; overflow-wrap: anywhere; }
+.order-detail-payment-meta { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 14px; font-size: 12px; }
+@media (min-width: 1100px) {
+  .order-detail-product { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.4fr); gap: 10px 16px; align-items: start; }
+  .order-detail-product > .mt-3 { margin-top: 0; }
+  .order-detail-product > div:last-child { grid-column: 1 / -1; padding-top: 8px; border-top: 1px solid #eef2f8; font-size: 12px; }
+}
+@media (max-width: 1000px) { .order-detail-financial-grid { grid-template-columns: 1fr; } }
+@media (max-width: 640px) {
+  .crm-order-detail { padding: 12px; }
+  .crm-order-detail section { padding: 14px; }
+  .order-detail-stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .order-detail-discounts { width: 100%; }
+  .order-detail-discounts label { flex: 1; justify-content: space-between; }
+}
+@media (prefers-reduced-motion: reduce) { .crm-order-detail * { transition: none !important; } }
+
+/* Visual values from the order-detail HTML reference. */
+    .order-detail-hero-grid{display:grid; grid-template-columns:minmax(0,2.1fr) minmax(0,1fr) minmax(0,1.15fr) minmax(0,.85fr); gap:12px; margin-bottom:16px}
+    .order-detail-hero,.order-detail-customer,.order-detail-status-picker{border-radius:20px; padding:18px; position:relative; overflow:hidden}
+    .order-detail-hero{background:linear-gradient(135deg, #16c9ff 0%, #1574ff 55%, #3f54ff 100%); color:#fff; min-height:120px; display:flex; align-items:center; gap:16px; box-shadow:0 18px 36px rgba(35,116,255,.2)}
+    .order-detail-hero-icon{width:66px;height:66px;border-radius:22px; background:rgba(255,255,255,.18); border:1px solid rgba(255,255,255,.18); display:grid; place-items:center; font-size:26px; font-weight:900; flex:0 0 auto}
+    .order-detail-hero h1{font-size:22px; font-weight:900; margin-bottom:5px}
+    .order-detail-hero p{font-size:15px; opacity:.95}
+    .order-detail-cell{display:inline-flex; align-items:center; gap:9px; margin-top:11px; background:rgba(255,255,255,.18); color:#fff; padding:8px 12px; border-radius:999px; border:1px solid rgba(255,255,255,.22); font-weight:800; font-size:13px}
+    .order-detail-customer{background:#fbfdff; border:1px solid #dde7f5; display:flex; align-items:center; gap:14px; min-height:120px}
+    .order-detail-customer-avatar,.order-detail-round-icon{width:58px;height:58px;border-radius:19px; background:#eff4ff; display:grid; place-items:center; flex:0 0 auto; color:#2d58d6; font-size:24px; font-weight:800}
+    .order-detail-customer h2{font-size:15px; font-weight:900; text-transform:uppercase; margin-bottom:6px}
+    .order-detail-telegram{font-size:15px; font-weight:900; color:#144ef5}
+    .order-detail-customer-name{margin-top:6px; color:#7a88ab; font-weight:700; font-size:13px}
+    .order-detail-status-picker{background:#fbfdff; border:1px solid #dde7f5; min-height:120px; display:flex; align-items:center; gap:14px}
+    .order-detail-status-picker > label{display:flex; flex-direction:column; gap:16px; font-size:15px; font-weight:900; margin-bottom:10px}
+    .order-detail-status-picker select{min-width:150px; border:1px solid #dbe7fb; border-radius:14px; padding:11px 14px; font-size:15px; background:#fff; box-shadow:inset 0 1px 0 rgba(255,255,255,.6)}
+    .order-detail-current-status{background:var(--order-status-surface,#f4f7fc); border:1px solid var(--order-status-border,#dce4ef); min-height:120px; border-radius:20px; display:grid; place-items:center; text-align:center; color:var(--order-status-text,#475569); box-shadow:0 14px 38px rgba(51,82,135,.08)}
+    .order-detail-status-tick{width:60px;height:60px;border-radius:999px; background:var(--order-status-icon,#64748b); color:#fff; display:grid; place-items:center; font-size:28px; font-weight:900; margin-bottom:10px}
+    .order-detail-current-status strong{font-size:21px; font-weight:900; letter-spacing:.02em}
+
+    .order-detail-financial-grid{display:grid; grid-template-columns:1.15fr 1fr; gap:16px; align-items:start; margin-top:14px}
+    .order-detail-pay{background:linear-gradient(135deg,#2f84ff 0%, #3674ff 55%, #4d9dff 100%); color:#fff; border-radius:24px; padding:22px 24px; box-shadow:0 18px 36px rgba(47,132,255,.22); min-height:176px; display:flex; flex-direction:column; justify-content:space-between}
+    .order-detail-pay > span:not(.order-detail-pay-icon){font-weight:800; opacity:.92; font-size:16px}
+    .order-detail-pay > strong{font-size:48px; font-weight:900; line-height:1; margin:8px 0 18px}
+    .order-detail-profit{display:flex; justify-content:space-between; align-items:flex-end; gap:12px; padding-top:14px; border-top:1px solid rgba(255,255,255,.28)}
+    .order-detail-profit span{font-size:15px; opacity:.92}
+    .order-detail-profit strong{font-size:28px; font-weight:900}
+    .order-detail-pay-icon{width:62px;height:62px;border-radius:20px; background:rgba(255,255,255,.16); display:grid; place-items:center; font-size:28px}
+
+    .fin-right{display:grid; gap:12px}
+    .order-detail-discounts{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px}
+    .order-detail-discounts label,.order-detail-stat-grid > div{background:#fff; border:1px solid #e7eef9; border-radius:18px; padding:12px 14px; box-shadow:0 8px 20px rgba(53,82,130,.05)}
+    .order-detail-discounts label{display:grid; grid-template-columns:auto 1fr auto; gap:10px; align-items:center}
+    .order-detail-discount-icon,.order-detail-stat-icon{width:38px;height:38px;border-radius:12px; background:#eef4ff; display:grid; place-items:center; color:#1d67ff; font-size:18px}
+    .order-detail-discounts label{font-size:14px; font-weight:800}
+    .order-detail-discounts input{width:110px; border:1px solid #d8e4f7; border-radius:12px; padding:10px 12px; font-size:14px}
+    .order-detail-stat-grid{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px}
+    .order-detail-stat-grid > div{display:grid; grid-template-columns:auto 1fr; gap:10px; align-items:start; min-height:86px}
+    .order-detail-stat-grid dt{font-size:13px; color:#67779f; font-weight:800; line-height:1.25}
+    .order-detail-stat-grid dd{font-size:16px; font-weight:900; margin-top:6px}
+
+
+.crm-order-detail { container-name: order-detail; container-type: inline-size; min-width: 0; font-family: Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif; font-size: 14px; color: #0b164a; background: linear-gradient(180deg,#f7fbff 0%,#f2f6fb 100%); }
+.crm-order-detail section { border-color: #e8eef8; border-radius: 26px; padding: 16px; box-shadow: 0 14px 38px rgb(51 82 135 / 8%); }
+.order-detail-hero-icon { padding: 17px; }
+.order-detail-customer { flex-direction: column; align-items: stretch; justify-content: center; gap: 10px; }
+.order-detail-customer-main { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.order-detail-customer-info { min-width: 0; }
+.order-detail-customer-avatar { overflow: hidden; }
+.order-detail-customer-avatar img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.order-detail-customer-avatar svg { width: 32px; height: 32px; }
+.order-detail-customer h2 { color: #0b164a; }
+.order-detail-telegram { margin-top: 0; }
+.order-detail-customer-phone { margin-top: 6px; color: #7a88ab; font-size: 13px; font-weight: 700; }
+.order-detail-status-picker > label { flex: 1; min-width: 0; }
+.order-detail-status-picker select { min-width: 0; width: 100%; }
+.order-detail-round-icon svg { width: 28px; height: 28px; }
+.order-detail-current-status { display: flex; flex-direction: column; gap: 5px; }
+.order-detail-current-status strong { text-transform: uppercase; }
+.order-detail-status-tick { flex: 0 0 60px; }
+.order-detail-status-tick svg { width: 30px; height: 30px; color: white; }
+.crm-order-detail .order-detail-top-timeline { margin-top: 16px; padding: 20px 20px 14px; background: #fcfdff; border-radius: 22px; box-shadow: none; }
+.order-detail-heading-main { display: flex; align-items: flex-start; gap: 14px; }
+.order-detail-heading-icon { width: 56px; height: 56px; flex: 0 0 56px; border-radius: 18px; background: #eef4ff; display: grid; place-items: center; color: #2772ff; }
+.order-detail-heading-icon svg { width: 28px; height: 28px; }
+.order-detail-section-heading h2 { font-size: 22px; font-weight: 900; }
+.order-detail-section-heading p { font-size: 15px; color: #6d7ea7; }
+.order-detail-discounts label { display: grid; grid-template-columns: 38px minmax(0,1fr) 110px; min-width: 0; font-weight: 800; }
+.order-detail-discount-icon { flex: 0 0 38px; }
+.order-detail-discounts input { min-width: 0; }
+.order-detail-pay { position: relative; }
+.order-detail-pay > strong { padding-right: 78px; overflow-wrap: anywhere; }
+.order-detail-pay-icon { position: absolute; right: 24px; top: 48px; }
+.order-detail-pay-icon svg { width: 30px; height: 30px; }
+.order-detail-profit { align-items: stretch; }
+.order-detail-profit span { font-size: 15px; }
+.order-detail-profit strong { font-size: 28px; font-weight: 900; }
+.order-detail-stat-grid > div { display: block; position: relative; padding-left: 62px; }
+.order-detail-stat-grid dt { margin: 0; }
+.order-detail-stat-grid dd { margin: 6px 0 0; }
+.order-detail-stat-icon { position: absolute; left: 14px; top: 12px; }
+.order-detail-stat-icon svg { width: 21px; height: 21px; }
+.order-detail-icon-blue { color: #1d67ff; background: #eef4ff; }
+.order-detail-icon-green { color: #21a95a; background: #edf9f1; }
+.order-detail-icon-red { color: #ef4762; background: #fff1f4; }
+.order-detail-icon-purple { color: #8a48ef; background: #f6edff; }
+.order-detail-icon-orange { color: #ff9f1a; background: #fff5e8; }
+.order-detail-icon-gray { color: #6f7b94; background: #f4f7fc; }
+@media (max-width:1500px) {
+  .order-detail-hero-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .order-detail-financial-grid { grid-template-columns: 1fr; }
+  .order-detail-stat-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+}
+@media (max-width:1200px) {
+  .order-detail-stat-grid, .order-detail-discounts { grid-template-columns: 1fr; }
+}
+@media (max-width:640px) {
+  .order-detail-hero-grid { grid-template-columns: 1fr; }
+  .order-detail-discounts { width: 100%; }
+  .order-detail-discounts label { justify-content: flex-start; }
+  .order-detail-discounts input { margin-left: auto; }
+  .order-detail-pay > strong { font-size: 36px; }
+  .crm-order-detail .order-detail-top-timeline { padding: 16px 12px 12px; }
+}
+/* Product layout and controls match the supplied HTML reference. */
+.crm-order-detail .order-detail-status-picker > label { margin-bottom: 0; }
+.crm-order-detail .order-detail-customer h2 { text-transform: none; overflow-wrap: anywhere; }
+.order-detail-products-heading { align-items: flex-start; margin-bottom: 10px; }
+.order-detail-add-product { display: flex; align-items: center; gap: 12px; background: #f3f8ff; border: 1px solid #dce8ff; border-radius: 18px; padding: 12px 14px; min-width: 440px; }
+.order-detail-plus-badge { width: 48px; height: 48px; border-radius: 16px; background: #e7f0ff; color: #2772ff; display: grid; place-items: center; flex: 0 0 auto; }
+.order-detail-plus-badge svg { width: 28px; height: 28px; }
+.order-detail-search-field { flex: 1; min-width: 0; }
+.order-detail-search-field label { display: block; font-weight: 800; margin-bottom: 6px; font-size: 14px; }
+.order-detail-search-field input { width: 100%; border: 1px solid #d8e4f7; border-radius: 12px; padding: 12px 14px; font-size: 14px; background: white; margin-top: 0; }
+.crm-order-detail .order-detail-product-list { gap: 14px; margin-top: 10px; }
+.crm-order-detail .order-detail-product { display: grid; grid-template-columns: 82px minmax(0,1.55fr) 136px 140px 152px 140px 46px; gap: 14px; align-items: center; background: white; border: 1px solid #e8eef8; border-radius: 20px; padding: 14px; box-shadow: 0 8px 20px rgb(53 82 130 / 5%); }
+.crm-order-detail .order-detail-product > div:last-child { grid-column: auto; padding-top: 0; border-top: 0; }
+.crm-order-detail .order-detail-product-invalid { border-color: #fca5a5; background: #fff7f7; }
+.order-detail-product-thumb { width: 64px; height: 64px; border-radius: 18px; background: linear-gradient(180deg,#fff,#f3f7fd); border: 1px solid #e3ebf8; display: grid; place-items: center; box-shadow: inset 0 1px 0 white; overflow: hidden; }
+.order-detail-product-thumb img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.order-detail-product-thumb svg { width: 30px; height: 30px; color: #7e8bab; }
+.order-detail-product-info { min-width: 0; }
+.order-detail-product-name { font-size: 16px; font-weight: 900; margin-bottom: 4px; }
+.order-detail-product-meta { font-size: 13px; color: #6d7ea7; font-weight: 700; }
+.order-detail-product-description { display: inline-block; margin-top: 8px; padding: 6px 10px; border-radius: 999px; background: #f3f7ff; color: #7e8bab; font-size: 12px; font-weight: 700; }
+.order-detail-product-note, .order-detail-product-loyalty { margin-top: 5px; font-size: 12px; color: #7a55b6; }
+.order-detail-product-field { display: block; min-width: 0; font-size: 13px; color: #5d6e98; font-weight: 800; }
+.order-detail-product-field > span { display: block; margin-bottom: 7px; }
+.order-detail-product-field > input { border: 1px solid #d8e4f7; background: white; border-radius: 12px; padding: 10px 12px; font-size: 15px; min-height: 44px; }
+.crm-order-detail .order-detail-quantity { grid-template-columns: 36px minmax(0,1fr) 36px; align-items: stretch; border-radius: 12px; min-height: 44px; }
+.crm-order-detail .order-detail-quantity button { background: white; color: #6376a2; font-size: 20px; }
+.crm-order-detail .order-detail-quantity input { font-size: 16px; font-weight: 800; }
+.order-detail-product-sum { background: #f7faff; border-radius: 16px; border: 1px solid #edf3fc; padding: 14px; min-width: 0; }
+.order-detail-product-sum > span { display: block; font-size: 12px; color: #62739f; font-weight: 800; margin-bottom: 4px; }
+.order-detail-product-sum strong { font-size: 19px; font-weight: 900; overflow-wrap: anywhere; }
+.crm-order-detail .order-detail-trash { width: 40px; height: 40px; border-radius: 12px; color: #ff4369; }
+.crm-order-detail .order-detail-product-summary { border-radius: 18px; padding: 12px 16px; gap: 16px; font-size: 15px; font-weight: 800; }
+.crm-order-detail .order-detail-show-more { background: #fbfdff; color: #2066ff; padding: 9px 14px; border-radius: 14px; font-weight: 800; }
+@media (max-width: 1500px) { .crm-order-detail .order-detail-product { grid-template-columns: 82px minmax(0,1.3fr) 120px 130px 140px 130px 46px; } }
+@media (max-width: 1200px) { .crm-order-detail .order-detail-product { grid-template-columns: 1fr; } .order-detail-add-product { min-width: 0; width: 100%; } .order-detail-products-heading { flex-direction: column; } }
+
+/* Keep draft-only state changes in the same layout slots. */
+.order-detail-save-hint { min-height: 1.5rem; overflow-wrap: anywhere; }
+.order-detail-status-draft { min-height: 1rem; line-height: 1rem; }
+.order-detail-status-draft-hidden { visibility: hidden; }
+.order-detail-current-status strong { display: flex; align-items: center; justify-content: center; min-height: 2.5em; line-height: 1.25; }
+.order-detail-current-status[data-status="new"] { --order-status-surface: #fff7db; --order-status-border: #eed28a; --order-status-text: #785000; --order-status-icon: #946000; }
+.order-detail-current-status[data-status="in_progress"],
+.order-detail-current-status[data-status="completed"],
+.order-detail-current-status[data-status="delivered"] { --order-status-surface: #eaf8ee; --order-status-border: #b9dfc4; --order-status-text: #166534; --order-status-icon: #15803d; }
+.order-detail-current-status[data-status="cancelled"] { --order-status-surface: #fff0f1; --order-status-border: #f2bdc4; --order-status-text: #a51d35; --order-status-icon: #be123c; }
+.order-detail-status-payment-description { color: inherit; }
+.order-detail-telegram a:focus-visible { outline: 3px solid #05b8ff; outline-offset: 3px; border-radius: 3px; }
+.order-detail-hero > div, .order-detail-heading-main > div, .order-detail-stat-grid dt, .order-detail-stat-grid dd { min-width: 0; overflow-wrap: anywhere; }
+.crm-order-detail input, .crm-order-detail select, .crm-order-detail textarea { max-width: 100%; }
+.crm-order-detail > div > .flex button { min-height: 44px; }
+.crm-order-detail .order-detail-trash { width: 44px; height: 44px; }
+.order-detail-quantity button { min-width: 0; }
+.order-detail-pay > strong, .order-detail-profit strong, .order-detail-stat-grid dd, .order-detail-product-sum strong { font-variant-numeric: tabular-nums; }
+
+/* Use available content width, including when an admin sidebar is open. */
+@container order-detail (max-width: 1140px) {
+  .order-detail-hero-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .order-detail-financial-grid { grid-template-columns: minmax(0,1fr); }
+  .order-detail-stat-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .order-detail-discounts { grid-template-columns: minmax(0,1fr); }
+  .order-detail-products-heading { flex-direction: column; }
+  .order-detail-add-product { min-width: 0; width: 100%; }
+  .crm-order-detail .order-detail-product { grid-template-columns: repeat(3,minmax(0,1fr)); align-items: start; }
+  .order-detail-product-thumb { grid-column: 1; }
+  .order-detail-product-info { grid-column: 2 / -1; }
+  .order-detail-product-field { grid-column: auto; }
+  .crm-order-detail .order-detail-product-sum { grid-column: 1 / 3; }
+  .crm-order-detail .order-detail-trash { grid-column: 3; justify-self: end; align-self: center; }
+}
+@container order-detail (max-width: 600px) {
+  .order-detail-hero-grid { grid-template-columns: minmax(0,1fr); }
+  .order-detail-hero { gap: 12px; }
+  .order-detail-hero-icon { width: 48px; height: 48px; padding: 11px; border-radius: 16px; }
+  .order-detail-hero h1 { font-size: 20px; }
+  .order-detail-hero p { font-size: 13px; }
+  .order-detail-heading-main { gap: 10px; }
+  .order-detail-heading-icon { width: 44px; height: 44px; flex-basis: 44px; border-radius: 14px; }
+  .order-detail-section-heading h2 { font-size: 20px; }
+  .order-detail-section-heading p { font-size: 13px; }
+  .order-detail-discounts label { grid-template-columns: 38px minmax(0,1fr) 88px; gap: 8px; padding: 12px; }
+  .order-detail-discounts input { width: 88px; margin-left: 0; padding: 10px 8px; }
+  .order-detail-pay { padding: 18px; }
+  .order-detail-pay > span:not(.order-detail-pay-icon) { padding-right: 56px; }
+  .order-detail-pay > strong { padding-right: 0; font-size: clamp(24px,8cqi,36px); line-height: 1.15; }
+  .order-detail-pay-icon { width: 44px; height: 44px; top: 18px; right: 18px; border-radius: 14px; }
+  .order-detail-pay-icon svg { width: 24px; height: 24px; }
+  .order-detail-add-product { gap: 10px; padding: 12px; }
+  .order-detail-plus-badge { width: 40px; height: 40px; border-radius: 12px; }
+  .crm-order-detail .order-detail-product { grid-template-columns: minmax(0,1fr); gap: 12px; }
+  .order-detail-product-thumb, .order-detail-product-info, .order-detail-product-field,
+  .crm-order-detail .order-detail-product-sum, .crm-order-detail .order-detail-trash { grid-column: 1; }
+  .crm-order-detail .order-detail-product-summary { align-items: flex-start; gap: 12px; font-size: 14px; }
+}
+@container order-detail (max-width: 360px) {
+  .order-detail-stat-grid { grid-template-columns: minmax(0,1fr); }
+}
+</style>

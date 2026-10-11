@@ -70,6 +70,10 @@
               <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6" /></svg>
             </button>
             <div v-if="moreDropdownOpen" id="crm-orders-actions" class="crm-orders-menu crm-orders-actions-menu" @click.stop>
+              <button type="button" class="inline-flex items-center gap-2" data-test="orders-find-inviter" @click="openFindInviter">
+                <svg class="h-4 w-4 shrink-0" width="16" height="16" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3" /><path stroke-linecap="round" d="M3 20v-2a6 6 0 0 1 10-4M17 4v6M14 7h6" /><circle cx="17" cy="17" r="3" /><path stroke-linecap="round" d="m19 19 3 3" /></svg>
+                <span>Найти пригласившего</span>
+              </button>
           <CrmButton
             variant="secondary"
             size="sm"
@@ -705,7 +709,12 @@
 
                 <div class="order-card-customer space-y-2 text-sm text-gray-700">
                   <div class="order-card-client-row">
-                    <span class="order-card-client-name" data-test="order-customer-name">{{ order.customer_name || 'Без имени' }}</span>
+                    <div class="order-card-client-identity">
+                      <span class="order-card-client-name" data-test="order-customer-name">{{ order.customer_name || 'Без имени' }}</span>
+                      <span v-if="order.customer_card_payment_enabled" class="order-card-card-access" data-test="order-card-card-access" role="img" aria-label="Клиенту разрешена оплата картой" title="Клиенту разрешена оплата картой">
+                        <span class="order-card-card-access-icon" aria-hidden="true"></span>
+                      </span>
+                    </div>
                     <button
                       type="button"
                       class="order-card-client-actions"
@@ -716,14 +725,7 @@
                       @click.stop="openCustomerActions(order)"
                     >{{ generatingMessageForOrder === order.id ? 'Подготавливаем…' : 'Действия с клиентом' }}</button>
                   </div>
-                  <div v-if="order.customer_card_payment_enabled || order.is_blocked" class="order-card-client-flags">
-                    <span v-if="order.customer_card_payment_enabled" class="order-card-card-access" data-test="order-card-card-access" title="Клиенту разрешена оплата картой">
-                      <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
-                        <rect x="3" y="5" width="18" height="14" rx="3" />
-                        <path stroke-linecap="round" d="M3 10h18M7 15h3" />
-                      </svg>
-                      <span>Карта разрешена</span>
-                    </span>
+                  <div v-if="order.is_blocked" class="order-card-client-flags">
                     <span v-if="order.is_blocked" class="rounded-full bg-red-200 px-2 py-0.5 text-[10px] font-semibold text-red-800" title="Клиент заблокирован. Сообщения не отправляются.">Заблокирован</span>
                   </div>
                   <div
@@ -1325,6 +1327,14 @@
       @shift-required="handleOrderCreateShiftRequired"
     />
 
+    <FindInviterModal
+      :is-open="showFindInviterModal"
+      :busy="Boolean(lookupActionBusy || pendingLookupAction || removingInviterBanId || sendingInviterMessage)"
+      @close="closeFindInviter"
+      @action="queueLookupInviterAction"
+      @after-leave="runLookupInviterAction"
+    />
+
     <CustomerActionsModal
       :is-open="showCustomerActionsModal"
       :order="customerActionsOrder"
@@ -1609,6 +1619,8 @@
       </div>
     </AdminModal>
 
+    <p class="crm-orders-icon-credit">Uicons by <a href="https://www.flaticon.com/uicons" target="_blank" rel="noopener noreferrer">Flaticon</a></p>
+
     <!-- In-app Toast Notification (Safari fallback) -->
     <Teleport to="body">
       <Transition name="toast-slide">
@@ -1654,6 +1666,8 @@ import CustomerBlockModal from "@/components/admin/CustomerBlockModal.vue";
 import CustomerNoteModal from "@/components/admin/CustomerNoteModal.vue";
 import CustomerInviteBanModal from "@/components/admin/CustomerInviteBanModal.vue";
 import CustomerActionsModal, { type CustomerAction, type InviterAction } from "@/components/admin/crm/CustomerActionsModal.vue";
+import FindInviterModal from "@/components/admin/crm/FindInviterModal.vue";
+import { lookupCrmInviter, type InviterLookupResult } from "@/utils/crmInviterLookup";
 import { LockClosedIcon, NoSymbolIcon } from "@heroicons/vue/24/outline";
 import { buildAutoNotifyToast } from "@/utils/auto-notify-message";
 import CrmProfitPasswordField from "@/components/crm/CrmProfitPasswordField.vue";
@@ -1728,6 +1742,71 @@ function openReviews() {
 }
 
 const showCreateModal = ref(false);
+const showFindInviterModal = ref(false);
+const lookupActionBusy = ref(false);
+const pendingLookupAction = ref<{ action: InviterAction; result: InviterLookupResult } | null>(null);
+let lookupActionRevision = 0;
+
+function openFindInviter() {
+  moreDropdownOpen.value = false;
+  if (pendingCustomerAction.value || showCustomerActionsModal.value || lookupActionBusy.value || sendingInviterMessage.value || removingInviterBanId.value) return;
+  pendingLookupAction.value = null;
+  lookupActionRevision += 1;
+  moreDropdownRef.value?.querySelector('button')?.focus({ preventScroll: true });
+  showFindInviterModal.value = true;
+}
+function closeFindInviter() {
+  pendingLookupAction.value = null;
+  lookupActionRevision += 1;
+  showFindInviterModal.value = false;
+}
+function queueLookupInviterAction(action: InviterAction, result: InviterLookupResult) {
+  const referral = result.referral;
+  if (!showFindInviterModal.value || lookupActionBusy.value || pendingLookupAction.value || pendingCustomerAction.value || !result.customer || !referral) return;
+  if (!referral.inviter_customer_id && !referral.inviter_username) return;
+  if (action === 'copy' && !referral.inviter_username) return;
+  if (action === 'message' && !referral.inviter_customer_id) return;
+  if (action === 'invite-ban' && referral.inviter_is_invite_banned) return;
+  if (action === 'remove-ban' && (!referral.inviter_is_invite_banned || !referral.inviter_invite_ban_id)) return;
+  pendingLookupAction.value = { action, result: { customer: { ...result.customer }, referral: { ...referral } } };
+  showFindInviterModal.value = false;
+}
+async function runLookupInviterAction() {
+  const pending = pendingLookupAction.value;
+  pendingLookupAction.value = null;
+  if (!pending || lookupActionBusy.value) return;
+  const revision = ++lookupActionRevision;
+  lookupActionBusy.value = true;
+  try {
+    await nextTick();
+    const fresh = await lookupCrmInviter(pending.result.customer?.telegram_username || '');
+    if (revision !== lookupActionRevision) return;
+    const before = pending.result.referral!;
+    const referral = fresh.referral;
+    if (!fresh.customer || fresh.customer.id !== pending.result.customer?.id || !referral ||
+        referral.inviter_customer_id !== before.inviter_customer_id ||
+        (!before.inviter_customer_id && referral.inviter_username !== before.inviter_username)) {
+      throw new Error('Пригласивший изменился. Выполните поиск заново.');
+    }
+    const target = { referral };
+    if (pending.action === 'copy') await copyInviter(target);
+    else if (pending.action === 'message' && referral.inviter_customer_id) openInviterMessage(target);
+    else if (pending.action === 'block') openInviterBlockModal(target);
+    else if (pending.action === 'invite-ban') {
+      if (referral.inviter_is_invite_banned) throw new Error('Запрет уже установлен. Выполните поиск заново.');
+      openInviteBanModal(target);
+    } else if (pending.action === 'remove-ban') {
+      if (!referral.inviter_is_invite_banned || referral.inviter_invite_ban_id !== before.inviter_invite_ban_id) throw new Error('Запрет изменился. Выполните поиск заново.');
+      await removeInviterBan(target);
+    }
+  } catch (error) {
+    if (revision === lookupActionRevision) showOrderToast({ kind: 'error', message: error instanceof Error ? error.message : 'Не удалось проверить пригласившего' });
+  } finally {
+    lookupActionBusy.value = false;
+  }
+}
+onUnmounted(() => { lookupActionRevision += 1; pendingLookupAction.value = null; });
+
 const showCustomerActionsModal = ref(false);
 const customerActionsOrderId = ref<string | null>(null);
 const customerActionsOrder = computed(() =>
@@ -1745,7 +1824,7 @@ const pendingCustomerAction = ref<{
 } | null>(null);
 
 function openCustomerActions(order: Order) {
-  if (generatingMessageForOrder.value || showCustomerActionsModal.value || pendingCustomerAction.value) return;
+  if (generatingMessageForOrder.value || showCustomerActionsModal.value || pendingCustomerAction.value || showFindInviterModal.value || pendingLookupAction.value || lookupActionBusy.value) return;
   customerActionsOrderId.value = order.id;
   showCustomerActionsModal.value = true;
 }
@@ -1841,7 +1920,7 @@ function openBlockModal(prefill?: string, customerId: string | null = null) {
   showBlockModal.value = true;
 }
 
-async function copyInviter(order: Order) {
+async function copyInviter(order: Pick<Order, 'referral'>) {
   const username = order.referral?.inviter_username;
   if (!username) return;
   const text = `@${username}`;
@@ -1871,20 +1950,20 @@ async function copyInviter(order: Order) {
   }
 }
 
-function openInviterBlockModal(order: Order) {
+function openInviterBlockModal(order: Pick<Order, 'referral'>) {
   openBlockModal(
     order.referral?.inviter_username || '',
     order.referral?.inviter_customer_id || null,
   );
 }
 
-function openInviteBanModal(order: Order) {
+function openInviteBanModal(order: Pick<Order, 'referral'>) {
   inviteBanCustomerId.value = order.referral?.inviter_customer_id || null;
   inviteBanUsername.value = order.referral?.inviter_username || '';
   showInviteBanModal.value = true;
 }
 
-async function removeInviterBan(order: Order) {
+async function removeInviterBan(order: Pick<Order, 'referral'>) {
   const id = order.referral?.inviter_invite_ban_id;
   if (!id || removingInviterBanId.value || !window.confirm('Снять запрет приглашать?')) return;
   removingInviterBanId.value = id;
@@ -1910,7 +1989,7 @@ async function handleInviteBanChanged() {
   await refreshOrders({ skipNotify: true });
 }
 
-function openInviterMessage(order: Order) {
+function openInviterMessage(order: Pick<Order, 'referral'>) {
   inviterMessageCustomerId.value = order.referral?.inviter_customer_id || null;
   inviterMessageUsername.value = order.referral?.inviter_username || '';
   inviterMessageText.value = '';
@@ -3346,9 +3425,11 @@ async function confirmCancelOrder() {
 .order-card-customer, .order-card-finance { min-width: 0; overflow-wrap: anywhere; }
 .order-card-customer { color: #081b4b; }
 .order-card-client-flags { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
-.order-card-card-access { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 5px 8px; border: 1px solid #dce8fa; border-radius: 8px; background: #f7fbff; color: #233e70; font-size: 11px; font-weight: 600; line-height: 1.35; }
-.order-card-card-access svg { width: 14px; height: 14px; flex-shrink: 0; color: #1759ed; }
-.order-card-card-access > span { min-width: 0; overflow-wrap: anywhere; }
+.order-card-client-identity { display: flex; align-items: center; gap: 8px; min-width: 0; max-width: 100%; }
+.order-card-card-access { display: inline-grid; place-items: center; flex: 0 0 24px; width: 24px; height: 24px; box-sizing: border-box; border: 0; border-radius: 7px; background: linear-gradient(135deg, rgba(52, 211, 153, 0.95), rgba(5, 150, 105, 0.9)); box-shadow: 0 4px 10px rgba(16, 185, 129, 0.22); }
+.order-card-card-access-icon { display: block; width: 18px; height: 18px; background: url('@/assets/icons/flaticon-credit-card.svg') center / contain no-repeat; }
+.crm-orders-icon-credit { margin: 20px 0 0; color: #66799e; font-size: 10px; line-height: 1.4; }
+.crm-orders-icon-credit a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
 .order-card-customer [data-inviter-menu] { min-height: 0; font-size: 12px; line-height: normal; }
 .order-card-customer [data-inviter-menu] > span { color: #8999b7; font-weight: 400; }
 .order-card .inviter-trigger { color: #1759ed; font-weight: 700; line-height: normal; text-decoration: none; }

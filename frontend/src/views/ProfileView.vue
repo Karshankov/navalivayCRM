@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="profile-page">
     <div class="profile-container">
       <section class="user-card">
@@ -526,7 +526,8 @@ function cardMonthlyProgress(status: { monthly_used_minor?: number; monthly_limi
 
 function formatCardDate(value: string) {
   return new Intl.DateTimeFormat('ru-BY', {
-    dateStyle: 'medium',
+    day: 'numeric',
+    month: 'long',
     timeZone: 'Europe/Minsk',
   }).format(new Date(value))
 }

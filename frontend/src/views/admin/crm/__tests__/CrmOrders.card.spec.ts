@@ -21,6 +21,11 @@ const ActionsStub = defineComponent({
   template: '<div v-if="isOpen" data-test="customer-actions-modal" />',
 });
 
+const LookupStub = defineComponent({
+  name: 'FindInviterModal', props: ['isOpen', 'busy'], emits: ['close', 'action', 'after-leave'],
+  template: '<div v-if="isOpen" data-test="find-inviter-modal" />',
+});
+
 function makeOrder(overrides: Partial<Order> = {}): Order {
   return {
     id: 'order-1', order_number: 1001, customer_id: 'customer-1', employee_id: null,
@@ -54,7 +59,7 @@ async function setup(order = makeOrder()) {
   vi.spyOn(store, 'unlockAudioContext').mockImplementation(() => {});
   wrapper = mount(CrmOrders, {
     global: { stubs: {
-      AdminModal: ModalStub, CustomerActionsModal: ActionsStub,
+      AdminModal: ModalStub, CustomerActionsModal: ActionsStub, FindInviterModal: LookupStub,
       CustomerBlockModal: true, CustomerNoteModal: true, CustomerInviteBanModal: true,
       OrderCreateModal: true, CardPaymentsModal: true, StaffShiftBar: true,
       StaffCurrentActorBadge: true, CrmProfitPasswordField: true, CrmButton: true,
@@ -90,6 +95,72 @@ afterEach(() => {
   wrapper = undefined;
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+});
+
+describe('CrmOrders: toolbar inviter lookup', () => {
+  it('keeps the lookup icon at the same small size as the customer note icon', async () => {
+    await setup();
+    await wrapper!.get('[data-test="orders-actions-toggle"]').trigger('click');
+    const icon = wrapper!.get('[data-test="orders-find-inviter"] svg');
+    expect(icon.attributes('width')).toBe('16');
+    expect(icon.attributes('height')).toBe('16');
+    expect(icon.classes()).toEqual(expect.arrayContaining(['h-4', 'w-4', 'shrink-0']));
+  });
+  const result = () => ({
+    customer: { id: 'off-board-customer', telegram_username: 'off_board', first_name: 'Клиент', last_name: null },
+    referral: { ...makeOrder().referral!, invitee_customer_id: 'off-board-customer' },
+  });
+  async function openLookup() {
+    const context = await setup();
+    context.store.orders = [];
+    await wrapper!.get('[data-test="orders-actions-toggle"]').trigger('click');
+    await wrapper!.get('[data-test="orders-find-inviter"]').trigger('click');
+    const lookup = wrapper!.findComponent(LookupStub);
+    expect(lookup.props('isOpen')).toBe(true);
+    expect(wrapper!.find('#crm-orders-actions').exists()).toBe(false);
+    return lookup;
+  }
+  it('opens from the actions menu even with no orders on the board', async () => { await openLookup(); });
+  it('waits for the search dialog to leave before opening the existing block dialog for the inviter', async () => {
+    const lookup = await openLookup();
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify(result()), {status:200}));
+    lookup.vm.$emit('action', 'block', result()); await flushPromises();
+    expect(lookup.props('isOpen')).toBe(false);
+    expect(wrapper!.findComponent({name:'CustomerBlockModal'}).props('isOpen')).toBe(false);
+    lookup.vm.$emit('after-leave'); await flushPromises();
+    const block = wrapper!.findComponent({name:'CustomerBlockModal'});
+    expect(block.props('isOpen')).toBe(true);
+    expect(block.props('customerId')).toBe('inviter-9');
+    expect(block.props('prefillUsername')).toBe('different_inviter');
+  });
+  it('rejects a changed inviter before opening an action', async () => {
+    const lookup = await openLookup();
+    const changed = result(); changed.referral.inviter_customer_id = 'replacement';
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify(changed), {status:200}));
+    lookup.vm.$emit('action', 'block', result()); await flushPromises();
+    lookup.vm.$emit('after-leave'); await flushPromises();
+    expect(wrapper!.findComponent({name:'CustomerBlockModal'}).props('isOpen')).toBe(false);
+    expect(wrapper!.text()).toContain('Пригласивший изменился');
+  });
+  it('cancels a queued action on explicit close', async () => {
+    const lookup = await openLookup();
+    lookup.vm.$emit('action', 'block', result()); lookup.vm.$emit('close');
+    await flushPromises(); lookup.vm.$emit('after-leave'); await flushPromises();
+    expect(wrapper!.findComponent({name:'CustomerBlockModal'}).props('isOpen')).toBe(false);
+  });
+  it('reuses the message dialog with the inviter rather than the searched customer', async () => {
+    const lookup = await openLookup();
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify(result()), {status:200}));
+    lookup.vm.$emit('action', 'message', result()); await flushPromises();
+    lookup.vm.$emit('after-leave'); await flushPromises();
+    const message = wrapper!.findAllComponents(ModalStub).find(m=>m.props('title')==='Написать пригласившему')!;
+    expect(message.props('isOpen')).toBe(true);
+    await message.get('textarea').setValue('Тест');
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ok:true}), {status:200}));
+    await message.get('form').trigger('submit'); await flushPromises();
+    const call = vi.mocked(fetch).mock.calls.find(([url])=>url==='/api/admin/crm/bot/send-custom')!;
+    expect(JSON.parse(String(call[1]?.body))).toEqual({customer_id:'inviter-9',text:'Тест'});
+  });
 });
 
 describe('CrmOrders: redesign preserves order-card behavior', () => {
@@ -265,25 +336,32 @@ describe('CrmOrders: redesign preserves order-card behavior', () => {
     expect(wrapper.findComponent({ name: 'CustomerNoteModal' }).props('isOpen')).toBe(true);
   });
 
-  it.each([true, false, undefined])('shows the card-access indicator only when card payment is allowed (%s)', async enabled => {
-    const { wrapper } = await setup(makeOrder({ customer_card_payment_enabled: enabled, payment_type: 'cash' }));
-    const badge = wrapper.find('[data-test="order-card-card-access"]');
+  it.each([
+    ['new', true], ['new', false], ['new', undefined],
+    ['in_progress', true], ['in_progress', false], ['in_progress', undefined],
+  ] as const)('shows the compact card-access icon only when allowed (%s, %s)', async (status, enabled) => {
+    const { wrapper } = await setup(makeOrder({ status, customer_card_payment_enabled: enabled, payment_type: 'cash' }));
+    const identity = wrapper.get('.order-card-client-identity');
+    const badge = identity.find('[data-test="order-card-card-access"]');
     expect(badge.exists()).toBe(enabled === true);
+    expect(identity.get('[data-test="order-customer-name"]').text()).toBe('Дима');
     if (enabled) {
       expect(badge.element.tagName).toBe('SPAN');
-      expect(badge.text()).toBe('Карта разрешена');
+      expect(badge.text()).toBe('');
+      expect(badge.attributes('role')).toBe('img');
+      expect(badge.attributes('aria-label')).toBe('Клиенту разрешена оплата картой');
       expect(badge.attributes('title')).toBe('Клиенту разрешена оплата картой');
-      expect(badge.get('svg').attributes('aria-hidden')).toBe('true');
+      expect(badge.get('.order-card-card-access-icon').attributes('aria-hidden')).toBe('true');
       expect(badge.find('button').exists()).toBe(false);
     }
+    expect(wrapper.find('.order-card-client-flags').exists()).toBe(false);
     expect(wrapper.get('.order-card-payment').text()).toMatch(/налич/i);
   });
 
-  it('keeps blocking visible alongside the card-access indicator', async () => {
+  it('keeps blocking visible separately from the card-access icon', async () => {
     const { wrapper } = await setup(makeOrder({ customer_card_payment_enabled: true, is_blocked: true }));
-    const flags = wrapper.get('.order-card-client-flags');
-    expect(flags.text()).toContain('Карта разрешена');
-    expect(flags.text()).toContain('Заблокирован');
+    expect(wrapper.get('.order-card-client-identity [data-test="order-card-card-access"]').exists()).toBe(true);
+    expect(wrapper.get('.order-card-client-flags').text()).toContain('Заблокирован');
     expect(wrapper.find('.order-card-first').exists()).toBe(false);
   });
 

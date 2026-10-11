@@ -1,5 +1,5 @@
 <template>
-  <div class="min-h-screen bg-gray-50 md:h-screen md:overflow-hidden">
+  <div class="min-h-screen bg-gray-50 md:h-[100dvh] md:min-h-0 md:overflow-hidden">
     
     <!-- Login/Lock screen - Cashier POS interface -->
     <CashierLockScreen v-if="!adminStore.isAuthenticated || isLocked" @unlocked="handleUnlock" />

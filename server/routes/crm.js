@@ -1,5 +1,6 @@
 import express from 'express';
 import { db } from '../db.js';
+import { findCrmInviter } from '../utils/crm-inviter-lookup.js';
 import { authMiddleware } from '../auth.js';
 import {
   isDashboardLockActive,
@@ -1741,6 +1742,19 @@ crmRouter.get('/api/admin/crm/customers/search', authMiddleware, (req, res) => {
   } catch (error) {
     console.error('[crm] Search customers error:', error);
     res.status(500).json({ error: 'failed', message: error.message });
+  }
+});
+
+// Exact, read-only referral lookup; must be registered before /customers/:id.
+crmRouter.get('/api/admin/crm/customers/inviter', authMiddleware, (req, res) => {
+  try {
+    res.json(findCrmInviter(db, req.query.username));
+  } catch (error) {
+    if (error.status === 400 || error.status === 409) {
+      return res.status(error.status).json({ error: error.code, message: error.message });
+    }
+    console.error('[crm] Inviter lookup error:', error);
+    res.status(500).json({ error: 'failed', message: 'Не удалось найти пригласившего. Повторите попытку.' });
   }
 });
 

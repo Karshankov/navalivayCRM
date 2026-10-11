@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { Telegraf, Markup } from 'telegraf';
 import { HttpsProxyAgent } from 'https-proxy-agent';
 import { db } from './db.js';
+import { recordOrderAudit } from './utils/order-audit.js';
 import {
   registerBusinessConnection,
   removeBusinessConnection,
@@ -125,7 +126,7 @@ function isDuplicateOrder(customerId, productId) {
   return Boolean(recent);
 }
 
-export function createOrderFromBot({ customerId, product, quantity, telegramMessageId, originalMessage }) {
+export function createOrderFromBot({ customerId, product, quantity, telegramMessageId, originalMessage, telegramUser = null }) {
   const orderId = generateId('order');
   const orderNumber = getNextNumber('orders', 'order_number');
   // Витрина уже назвала покупателю цену со скидкой, и именно её он написал в
@@ -215,7 +216,18 @@ export function createOrderFromBot({ customerId, product, quantity, telegramMess
       `).run(finalAmount, customerId);
     }
 
-    return assignLowestAvailablePickupCell(orderId);
+    const pickupCell = assignLowestAvailablePickupCell(orderId);
+    const verifiedCustomer = telegramUser?.id && currentCustomer?.telegram_id
+      && String(telegramUser.id) === String(currentCustomer.telegram_id);
+    recordOrderAudit(db, {
+      orderId, before: null, source: 'telegram_bot.create',
+      actor: verifiedCustomer ? {
+        type: 'customer', id: String(telegramUser.id),
+        name: [telegramUser.first_name, telegramUser.last_name].filter(Boolean).join(' ').trim()
+          || String(telegramUser.username || telegramUser.id),
+      } : { type: 'system', id: 'telegram-bot', name: 'Telegram-бот' },
+    });
+    return pickupCell;
   });
 
   const pickupCell = tx.immediate();
@@ -361,6 +373,7 @@ if (!BOT_TOKEN) {
         product,
         quantity: 1,
         telegramMessageId: ctx.message.message_id,
+        telegramUser: ctx.from,
         originalMessage: text
       });
 

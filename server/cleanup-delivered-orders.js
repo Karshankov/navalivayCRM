@@ -1,4 +1,5 @@
 import { db } from './db.js';
+import { snapshotOrder, recordOrderAudit } from './utils/order-audit.js';
 
 /**
  * Helper to calculate the start of the current day in Minsk timezone (UTC+3).
@@ -94,7 +95,13 @@ export function archiveOldDeliveredOrders() {
     const tx = db.transaction(() => {
       for (const order of ordersToArchive) {
         console.log(`[archive] Archiving order #${order.order_number} (completed at: ${order.completed_at})`);
+        const before = snapshotOrder(db, order.id);
         db.prepare('UPDATE orders SET archived = 1 WHERE id = ?').run(order.id);
+        recordOrderAudit(db, {
+          orderId: order.id, before,
+          actor: { type: 'system', id: 'order-archiver', name: 'Автоматическая архивация' },
+          source: 'system.archive',
+        });
       }
     });
 

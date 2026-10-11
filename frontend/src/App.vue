@@ -88,7 +88,7 @@ onMounted(() => {
 <template>
   <div
     class="app-shell"
-    :class="{ 'app-shell--with-tab-bar': showCustomerContent && showTabBar }"
+    :class="{ 'app-shell--with-tab-bar': showCustomerContent && showTabBar, 'app-shell--admin': isAdminRoute }"
     style="background: var(--app-page-background, #ffffff)"
   >
     <div v-if="showCustomerContent" class="app-shell__protected">
@@ -140,6 +140,25 @@ body,
 .app-shell--with-tab-bar {
   padding-bottom: var(--app-bottom-tab-bar-height, 130px);
   box-sizing: border-box;
+}
+
+/* Desktop admin content owns its scroll; customer and mobile pages stay in document flow. */
+@media (min-width: 768px) {
+  .app-shell--admin {
+    /* Keep absolutely positioned accessibility labels inside the clipped admin shell. */
+    position: relative;
+    height: 100vh;
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .app-shell--admin > .app-shell__protected,
+  .app-shell--admin > .app-shell__protected > .app-shell__content {
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
 }
 
 /* Плавные переходы между страницами - fade */
