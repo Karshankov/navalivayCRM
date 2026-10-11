@@ -2357,12 +2357,21 @@ crmOperationsRouter.post(
   async (req, res) => {
     try {
       const { id } = req.params;
-      const { payment_type, payment_account_id, amount, payment_notes } =
-        req.body;
+      const {
+        payment_type,
+        payment_account_id: requestedPaymentAccountId,
+        amount,
+        payment_notes,
+      } = req.body;
 
       if (!payment_type || !["cash", "card"].includes(payment_type)) {
         return res.status(400).json({ error: "invalid_payment_type" });
       }
+
+      // Card-only callers historically omitted the account. Keep that API
+      // compatible while posting new payments to the existing default cash account.
+      const payment_account_id = requestedPaymentAccountId
+        || (payment_type === "card" ? "acc_default" : null);
 
       if (payment_type === "cash" && !payment_account_id) {
         return res.status(400).json({ error: "payment_account_required" });
@@ -2393,7 +2402,7 @@ crmOperationsRouter.post(
           .prepare("SELECT * FROM cash_accounts WHERE id = ? AND active = 1")
           .get(payment_account_id)
         : null;
-      if (payment_type === "cash" && !account) {
+      if (!account) {
         return res.status(404).json({ error: "account_not_found" });
       }
 
@@ -2467,6 +2476,21 @@ crmOperationsRouter.post(
           // A seller may convert a card reservation to cash before issue.
           reverseCardOrder(id, new Date());
           cashAmount = parsedAmount;
+        }
+
+        // The existing cash ledger now records the whole payment, not only
+        // physical cash. Card limits still track only the card portion above.
+        // Historical transactions are deliberately left unchanged: reversing
+        // payment continues to undo exactly the rows that were actually posted.
+        cashAmount = roundMoney(payment_type === "card" ? totalAmount : parsedAmount);
+        if (!Number.isFinite(cashAmount) || cashAmount <= 0) {
+          throw new StaffServiceError("invalid_amount", 400);
+        }
+        const freshAccount = db.prepare(
+          "SELECT id FROM cash_accounts WHERE id = ? AND active = 1",
+        ).get(payment_account_id);
+        if (!freshAccount) {
+          throw new StaffServiceError("account_not_found", 404);
         }
 
         const completedAt = new Date().toISOString();

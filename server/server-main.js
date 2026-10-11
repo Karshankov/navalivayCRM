@@ -13,6 +13,7 @@ import { uploadRouter } from './upload.js';
 import { crmRouter } from './routes/crm.js';
 import { crmOperationsRouter } from './routes/crm-operations.js';
 import { crmFinanceRouter } from './routes/crm-finance.js';
+import { financialDayCloseRouter } from './routes/financial-day-close.js';
 import { staffRouter } from './routes/staff.js';
 import { posRouter } from './routes/pos.js';
 import { promoRouter } from './routes/promo.js';
@@ -151,6 +152,7 @@ app.use(uploadRouter);
 app.use(crmRouter);
 app.use(crmOperationsRouter);
 app.use(crmFinanceRouter);
+app.use(financialDayCloseRouter);
 app.use(staffRouter);
 // POS API
 app.use(posRouter);

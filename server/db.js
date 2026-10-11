@@ -77,6 +77,8 @@ import { migrateOrderAdditionalCost } from './migrations/add_order_additional_co
 import { migrateOrderAudit } from './migrations/add_order_audit.js';
 import { migrateStaffManagement } from './migrations/add_staff_management.js';
 import { migrateInternalNotifications } from './migrations/add_internal_notifications.js';
+import { migrateFinancialDayClosures } from './migrations/add_financial_day_closures.js';
+import { assertFinancialCloseDatabaseReady } from './utils/financial-close-activation.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -92,6 +94,8 @@ if (!fs.existsSync(dataDir)) {
 export const db = new Database(DB_FILE);
 
 export function initDb() {
+  // Opt-in preflight must precede schema changes and writable PRAGMAs.
+  const financialCloseEnabled = assertFinancialCloseDatabaseReady(db);
   db.pragma('foreign_keys = ON');
 
   // Improve read concurrency/latency under write load by using WAL.
@@ -253,6 +257,7 @@ export function initDb() {
   migrateRoundMoneyColumns();
   migrateOrderAdditionalCost();
   migrateOrderAudit(db);
+  if (financialCloseEnabled) migrateFinancialDayClosures(db);
 
   seedIfEmpty();
   seedDefaultLoyaltyData();

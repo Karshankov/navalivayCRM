@@ -1095,6 +1095,67 @@ export function getCrmRequestHeaders(): Record<string, string> {
   return staffHeaders();
 }
 
+/** Financial closure uses both staff/shift access and the current dashboard unlock. */
+export async function requestFinancialDayClose<T>(
+  path: string,
+  options: RequestInit = {},
+  dashboardAccessToken = "",
+): Promise<T> {
+  if (!/^\/(?:context|preview|complete|history(?:\/[A-Za-z0-9_-]+(?:\/report)?)?)(?:\?[^#]*)?$/.test(path)) {
+    throw new TypeError("Invalid financial-close endpoint");
+  }
+  try {
+    const payload = await staffFetchAPI<T>(
+      `${API_BASE}/financial-close${path}`,
+      {
+        ...options,
+        headers: {
+          ...Object.fromEntries(new Headers(options.headers).entries()),
+          ...(dashboardAccessToken
+            ? { "X-Dashboard-Token": dashboardAccessToken }
+            : {}),
+        },
+      },
+      { includeStaff: true, includeShift: true },
+    );
+    // The shared helper tolerates unreadable JSON. Financial writes must not
+    // interpret an empty or malformed success response as a saved closure.
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)
+      || Object.keys(payload).length === 0) {
+      throw new StaffApiError("Не удалось подтвердить ответ сервера", {
+        code: "financial_close_invalid_response",
+        outcomeUnknown: true,
+      });
+    }
+    return payload;
+  } catch (error) {
+    if (error instanceof StaffApiError) {
+      if (error.status && (error.status >= 500 || [408, 425, 429].includes(error.status))) {
+        error.outcomeUnknown = true;
+      }
+      const messages: Record<string, string> = {
+        financial_close_disabled: "Закрытие финансового дня пока недоступно. Требуется безопасное включение модуля администратором.",
+        dashboard_locked: "Разблокируйте финансовые показатели в разделе «Обзор».",
+        closing_account_selection_required: "Для закрытия нужны однозначно выбранные счета «Касса» и «Выручка».",
+        closing_account_not_found: "Счёт недоступен. Обновите данные.",
+        closing_accounts_must_differ: "Касса и выручка должны быть разными счетами.",
+        closing_preview_stale: "Данные изменились. Обновите расчёт и проверьте суммы ещё раз.",
+        closing_day_changed: "Финансовый день изменился. Обновите данные.",
+        financial_day_already_closed: "Этот финансовый день уже закрыт. Откройте сохранённый отчёт.",
+        negative_owner_cash: "Сумма карты превышает прибыль дня. Проверьте данные терминала и прибыль.",
+        insufficient_counted_cash: "Наличности недостаточно для передачи владельцу и выбранного остатка в кассе.",
+        closing_actor_changed: "Сотрудник изменился. Проверьте доступ перед повтором.",
+        closing_idempotency_conflict: "Этот запрос уже использован с другими данными. Не создавайте новое закрытие; проверьте историю.",
+        closing_not_found: "Сохранённый отчёт не найден.",
+        invalid_money: "Введите неотрицательную сумму с точностью до двух знаков после запятой.",
+        invalid_note_count: "Количество купюр должно быть неотрицательным целым числом.",
+      };
+      if (error.code && messages[error.code]) error.message = messages[error.code];
+    }
+    throw error;
+  }
+}
+
 export function getInMemoryStaffHeaders(): Record<string, string> {
   const headers: Record<string, string> = {};
   if (inMemoryStaffToken) headers["X-Staff-Token"] = inMemoryStaffToken;

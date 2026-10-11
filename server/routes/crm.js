@@ -15,6 +15,7 @@ import {
   toSqliteUtcString,
 } from '../utils/business-time.js';
 import { queryTopSalesGroups } from '../utils/top-sales-groups.js';
+import { queryCrmFinancialStats } from '../utils/crm-financial-stats.js';
 import { getLatestPickupCellAssignment } from '../utils/pickup-cells.js';
 import {
   REVIEW_STATUSES,
@@ -527,38 +528,8 @@ crmRouter.get('/api/admin/crm/dashboard', authMiddleware, requireDashboardAccess
     // Для финансовой статистики используем paid_at (дата оплаты/выдачи)
     const paidAtFilter = `paid_at >= '${toSqliteDate(start)}' AND paid_at < '${toSqliteDate(end)}'`;
 
-    // Выручка, прибыль, количество продаж - по дате ОПЛАТЫ (paid_at)
-    const stats = db.prepare(`
-      SELECT 
-        COALESCE(COUNT(o.id), 0)                              AS total_sales,
-        COALESCE(SUM(COALESCE(o.final_amount, o.total_amount)), 0) AS revenue,
-        COALESCE(SUM(COALESCE(o.profit, 0)), 0)               AS profit,
-        COALESCE(COUNT(DISTINCT o.customer_id), 0)            AS unique_customers
-      FROM orders o
-      WHERE o.status IN ('completed', 'delivered')
-        AND o.paid_at IS NOT NULL
-        AND ${paidAtFilter}
-    `).get();
-
-    // POS продажи - добавляем к общей статистике
-    const posStats = db.prepare(`
-      SELECT 
-        COALESCE(COUNT(*), 0) AS pos_sales,
-        COALESCE(SUM(price), 0) AS pos_revenue,
-        COALESCE(SUM(profit), 0) AS pos_profit
-      FROM pos_sales
-      WHERE status = 'completed'
-        AND datetime(completed_at) >= '${toSqliteDate(start)}' 
-        AND datetime(completed_at) < '${toSqliteDate(end)}'
-    `).get();
-
-    // Объединяем статистику заказов и POS
-    const combinedStats = {
-      total_sales: (stats.total_sales || 0) + (posStats.pos_sales || 0),
-      revenue: (stats.revenue || 0) + (posStats.pos_revenue || 0),
-      profit: (stats.profit || 0) + (posStats.pos_profit || 0),
-      unique_customers: stats.unique_customers || 0
-    };
+    // Общий источник финансовых итогов для «Обзора» и закрытия дня.
+    const combinedStats = queryCrmFinancialStats(db, { start, end });
 
     const { items: topItems, hasMore: topProductsHasMore } = queryTopSalesGroups({
       start,

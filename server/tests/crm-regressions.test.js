@@ -1058,7 +1058,115 @@ async function testOrderAuditRouteAndConflict() {
   console.log('crm-regressions: аудит защищён авторизацией, конфликтом версии и атомарным откатом');
 }
 
+async function testUnifiedCardPaymentLedger() {
+  const cases = [
+    { label: 'reserved card', total: 20, cardMinor: 2000, number: 99101 },
+    { label: 'mixed payment', total: 58, cardMinor: 4500, number: 99102 },
+    { label: 'forced card', total: 20, cardMinor: null, number: 99103 },
+    { label: 'legacy mixed rollback', total: 58, cardMinor: 4500, number: 99104, legacyCash: 13 },
+  ];
+
+  for (const scenario of cases) {
+    const baseline = getCashAccountBalance();
+    const productId = insertProduct({ stock: 5, price: scenario.total, cost: 12 });
+    const orderId = insertOrder({
+      orderNumber: scenario.number, status: 'in_progress', stockDeducted: 1,
+      createdAt: '2026-10-11 07:00:00',
+      items: [{ productId, quantity: 1, price: scenario.total, cost: 12 }],
+    });
+    const customerId = makeId('customer');
+    const telegramId = String(990000000 + scenario.number);
+    db.prepare('INSERT INTO customers (id, telegram_id) VALUES (?, ?)')
+      .run(customerId, telegramId);
+    db.prepare('UPDATE orders SET customer_id = ? WHERE id = ?').run(customerId, orderId);
+
+    if (scenario.cardMinor !== null) {
+      db.prepare(`UPDATE orders SET payment_type = 'card', card_amount_minor = ?, cash_due_minor = ? WHERE id = ?`)
+        .run(scenario.cardMinor, Math.round(scenario.total * 100) - scenario.cardMinor, orderId);
+      db.prepare(`INSERT INTO card_payment_operations
+        (id, operation_type, operation_status, order_id, customer_telegram_id, amount_minor, business_date)
+        VALUES (?, 'order', 'reserved', ?, ?, ?, '2026-10-11')`)
+        .run(makeId('card'), orderId, telegramId, scenario.cardMinor);
+    }
+
+    const operation = () => db.prepare('SELECT * FROM card_payment_operations WHERE order_id = ?').get(orderId);
+    const issue = (extra = {}) => requestJson(`/api/admin/crm/orders/${orderId}/issue`, {
+      method: 'POST', headers: authHeaders(),
+      body: JSON.stringify({ payment_type: 'card', amount: scenario.total, ...extra }),
+    });
+    const removePayment = () => requestJson(`/api/admin/crm/orders/${orderId}/payment`, {
+      method: 'DELETE', headers: authHeaders(),
+    });
+
+    const beforeInvalidOrder = getOrder(orderId);
+    const beforeInvalidOperation = operation();
+    const invalidAccount = await issue({ payment_account_id: makeId('missing_account') });
+    assert.equal(invalidAccount.response.status, 404, scenario.label);
+    assert.equal(invalidAccount.data.error, 'account_not_found');
+    assert.deepEqual(getOrder(orderId), beforeInvalidOrder);
+    assert.deepEqual(operation(), beforeInvalidOperation);
+    assert.equal(getCashAccountBalance(), baseline);
+    assert.equal(getCashTransactionCountForOrder(orderId), 0);
+
+    // Omitted account remains compatible with historical card-only callers.
+    const issued = await issue();
+    assert.equal(issued.response.status, 200, `${scenario.label}: ${JSON.stringify(issued.data)}`);
+    assert.equal(issued.data.order.status, 'delivered');
+    assert.equal(issued.data.order.payment_account_id, 'acc_default');
+    assert.equal(Number(issued.data.order.paid_amount), scenario.total);
+    assert.equal(getCashAccountBalance(), baseline + scenario.total);
+    assert.equal(getCashTransactionCountForOrder(orderId), 1);
+    const transaction = db.prepare('SELECT * FROM cash_transactions WHERE order_id = ?').get(orderId);
+    assert.equal(transaction.type, 'income');
+    assert.equal(transaction.account_id, 'acc_default');
+    assert.equal(Number(transaction.amount), scenario.total);
+    assert.equal(operation().operation_status, 'spent');
+    assert.equal(Number(operation().amount_minor), scenario.cardMinor ?? Math.round(scenario.total * 100));
+
+    const beforeRetryOrder = getOrder(orderId);
+    const beforeRetryOperation = operation();
+    const duplicate = await issue();
+    assert.ok([400, 409].includes(duplicate.response.status), scenario.label);
+    assert.deepEqual(getOrder(orderId), beforeRetryOrder);
+    assert.deepEqual(operation(), beforeRetryOperation);
+    assert.equal(getCashAccountBalance(), baseline + scenario.total);
+    assert.equal(getCashTransactionCountForOrder(orderId), 1);
+
+    if (scenario.legacyCash !== undefined) {
+      // Simulate a historical cash-only posting in this isolated test database.
+      // Cancellation must reverse that row, not recalculate the full payment.
+      db.transaction(() => {
+        db.prepare('UPDATE cash_transactions SET amount = ? WHERE id = ?')
+          .run(scenario.legacyCash, transaction.id);
+        db.prepare('UPDATE cash_accounts SET balance = balance - ? WHERE id = ?')
+          .run(scenario.total - scenario.legacyCash, 'acc_default');
+      })();
+      assert.equal(getCashAccountBalance(), baseline + scenario.legacyCash);
+    }
+
+    const removed = await removePayment();
+    assert.equal(removed.response.status, 200, scenario.label);
+    assert.equal(getCashAccountBalance(), baseline);
+    assert.equal(getCashTransactionCountForOrder(orderId), 0);
+    assert.equal(operation().operation_status, 'reversed');
+    assert.equal(getOrder(orderId).paid_amount, null);
+    assert.equal(getOrder(orderId).status, 'in_progress');
+
+    const beforeRepeatedRemoval = getOrder(orderId);
+    const reversedOperation = operation();
+    const repeatedRemoval = await removePayment();
+    assert.equal(repeatedRemoval.response.status, 400);
+    assert.equal(repeatedRemoval.data.error, 'payment_not_found');
+    assert.deepEqual(getOrder(orderId), beforeRepeatedRemoval);
+    assert.deepEqual(operation(), reversedOperation);
+    assert.equal(getCashAccountBalance(), baseline);
+    assert.equal(getCashTransactionCountForOrder(orderId), 0);
+  }
+  console.log('crm-regressions: общая касса учитывает полную оплату, повторные запросы и legacy-отмена не задваивают движения');
+}
+
 async function main() {
+  await testUnifiedCardPaymentLedger();
   await testOrderAuditRouteAndConflict();
   await testOrderCardAdditionalCost();
   await testOrderAdditionalCost();

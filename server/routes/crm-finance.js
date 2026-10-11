@@ -827,6 +827,13 @@ crmFinanceRouter.patch('/api/admin/crm/cash-transactions/:id', authMiddleware, (
       return res.status(404).json({ error: 'not_found' });
     }
 
+    if (existing.financial_close_id) {
+      return res.status(409).json({
+        error: 'linked_financial_close',
+        message: 'Проводку закрытия финансового дня нельзя изменять вручную',
+      });
+    }
+
     if (existing.order_id) {
       return res.status(409).json({ error: 'linked_order' });
     }
@@ -905,6 +912,13 @@ crmFinanceRouter.delete('/api/admin/crm/cash-transactions/:id', authMiddleware, 
     const transaction = db.prepare('SELECT * FROM cash_transactions WHERE id = ?').get(id);
     if (!transaction) {
       return res.status(404).json({ error: 'not_found' });
+    }
+
+    if (transaction.financial_close_id) {
+      return res.status(409).json({
+        error: 'linked_financial_close',
+        message: 'Проводку закрытия финансового дня нельзя удалять вручную',
+      });
     }
 
     if (transaction.order_id) {

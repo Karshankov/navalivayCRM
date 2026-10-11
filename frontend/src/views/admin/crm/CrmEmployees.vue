@@ -1613,6 +1613,7 @@
                     <option value="documents">Поставки и перемещения</option>
                     <option value="tasks">Задачи</option>
                     <option value="salary">Зарплата</option>
+                    <option value="financial_close">Закрытие финансового дня</option>
                   </select>
                 </label>
                 <div class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
@@ -3895,6 +3896,7 @@ function notificationGroupLabel(group: string) {
     documents: "Поставки и перемещения",
     tasks: "Задачи",
     salary: "Зарплата",
+    financial_close: "Закрытие финансового дня",
   };
   return labels[group] || "Служебные сообщения";
 }

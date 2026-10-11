@@ -50,6 +50,8 @@ server/data/*.db
 server/data/*.db-wal
 server/data/*.db-shm
 server/data/*.db.bak*
+# Financial-close backups contain customer and financial data, including WAL/SHM.
+server/data/financial-close-backups/
 *.db.old
 *.db.backup
 # Локальные снимки прод-БД для восстановления (содержат PII клиентов).
