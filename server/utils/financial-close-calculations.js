@@ -74,6 +74,7 @@ export function calculateFinancialClosure({
   revenueMinor,
   profitMinor,
   retainedCashMinor,
+  coinsMinor = 0,
   revenueBalanceMinor,
 }) {
   integer(cashBalanceMinor, 'cash_balance_minor', { signed: true });
@@ -84,15 +85,32 @@ export function calculateFinancialClosure({
   integer(terminalCashMinor, 'terminal_cash_minor');
   integer(terminalCardMinor, 'terminal_card_minor');
   integer(retainedCashMinor, 'retained_cash_minor');
+  integer(coinsMinor, 'coins_minor');
+  if (coinsMinor > countedCashMinor) {
+    throw new FinancialCloseError('invalid_minor_amount', 400, { field: 'coins_minor' });
+  }
+  // retainedCashMinor is the TOTAL reserve: all coins plus selected banknotes.
+  // Neither owner cash nor the revenue transfer may consume reserved coins.
+  if (retainedCashMinor < coinsMinor) {
+    throw new FinancialCloseError('retained_cash_below_coins', 409, { retainedCashMinor, coinsMinor });
+  }
+  const retainedNotesMinor = checked(retainedCashMinor - coinsMinor, 'retained_notes_minor');
 
   const terminalTotalMinor = checked(terminalCashMinor + terminalCardMinor, 'terminal_total_minor');
   // Terminal cash is already part of counted notes: never add it again.
   const actualTotalMinor = checked(countedCashMinor + terminalCardMinor, 'actual_total_minor');
   const discrepancyMinor = checked(actualTotalMinor - cashBalanceMinor, 'discrepancy_minor');
-  const ownerCashMinor = checked(profitMinor - terminalCardMinor, 'owner_cash_minor');
-  if (ownerCashMinor < 0) {
+  const ownerCashBeforeRoundingMinor = checked(profitMinor - terminalCardMinor, 'owner_cash_before_rounding_minor');
+  // Check the original amount before rounding: a negative payout must never become zero.
+  if (ownerCashBeforeRoundingMinor < 0) {
     throw new FinancialCloseError('negative_owner_cash', 409, { profitMinor, terminalCardMinor });
   }
+  // Round physical cash to the nearest 5 BYN (500 kopecks), ties upward.
+  // BigInt keeps the half-step addition exact even at the safe-integer boundary.
+  const ownerCashMinor = integer(Number((BigInt(ownerCashBeforeRoundingMinor) + 250n) / 500n * 500n), 'owner_cash_minor');
+  const ownerTotalMinor = checked(ownerCashMinor + terminalCardMinor, 'owner_total_minor');
+  // Positive: taken from the revenue transfer. Negative: left in revenue.
+  const ownerRoundingMinor = checked(ownerCashMinor - ownerCashBeforeRoundingMinor, 'owner_rounding_minor');
   const transferMinor = checked(countedCashMinor - ownerCashMinor - retainedCashMinor, 'transfer_minor');
   if (transferMinor < 0) {
     throw new FinancialCloseError('insufficient_counted_cash', 409, {
@@ -100,8 +118,9 @@ export function calculateFinancialClosure({
     });
   }
   const correctedCashMinor = checked(cashBalanceMinor + discrepancyMinor, 'corrected_cash_minor');
-  // Profit is ONE owner settlement, including the card portion already received.
-  const finalCashMinor = checked(correctedCashMinor - profitMinor - transferMinor, 'final_cash_minor');
+  // ONE owner settlement includes rounded cash and the card portion already received.
+  // Overview profit remains unchanged; rounding changes only the distribution.
+  const finalCashMinor = checked(correctedCashMinor - ownerTotalMinor - transferMinor, 'final_cash_minor');
   if (finalCashMinor !== retainedCashMinor || finalCashMinor < 0) {
     throw new FinancialCloseError('closing_balance_mismatch', 409);
   }
@@ -119,13 +138,17 @@ export function calculateFinancialClosure({
     discrepancy_type: discrepancyMinor < 0 ? 'shortage' : discrepancyMinor > 0 ? 'surplus' : 'none',
     correction_minor: discrepancyMinor,
     corrected_cash_minor: correctedCashMinor,
+    owner_cash_before_rounding_minor: ownerCashBeforeRoundingMinor,
+    owner_rounding_minor: ownerRoundingMinor,
     owner_cash_minor: ownerCashMinor,
     owner_card_minor: terminalCardMinor,
-    owner_total_minor: profitMinor,
+    owner_total_minor: ownerTotalMinor,
     transfer_minor: transferMinor,
     revenue_balance_before_minor: revenueBalanceMinor,
     revenue_balance_after_minor: finalRevenueBalanceMinor,
     retained_cash_minor: retainedCashMinor,
+    retained_notes_minor: retainedNotesMinor,
+    coins_minor: coinsMinor,
     cash_balance_after_minor: finalCashMinor,
   };
 }

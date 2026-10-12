@@ -1,4 +1,6 @@
 import { sendViaUserbot } from './userbot-client.js';
+import { isFinancialCloseTestResetEnabled } from './financial-close-activation.js';
+import { reconcileDeliveredFinancialShifts } from './financial-close-shift.js';
 import {
   buildInternalNotificationText,
   stableJson,
@@ -244,9 +246,10 @@ export async function deliverInternalNotification(database, row, {
   }
 
   if (result?.ok === true) {
-    return finishSent(database, claimed, result, now)
-      ? { outcome: 'sent', telegram_message_id: result.telegram_message_id ?? null }
-      : { outcome: 'skipped', reason: 'claim_lost' };
+    if (!finishSent(database, claimed, result, now)) return { outcome: 'skipped', reason: 'claim_lost' };
+    // Persist confirmed delivery first. A failed local shift update must never resend Telegram.
+    reconcileDeliveredFinancialShifts(database, { now });
+    return { outcome: 'sent', telegram_message_id: result.telegram_message_id ?? null };
   }
 
   if (result?.outcome === 'ambiguous' || !['rejected', 'unreachable'].includes(result?.outcome)) {
@@ -277,6 +280,8 @@ export async function processInternalNotifications(database, {
   staleAfterMs = INTERNAL_NOTIFICATION_STALE_LOCK_MS,
 } = {}) {
   const paused = pauseStaleInternalNotifications(database, { now, staleAfterMs });
+  // Retry only the local follow-up, including when no notifications remain due.
+  reconcileDeliveredFinancialShifts(database, { now });
   const due = listDueInternalNotifications(database, { now, limit });
   const summary = {
     processed: 0,
@@ -310,6 +315,8 @@ export function startInternalNotificationWorker(database, {
   sender = sendViaUserbot,
 } = {}) {
   requireDatabase(database);
+  // Local reset testing must not dispatch reports that could no longer be undone.
+  if (isFinancialCloseTestResetEnabled()) return null;
   if (workerTimer) return workerTimer;
 
   const run = () => {

@@ -77,10 +77,15 @@ There are two item types:
 
 ## Daily Fact Rules
 
-- Daily fact is entered manually once per date.
-- The source is the end-of-day Z-report.
-- Fact amount is one total number for the whole store for that date.
-- If a fact for the same date already exists, saving again updates that date instead of creating a duplicate.
+- Daily fact is one total number for the whole store for each date, sourced from the end-of-day Z-report.
+- Manual entry remains available. Saving manually for an existing date updates that date instead of creating a duplicate.
+- Successful financial-day closing automatically inserts a missing daily fact: step 1 terminal cash + terminal card, not counted cash, CRM revenue, profit, or a ledger transfer.
+- The target date is the closing's Minsk business date; its month is derived from that date, not the browser's date or the selected finance tab.
+- Any existing fact, including zero, is preserved unchanged. The terminal total is never added to an existing amount.
+- The target month must already exist. If absent, preview and final confirmation reject with a request to create the month manually; no financial movements, closure, fact, or notifications are committed.
+- Automatic insertion, financial settlement, saved report and notification queue are one immediate transaction. Replaying a successful closing does not insert or restore a fact again.
+- Local test reset removes only the unchanged fact inserted by that closure. A pre-existing fact is never touched. Changed, removed, or replaced automatic facts block reset rather than losing subsequent manual work.
+- Legacy saved closings are not backfilled automatically.
 - A daily fact can be deleted.
 - Past days can be edited.
 - Future dates are not allowed.

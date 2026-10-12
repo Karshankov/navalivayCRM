@@ -1101,7 +1101,7 @@ export async function requestFinancialDayClose<T>(
   options: RequestInit = {},
   dashboardAccessToken = "",
 ): Promise<T> {
-  if (!/^\/(?:context|preview|complete|history(?:\/[A-Za-z0-9_-]+(?:\/report)?)?)(?:\?[^#]*)?$/.test(path)) {
+  if (!/^\/(?:context|preview|complete|history(?:\/[A-Za-z0-9_-]+(?:\/(?:report|test-reset))?)?)(?:\?[^#]*)?$/.test(path)) {
     throw new TypeError("Invalid financial-close endpoint");
   }
   try {
@@ -1143,10 +1143,23 @@ export async function requestFinancialDayClose<T>(
         closing_day_changed: "Финансовый день изменился. Обновите данные.",
         financial_day_already_closed: "Этот финансовый день уже закрыт. Откройте сохранённый отчёт.",
         negative_owner_cash: "Сумма карты превышает прибыль дня. Проверьте данные терминала и прибыль.",
-        insufficient_counted_cash: "Наличности недостаточно для передачи владельцу и выбранного остатка в кассе.",
+        insufficient_counted_cash: "Купюр недостаточно для передачи владельцу и выбранного остатка. Монеты и мелкие номиналы полностью остаются в кассе.",
+        retained_cash_below_coins: "Все монеты и мелкие номиналы должны остаться в кассе. Обновите расчёт остатка.",
         closing_actor_changed: "Сотрудник изменился. Проверьте доступ перед повтором.",
         closing_idempotency_conflict: "Этот запрос уже использован с другими данными. Не создавайте новое закрытие; проверьте историю.",
         closing_not_found: "Сохранённый отчёт не найден.",
+        closing_cash_pacing_month_required: "Сначала создайте месяц закрываемого дня в «Финансы → План пробития», затем повторите расчёт. Закрытие и движения денег не сохранены.",
+        closing_test_reset_cash_pacing_changed: "Автоматический факт в плане пробития изменён или удалён. Сброс не выполнен, чтобы сохранить последующие ручные изменения.",
+        financial_close_test_reset_disabled: "Тестовый сброс доступен только руководителю в изолированной локальной CRM.",
+        closing_test_reset_manager_required: "Для тестового сброса нужен доступ руководителя.",
+        closing_test_reset_confirmation_required: "Подтвердите сброс именно этого закрытия.",
+        closing_test_reset_not_latest: "Есть более позднее закрытие. Сначала можно сбросить только последнее.",
+        closing_test_reset_accounts_changed: "После закрытия изменились счета или их балансы. Сброс не выполнен, чтобы сохранить новые операции.",
+        closing_test_reset_later_movements: "После закрытия изменились проводки этих счетов. Сброс не выполнен, новые операции сохранены.",
+        closing_test_reset_movements_changed: "Проводки закрытия изменились. Автоматический сброс небезопасен.",
+        closing_test_reset_snapshot_invalid: "Сохранённые данные закрытия не прошли проверку. Сброс не выполнен.",
+        closing_test_reset_delivery_unsafe: "Отчёт уже отправлен или результат доставки неизвестен. Безопасный сброс невозможен.",
+        closing_request_was_reset: "Это закрытие отменено тестовым сбросом. Обновите данные и создайте новый расчёт.",
         invalid_money: "Введите неотрицательную сумму с точностью до двух знаков после запятой.",
         invalid_note_count: "Количество купюр должно быть неотрицательным целым числом.",
       };

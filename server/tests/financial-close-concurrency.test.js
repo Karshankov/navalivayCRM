@@ -90,6 +90,11 @@ for (const mode of ['different_keys', 'identical_retry', 'conflicting_payload'])
     database.pragma('foreign_keys = ON');
     database.pragma('journal_mode = WAL');
     database.exec(`
+      CREATE TABLE cash_pacing_months (id TEXT PRIMARY KEY, month_key TEXT NOT NULL UNIQUE);
+      CREATE TABLE cash_pacing_daily_facts (id TEXT PRIMARY KEY, month_id TEXT NOT NULL REFERENCES cash_pacing_months(id) ON DELETE CASCADE,
+        fact_date TEXT NOT NULL, actual_amount REAL NOT NULL, note TEXT,
+        created_at TEXT NOT NULL DEFAULT (DATETIME('now')), updated_at TEXT NOT NULL DEFAULT (DATETIME('now')), UNIQUE(month_id, fact_date));
+      INSERT INTO cash_pacing_months VALUES ('pacing_october', '2026-10');
       CREATE TABLE employees (id TEXT PRIMARY KEY);
       CREATE TABLE cash_accounts (id TEXT PRIMARY KEY, name TEXT NOT NULL, balance REAL NOT NULL, active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL DEFAULT (DATETIME('now')));
       CREATE TABLE orders (id TEXT PRIMARY KEY, customer_id TEXT, status TEXT, final_amount REAL, total_amount REAL, profit REAL, paid_at TEXT);
@@ -141,6 +146,11 @@ for (const mode of ['different_keys', 'identical_retry', 'conflicting_payload'])
     const closures = database.prepare('SELECT * FROM financial_day_closures').all();
     assert.equal(closures.length, 1);
     const saved = JSON.parse(closures[0].snapshot_json);
+    const pacingFacts = database.prepare('SELECT * FROM cash_pacing_daily_facts').all();
+    assert.equal(pacingFacts.length, 1);
+    assert.equal(pacingFacts[0].fact_date, '2026-10-11');
+    assert.equal(pacingFacts[0].actual_amount, 1000);
+    assert.equal(saved.cash_pacing_fact.fact_id, pacingFacts[0].id);
     assert.equal(closures[0].id, successful[0].id);
     const movements = database.prepare('SELECT * FROM cash_transactions WHERE financial_close_id IS NOT NULL').all();
     assert.equal(movements.length, 3);

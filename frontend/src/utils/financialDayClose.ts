@@ -2,6 +2,11 @@ export const CLOSE_DENOMINATIONS = [200, 100, 50, 20, 10, 5] as const;
 export const PENDING_CLOSE_STORAGE_KEY = 'crm.financial-close.pending.v1';
 
 export interface FinancialCloseSnapshot {
+  cash_pacing_fact?: {
+    status: 'inserted' | 'preserved';
+    fact_date: string;
+    amount_minor: number;
+  };
   cash_balance_before_minor: number;
   counted_cash_minor: number;
   terminal_cash_minor: number;
@@ -14,6 +19,8 @@ export interface FinancialCloseSnapshot {
   discrepancy_type: 'shortage' | 'surplus' | 'none';
   correction_minor: number;
   corrected_cash_minor: number;
+  owner_cash_before_rounding_minor?: number;
+  owner_rounding_minor?: number;
   owner_cash_minor: number;
   owner_card_minor: number;
   owner_total_minor: number;
@@ -21,6 +28,7 @@ export interface FinancialCloseSnapshot {
   revenue_balance_before_minor: number;
   revenue_balance_after_minor: number;
   retained_cash_minor: number;
+  retained_notes_minor?: number;
   cash_balance_after_minor: number;
   coins_minor?: number;
   cash_account_name?: string;
@@ -42,6 +50,12 @@ export interface SavedFinancialClose {
 }
 
 export interface FinancialCloseContext {
+  cash_pacing?: {
+    month_key: string;
+    month_id: string | null;
+    existing_amount_minor: number | null;
+    revision: string;
+  };
   business_date: string;
   time_zone: string;
   cash_account_id: string;
@@ -54,6 +68,7 @@ export interface FinancialCloseContext {
   profit_minor: number;
   revision: string;
   notification_ready: boolean;
+  test_reset_enabled?: boolean;
   closure: SavedFinancialClose | null;
 }
 
@@ -125,9 +140,42 @@ const SNAPSHOT_AMOUNTS = [
   'revenue_balance_after_minor', 'retained_cash_minor', 'cash_balance_after_minor',
 ] as const;
 
+function isCashPacingFact(value: unknown): boolean {
+  return value === undefined || (record(value)
+    && ['inserted', 'preserved'].includes(String(value.status))
+    && typeof value.fact_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value.fact_date)
+    && Number.isSafeInteger(value.amount_minor) && Number(value.amount_minor) >= 0);
+}
+
+function isCashPacingContext(value: unknown): boolean {
+  return value === undefined || (record(value)
+    && typeof value.month_key === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(value.month_key)
+    && (value.month_id === null || (typeof value.month_id === 'string' && value.month_id !== ''))
+    && (value.existing_amount_minor === null || (Number.isSafeInteger(value.existing_amount_minor) && Number(value.existing_amount_minor) >= 0))
+    && typeof value.revision === 'string' && value.revision !== '');
+}
+
 export function isFinancialCloseSnapshot(value: unknown): value is FinancialCloseSnapshot {
   return record(value) && SNAPSHOT_AMOUNTS.every(key => Number.isSafeInteger(value[key]))
-    && ['none', 'shortage', 'surplus'].includes(String(value.discrepancy_type));
+    && ['none', 'shortage', 'surplus'].includes(String(value.discrepancy_type))
+    && isCashPacingFact(value.cash_pacing_fact)
+    && (value.retained_notes_minor === undefined
+      || (Number.isSafeInteger(value.retained_notes_minor) && Number(value.retained_notes_minor) >= 0
+        && Number.isSafeInteger(value.coins_minor) && Number(value.coins_minor) >= 0
+        && Number(value.owner_cash_minor) >= 0 && Number(value.transfer_minor) >= 0
+        && Number(value.retained_cash_minor) >= 0 && Number(value.counted_cash_minor) >= 0
+        && BigInt(Number(value.retained_notes_minor)) + BigInt(Number(value.coins_minor)) === BigInt(Number(value.retained_cash_minor))
+        && value.cash_balance_after_minor === value.retained_cash_minor
+        && BigInt(Number(value.owner_cash_minor)) + BigInt(Number(value.transfer_minor)) + BigInt(Number(value.retained_cash_minor)) === BigInt(Number(value.counted_cash_minor))))
+    && ((value.owner_cash_before_rounding_minor === undefined && value.owner_rounding_minor === undefined)
+      || (Number.isSafeInteger(value.owner_cash_before_rounding_minor)
+        && Number(value.owner_cash_before_rounding_minor) >= 0
+        && Number.isSafeInteger(value.owner_rounding_minor)
+        && Number(value.owner_rounding_minor) >= -249 && Number(value.owner_rounding_minor) <= 250
+        && Number(value.owner_cash_minor) >= 0 && Number(value.owner_cash_minor) % 500 === 0
+        && BigInt(Number(value.owner_cash_before_rounding_minor)) + BigInt(Number(value.owner_rounding_minor)) === BigInt(Number(value.owner_cash_minor))
+        && BigInt(Number(value.owner_cash_before_rounding_minor)) + BigInt(Number(value.owner_card_minor)) === BigInt(Number(value.profit_minor))
+        && BigInt(Number(value.owner_cash_minor)) + BigInt(Number(value.owner_card_minor)) === BigInt(Number(value.owner_total_minor))));
 }
 
 export function isSavedFinancialClose(value: unknown): value is SavedFinancialClose {
@@ -150,6 +198,8 @@ export function isFinancialCloseContext(value: unknown): value is FinancialClose
     && ['cash_balance_minor', 'revenue_balance_minor', 'revenue_minor', 'profit_minor']
       .every(key => Number.isSafeInteger(value[key]))
     && typeof value.notification_ready === 'boolean'
+    && (value.test_reset_enabled === undefined || typeof value.test_reset_enabled === 'boolean')
+    && isCashPacingContext(value.cash_pacing)
     && (value.closure === null || isSavedFinancialClose(value.closure));
 }
 

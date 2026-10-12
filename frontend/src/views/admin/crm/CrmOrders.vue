@@ -9,7 +9,14 @@
         <span class="font-semibold">Автоуведомления отложены:</span>
         нет связи с Telegram. Отправим клиентам, когда канал восстановится.
       </div>
-      <StaffShiftBar ref="staffShiftBarRef" />
+      <StaffShiftBar ref="staffShiftBarRef">
+        <template #financial-close>
+          <button type="button" class="crm-reference-button crm-reference-button--danger" data-test="orders-financial-close" ref="financialCloseButtonRef" @click="openFinancialDayClose">
+            <svg class="h-4 w-4 shrink-0" width="16" height="16" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4M6 3h12v18l-3-2-3 2-3-2-3 2V3z" /></svg>
+            <span>Закрыть финансовый день</span>
+          </button>
+        </template>
+      </StaffShiftBar>
       <div class="crm-orders-heading">
         <h1 class="crm-orders-title">Заказы</h1>
         <div class="crm-orders-search">
@@ -70,10 +77,6 @@
               <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6" /></svg>
             </button>
             <div v-if="moreDropdownOpen" id="crm-orders-actions" class="crm-orders-menu crm-orders-actions-menu" @click.stop>
-              <button type="button" class="inline-flex items-center gap-2" data-test="orders-financial-close" @click="openFinancialDayClose">
-                <svg class="h-4 w-4 shrink-0" width="16" height="16" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4M6 3h12v18l-3-2-3 2-3-2-3 2V3z" /></svg>
-                <span>Закрыть финансовый день</span>
-              </button>
               <button type="button" class="inline-flex items-center gap-2" data-test="orders-find-inviter" @click="openFindInviter">
                 <svg class="h-4 w-4 shrink-0" width="16" height="16" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3" /><path stroke-linecap="round" d="M3 20v-2a6 6 0 0 1 10-4M17 4v6M14 7h6" /><circle cx="17" cy="17" r="3" /><path stroke-linecap="round" d="m19 19 3 3" /></svg>
                 <span>Найти пригласившего</span>
@@ -1334,6 +1337,8 @@
     <FinancialDayCloseModal
       :is-open="showFinancialDayCloseModal"
       @close="showFinancialDayCloseModal = false"
+      @saved="refreshFinancialCloseAccounts"
+      @reset="refreshFinancialCloseAccounts"
     />
 
     <FindInviterModal
@@ -1754,11 +1759,15 @@ function openReviews() {
 const showCreateModal = ref(false);
 const showFindInviterModal = ref(false);
 const showFinancialDayCloseModal = ref(false);
+const financialCloseButtonRef = ref<HTMLButtonElement | null>(null);
+async function refreshFinancialCloseAccounts() {
+  try { await crmStore.fetchCashAccounts(); }
+  catch (error) { console.warn('Не удалось обновить счета после финансового закрытия или сброса', error); }
+}
 function openFinancialDayClose() {
   moreDropdownOpen.value = false;
   if (showFindInviterModal.value || showCustomerActionsModal.value || showCreateModal.value || lookupActionBusy.value || pendingLookupAction.value || pendingCustomerAction.value) return;
-  // The menu item disappears. Capture a stable return-focus target instead.
-  moreDropdownRef.value?.querySelector('button')?.focus({ preventScroll: true });
+  financialCloseButtonRef.value?.focus({ preventScroll: true });
   showFinancialDayCloseModal.value = true;
 }
 const lookupActionBusy = ref(false);

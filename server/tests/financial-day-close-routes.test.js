@@ -152,6 +152,28 @@ test('financial closing HTTP permissions, idempotency and immutable ledger', asy
     dashboardToken = issueDashboardToken().token;
     assert.equal((await request(contextEndpoint)).status, 200);
   });
+  await t.test('missing pacing month rejects preview and completion without writes or automatic month creation', async () => {
+    const before = balances();
+    const context = await request(contextEndpoint, { staff: managerToken });
+    assert.equal(context.status, 200);
+    assert.equal(context.data.cash_pacing.month_key, '2026-10');
+    assert.equal(context.data.cash_pacing.month_id, null);
+    const preview = await request(`${BASE}/preview`, { method: 'POST', body: input, staff: managerToken });
+    assert.equal(preview.status, 409);
+    assert.equal(preview.data.error, 'closing_cash_pacing_month_required');
+    const complete = await request(`${BASE}/complete`, {
+      method: 'POST', staff: managerToken, key: 'route_missing_month_0001',
+      body: { ...input, expected_revision: context.data.revision },
+    });
+    assert.equal(complete.status, 409);
+    assert.equal(complete.data.error, 'closing_cash_pacing_month_required');
+    assert.deepEqual(balances(), before);
+    assert.deepEqual(recordCounts(), { closures: 0, transactions: 0, notifications: 0 });
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM cash_pacing_daily_facts').get().n, 0);
+    assert.equal(db.prepare('SELECT id FROM cash_pacing_months WHERE month_key = ?').get('2026-10'), undefined);
+    db.prepare('INSERT INTO cash_pacing_months (id, month_key, title) VALUES (?, ?, ?)')
+      .run('closing_pacing_october', '2026-10', 'Тестовый план октября');
+  });
   await t.test('preview is read-only; employee completion requires their own active shift', async () => {
     const before = balances();
     const preview = await request(`${BASE}/preview`, { method: 'POST', body: input });
@@ -283,5 +305,38 @@ test('financial closing HTTP permissions, idempotency and immutable ledger', asy
     assert.equal(result.data.closure.actor_username, 'financial-close-test-admin');
     assert.equal(recordCounts().closures, 3);
     assert.equal(recordCounts().transactions, 3);
+  });
+  await t.test('test reset authenticates, requires local manager mode, and rejects production', async () => {
+    const last = db.prepare('SELECT * FROM financial_day_closures ORDER BY business_date DESC LIMIT 1').get();
+    const endpoint = `${BASE}/history/${last.id}/test-reset`;
+    const body = { confirm_closure_id: last.id };
+    const originalEnv = Object.fromEntries(['NODE_ENV', 'LOCAL_CRM_TEST_MODE', 'FINANCIAL_DAY_CLOSE_TEST_RESET'].map(key => [key, process.env[key]]));
+    const before = balances(); const records = recordCounts();
+    try {
+      assert.equal((await request(endpoint, { method: 'POST', body, admin: null, staff: null, dashboard: null })).status, 401);
+      Object.assign(process.env, { NODE_ENV: 'test', LOCAL_CRM_TEST_MODE: '1', FINANCIAL_DAY_CLOSE_TEST_RESET: '0' });
+      assert.equal((await request(endpoint, { method: 'POST', body, staff: null, dashboard: null })).data.error, 'financial_close_test_reset_disabled');
+      process.env.FINANCIAL_DAY_CLOSE_TEST_RESET = '1'; process.env.NODE_ENV = 'production';
+      assert.equal((await request(endpoint, { method: 'POST', body, staff: null, dashboard: null })).status, 403);
+      process.env.NODE_ENV = 'test'; setStaffTrackingEnabled(true);
+      assert.equal((await request(endpoint, { method: 'POST', body, staff: employeeToken, dashboard: null })).status, 403);
+      assert.equal((await request(contextEndpoint, { staff: employeeToken, dashboard: null })).data.test_reset_enabled, false);
+      clock = RealDate.parse('2026-10-13T09:00:00.000Z'); dashboardToken = issueDashboardToken().token;
+      assert.equal((await request(endpoint, { method: 'POST', body, staff: managerToken, dashboard: null })).data.error, 'dashboard_locked');
+      assert.equal((await request(contextEndpoint, { staff: managerToken })).data.test_reset_enabled, true);
+      assert.equal((await request(endpoint, { method: 'POST', body: {}, staff: managerToken })).data.error, 'closing_test_reset_confirmation_required');
+      assert.deepEqual(balances(), before); assert.deepEqual(recordCounts(), records);
+      const reset = await request(endpoint, { method: 'POST', body, staff: managerToken });
+      assert.equal(reset.status, 200); assert.equal(reset.data.reset, true); assert.equal(reset.data.closure_id, last.id);
+      assert.equal(recordCounts().closures, 2); assert.deepEqual(balances(), before);
+      assert.equal((await request(endpoint, { method: 'POST', body, staff: managerToken })).data.replay, true);
+      assert.equal((await request(`${BASE}/history/${last.id}`, { staff: managerToken })).status, 404);
+      const oldPayload = { ...input, business_date: '2026-10-13', coins: '0', counts: { 200: 0, 100: 0, 50: 0, 20: 1, 10: 1, 5: 1 }, expected_revision: 'obsolete' };
+      const delayed = await request(`${BASE}/complete`, { method: 'POST', body: oldPayload, staff: managerToken, key: 'route_admin_key_0004' });
+      assert.equal(delayed.data.error, 'closing_request_was_reset');
+      assert.equal(recordCounts().closures, 2);
+    } finally {
+      for (const [key, value] of Object.entries(originalEnv)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
+    }
   });
 });

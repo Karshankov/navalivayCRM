@@ -134,13 +134,15 @@ test('invalid integer fields and overflow cannot produce financial movements', (
   assert.throws(() => closes({ terminalCashMinor: Number.MAX_SAFE_INTEGER }), hasCode('invalid_minor_amount'));
 });
 
-test('integer conservation across varied valid distributions', () => {
+test('integer conservation across varied rounded distributions', () => {
   for (let index = 0; index < 200; index += 1) {
     const card = index * 17;
     const ownerCash = index * 23;
+    const roundedOwnerCash = Math.floor((ownerCash + 250) / 500) * 500;
     const retained = index * 3;
-    const transfer = index * 31;
-    const cash = ownerCash + retained + transfer;
+    const transferBeforeRounding = index * 31 + 500;
+    const transfer = transferBeforeRounding - (roundedOwnerCash - ownerCash);
+    const cash = ownerCash + retained + transferBeforeRounding;
     const result = calculateFinancialClosure({
       cashBalanceMinor: cash + card + (index % 3 - 1) * 101,
       countedCashMinor: cash, terminalCashMinor: index * 7,
@@ -148,9 +150,66 @@ test('integer conservation across varied valid distributions', () => {
       profitMinor: ownerCash + card, retainedCashMinor: retained,
       revenueBalanceMinor: index * 11,
     });
-    assert.equal(result.owner_cash_minor, ownerCash);
+    assert.equal(result.profit_minor, ownerCash + card);
+    assert.equal(result.owner_cash_before_rounding_minor, ownerCash);
+    assert.equal(result.owner_cash_minor, roundedOwnerCash);
+    assert.equal(result.owner_cash_minor % 500, 0);
+    assert.equal(result.owner_rounding_minor, roundedOwnerCash - ownerCash);
+    assert.equal(result.owner_total_minor, roundedOwnerCash + card);
     assert.equal(result.transfer_minor, transfer);
     assert.equal(result.cash_balance_after_minor, retained);
     assert.equal(result.revenue_balance_after_minor, index * 11 + transfer);
+    assert.equal(result.corrected_cash_minor - result.owner_total_minor - result.transfer_minor, retained);
   }
+});
+
+test('rounding uses physical owner cash, with midpoint upward and unchanged Overview profit', () => {
+  for (const [rawCash, roundedCash] of [[0, 0], [1, 0], [249, 0], [250, 500], [251, 500], [499, 500], [500, 500], [501, 500], [58749, 58500], [58750, 59000], [58800, 59000], [48700, 48500]]) {
+    const result = closes({ profitMinor: rawCash + 10100, terminalCardMinor: 10100 });
+    assert.equal(result.owner_cash_before_rounding_minor, rawCash);
+    assert.equal(result.owner_cash_minor, roundedCash);
+    assert.equal(result.owner_rounding_minor, roundedCash - rawCash);
+    assert.equal(result.owner_card_minor, 10100);
+    assert.equal(result.owner_total_minor, roundedCash + 10100);
+    assert.equal(result.profit_minor, rawCash + 10100);
+    assert.equal(result.transfer_minor, control.countedCashMinor - roundedCash - control.retainedCashMinor);
+    assert.equal(result.cash_balance_after_minor, control.retainedCashMinor);
+  }
+  const noCard = closes({ profitMinor: 58800, terminalCardMinor: 0 });
+  assert.equal(noCard.owner_cash_minor, 59000);
+  assert.equal(noCard.owner_rounding_minor, 200);
+  const withCard = closes({ profitMinor: 58800, terminalCardMinor: 10100 });
+  assert.equal(withCard.owner_cash_minor, 48500);
+  assert.equal(withCard.owner_total_minor, 58600);
+  assert.equal(withCard.owner_rounding_minor, -200);
+});
+
+test('all coins are reserved and cannot fund owner payout or revenue transfer', () => {
+  const withCoins = closes({ countedCashMinor: 263500, cashBalanceMinor: 313500, coinsMinor: 10000, retainedCashMinor: 13500 });
+  assert.equal(withCoins.owner_cash_minor, 100000);
+  assert.equal(withCoins.transfer_minor, 150000);
+  assert.equal(withCoins.coins_minor, 10000);
+  assert.equal(withCoins.retained_notes_minor, 3500);
+  assert.equal(withCoins.cash_balance_after_minor, 13500);
+  assert.equal(withCoins.profit_minor, control.profitMinor);
+  assert.equal(withCoins.revenue_minor, control.revenueMinor);
+  const coinsOnly = closes({ cashBalanceMinor: 10029, countedCashMinor: 10029, terminalCardMinor: 0, profitMinor: 0, coinsMinor: 10029, retainedCashMinor: 10029 });
+  assert.equal(coinsOnly.transfer_minor, 0);
+  assert.equal(coinsOnly.owner_cash_minor, 0);
+  assert.equal(coinsOnly.cash_balance_after_minor, 10029);
+  assert.throws(() => closes({ coinsMinor: 10000, retainedCashMinor: 3500 }), hasCode('retained_cash_below_coins'));
+  assert.throws(() => closes({ countedCashMinor: 110000, coinsMinor: 10000, retainedCashMinor: 13500 }), hasCode('insufficient_counted_cash'));
+  for (const coinsMinor of [-1, null, '100', 0.5, Infinity, Number.MAX_SAFE_INTEGER + 1]) {
+    assert.throws(() => closes({ coinsMinor }), hasCode('invalid_minor_amount'));
+  }
+  assert.throws(() => closes({ coinsMinor: 300000 }), hasCode('invalid_minor_amount'));
+});
+
+test('rounding cannot hide negative cash, exceed available cash, or overflow', () => {
+  assert.throws(() => closes({ profitMinor: 49999 }), hasCode('negative_owner_cash'));
+  assert.throws(() => closes({ profitMinor: 50250, countedCashMinor: 3750 }), hasCode('insufficient_counted_cash'));
+  const fits = closes({ profitMinor: 50250, countedCashMinor: 4000 });
+  assert.equal(fits.owner_cash_minor, 500);
+  assert.equal(fits.transfer_minor, 0);
+  assert.throws(() => closes({ profitMinor: Number.MAX_SAFE_INTEGER, terminalCardMinor: 0 }), hasCode('invalid_minor_amount'));
 });

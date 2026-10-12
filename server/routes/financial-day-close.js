@@ -13,7 +13,7 @@ import {
 } from '../utils/staff-service.js';
 import { FinancialCloseError } from '../utils/financial-close-calculations.js';
 import { createFinancialDayCloseService } from '../utils/financial-day-close-service.js';
-import { isFinancialCloseEnabled } from '../utils/financial-close-activation.js';
+import { isFinancialCloseEnabled, isFinancialCloseTestResetEnabled } from '../utils/financial-close-activation.js';
 
 export const financialDayCloseRouter = Router();
 const service = createFinancialDayCloseService(db);
@@ -70,8 +70,34 @@ function route(fn) {
   return (req, res) => { try { fn(req, res); } catch (error) { handleError(res, error); } };
 }
 
+function localTestResetAvailable(req) {
+  return isFinancialCloseTestResetEnabled()
+    && ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress)
+    && ['manager', 'admin'].includes(req.financialCloseActor?.role);
+}
+
 financialDayCloseRouter.get(`${BASE}/context`, authMiddleware, access, dashboardAccess, route((req, res) => {
-  res.json(service.context({ cash_account_id: req.query.cash_account_id, revenue_account_id: req.query.revenue_account_id }));
+  res.json({
+    ...service.context({ cash_account_id: req.query.cash_account_id, revenue_account_id: req.query.revenue_account_id }),
+    test_reset_enabled: localTestResetAvailable(req),
+  });
+}));
+
+financialDayCloseRouter.post(`${BASE}/history/:id/test-reset`, authMiddleware, access, dashboardAccess, route((req, res) => {
+  if (!localTestResetAvailable(req)) throw new FinancialCloseError('financial_close_test_reset_disabled', 403);
+  const actor = req.financialCloseActor;
+  res.json(service.resetForTesting(req.params.id, {
+    actor, confirmationId: req.body?.confirm_closure_id,
+    verifyActor: () => {
+      const fresh = operator(req);
+      if (fresh.employeeId !== actor.employeeId || fresh.role !== actor.role) {
+        throw new FinancialCloseError('closing_actor_changed', 409);
+      }
+      if (!['manager', 'admin'].includes(fresh.role)) {
+        throw new FinancialCloseError('closing_test_reset_manager_required', 403);
+      }
+    },
+  }));
 }));
 
 financialDayCloseRouter.get(`${BASE}/history`, authMiddleware, access, dashboardAccess, route((req, res) => {
@@ -85,12 +111,14 @@ financialDayCloseRouter.get(`${BASE}/history/:id`, authMiddleware, access, dashb
 }));
 
 financialDayCloseRouter.post(`${BASE}/preview`, authMiddleware, access, dashboardAccess, route((req, res) => {
-  res.json(service.preview(req.body));
+  const result = service.preview(req.body);
+  result.context.test_reset_enabled = localTestResetAvailable(req);
+  res.json(result);
 }));
 
 financialDayCloseRouter.post(`${BASE}/complete`, authMiddleware, access, dashboardAccess, route((req, res) => {
   const actor = req.financialCloseActor;
-  // Financial closure never closes the time-tracking shift or revokes its token.
+  // Commit finances now; the worker closes only the captured shift after confirmed report delivery.
   const proof = isStaffTrackingEnabled() && actor.role !== 'manager'
     ? prepareActiveShiftProof() : null;
   if (proof && proof.employeeId !== actor.employeeId) throw new StaffServiceError('shift_required', 409);

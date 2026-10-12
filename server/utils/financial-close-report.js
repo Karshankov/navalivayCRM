@@ -9,18 +9,8 @@ export function formatCloseMoney(minor) {
 export function buildFinancialCloseReport({ businessDate, employeeName, snapshot: s }) {
   const [year, month, day] = businessDate.split('-');
   const money = formatCloseMoney;
-  const discrepancy = s.discrepancy_minor;
-  const reconciliation = [
-    '🧾 Сверка кассы',
-    discrepancy < 0 ? `⚠️ Недостача: ${money(-discrepancy)}` : 'Недостача: не имеется',
-    discrepancy > 0 ? `⚠️ Излишек: ${money(discrepancy)}` : 'Излишек: не имеется',
-    `По учёту: ${money(s.cash_balance_before_minor)}`,
-    `Фактически: ${money(s.actual_total_minor)}`,
-    `Пересчитано наличных: ${money(s.counted_cash_minor)}`,
-    `Корректировка «Кассы»: ${discrepancy > 0 ? '+' : ''}${money(discrepancy)}`,
-  ];
   return [
-    '✅ Смена закрыта | Итоги',
+    '✅ Финансовый день закрыт | Итоги',
     '',
     `📅 Дата: ${day}.${month}.${year}`,
     `👤 Сотрудник: ${String(employeeName).replace(/[\r\n\u0000-\u001f]/g, ' ').trim()}`,
@@ -33,9 +23,10 @@ export function buildFinancialCloseReport({ businessDate, employeeName, snapshot
     `• Наличными: ${money(s.terminal_cash_minor)}`,
     `• Картой: ${money(s.terminal_card_minor)}`,
     '',
-    ...reconciliation,
-    '',
     '👤 Выдача Константину',
+    ...(Number.isSafeInteger(s.owner_cash_before_rounding_minor) ? [
+      `Наличными до округления: ${money(s.owner_cash_before_rounding_minor)}`,
+    ] : []),
     `Наличными: ${money(s.owner_cash_minor)}`,
     `Уже получено по карте: ${money(s.owner_card_minor)}`,
     `Всего: ${money(s.owner_total_minor)}`,
@@ -45,9 +36,6 @@ export function buildFinancialCloseReport({ businessDate, employeeName, snapshot
     `Занесено: +${money(s.transfer_minor)}`,
     `Итого: ${money(s.revenue_balance_after_minor)}`,
     '',
-    '💵 Остаток в кассе',
-    money(s.cash_balance_after_minor),
-    '',
-    '✅ Смена успешно закрыта.',
+    '✅ Финансовый день успешно закрыт.',
   ].join('\n');
 }

@@ -61,7 +61,8 @@ async function setup(order = makeOrder()) {
     global: { stubs: {
       AdminModal: ModalStub, CustomerActionsModal: ActionsStub, FindInviterModal: LookupStub,
       CustomerBlockModal: true, CustomerNoteModal: true, CustomerInviteBanModal: true,
-      OrderCreateModal: true, CardPaymentsModal: true, StaffShiftBar: true,
+      OrderCreateModal: true, CardPaymentsModal: true,
+      StaffShiftBar: { template: '<section data-test="staff-shift-bar"><slot name="financial-close" /></section>' },
       StaffCurrentActorBadge: true, CrmProfitPasswordField: true, CrmButton: true,
       ManagerActionSummary: true,
     } },
@@ -98,6 +99,16 @@ afterEach(() => {
 });
 
 describe('CrmOrders: toolbar inviter lookup', () => {
+  it('renders financial closing once inside the staff header, not the order toolbar', async () => {
+    await setup();
+    expect(wrapper!.findAll('[data-test="orders-financial-close"]')).toHaveLength(1);
+    const financialButton = wrapper!.get('[data-test="orders-financial-close"]');
+    expect(financialButton.classes()).toContain('crm-reference-button--danger');
+    expect(financialButton.classes()).not.toContain('crm-reference-button--gray');
+    expect(wrapper!.get('[data-test="orders-block"]').classes()).toContain('crm-reference-button--danger');
+    expect(wrapper!.get('[data-test="staff-shift-bar"]').find('[data-test="orders-financial-close"]').exists()).toBe(true);
+    expect(wrapper!.get('.crm-orders-toolbar').find('[data-test="orders-financial-close"]').exists()).toBe(false);
+  });
   it('keeps the lookup icon at the same small size as the customer note icon', async () => {
     await setup();
     await wrapper!.get('[data-test="orders-actions-toggle"]').trigger('click');

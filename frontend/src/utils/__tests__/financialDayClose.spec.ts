@@ -1,5 +1,50 @@
 import { describe, expect, it } from 'vitest';
-import { CLOSE_DENOMINATIONS, PENDING_CLOSE_STORAGE_KEY, countCloseCash, formatCloseMoney, loadPendingFinancialClose, notificationCloseLabel, parseCloseMoney, parseCloseNoteCount, savePendingFinancialClose, type PendingFinancialClose } from '../financialDayClose';
+import { CLOSE_DENOMINATIONS, PENDING_CLOSE_STORAGE_KEY, countCloseCash, formatCloseMoney, isFinancialCloseSnapshot, loadPendingFinancialClose, notificationCloseLabel, parseCloseMoney, parseCloseNoteCount, savePendingFinancialClose, type PendingFinancialClose } from '../financialDayClose';
+
+const roundedSnapshot = () => ({
+  cash_balance_before_minor: 110100, counted_cash_minor: 100000,
+  terminal_cash_minor: 20000, terminal_card_minor: 10100, terminal_total_minor: 30100,
+  actual_total_minor: 110100, revenue_minor: 80000, profit_minor: 58800,
+  discrepancy_minor: 0, discrepancy_type: 'none', correction_minor: 0, corrected_cash_minor: 110100,
+  owner_cash_before_rounding_minor: 48700, owner_rounding_minor: -200,
+  owner_cash_minor: 48500, owner_card_minor: 10100, owner_total_minor: 58600,
+  transfer_minor: 48000, revenue_balance_before_minor: 60000, revenue_balance_after_minor: 108000,
+  retained_cash_minor: 3500, cash_balance_after_minor: 3500,
+});
+describe('coin reserve snapshot validation', () => {
+  const reserved = () => ({ ...roundedSnapshot(), coins_minor: 10000, retained_notes_minor: 3500,
+    retained_cash_minor: 13500, cash_balance_after_minor: 13500,
+    transfer_minor: 38000, revenue_balance_after_minor: 98000 });
+  it('accepts a complete coin reserve and keeps historical snapshots readable', () => {
+    expect(isFinancialCloseSnapshot(reserved())).toBe(true);
+    expect(isFinancialCloseSnapshot({ ...roundedSnapshot(), coins_minor: 10000 })).toBe(true);
+  });
+  it.each([
+    { coins_minor: undefined }, { coins_minor: -1 }, { coins_minor: 0.5 },
+    { retained_notes_minor: -1 }, { retained_cash_minor: 3500 },
+    { cash_balance_after_minor: 3500 }, { transfer_minor: 48000 },
+    { transfer_minor: -1 }, { owner_cash_minor: -500 },
+  ])('rejects inconsistent or unsafe coin reserves %j', changes => {
+    expect(isFinancialCloseSnapshot({ ...reserved(), ...changes })).toBe(false);
+  });
+});
+
+describe('rounded closing snapshot validation', () => {
+  it('accepts rounded distribution and historical snapshots without rounding fields', () => {
+    expect(isFinancialCloseSnapshot(roundedSnapshot())).toBe(true);
+    const { owner_cash_before_rounding_minor, owner_rounding_minor, ...legacy } = roundedSnapshot();
+    expect(isFinancialCloseSnapshot({ ...legacy, owner_cash_minor: 48700, owner_total_minor: 58800, transfer_minor: 47800, revenue_balance_after_minor: 107800 })).toBe(true);
+  });
+  it.each([
+    { owner_cash_before_rounding_minor: undefined }, { owner_rounding_minor: undefined },
+    { owner_cash_before_rounding_minor: null }, { owner_rounding_minor: 0.5 },
+    { owner_rounding_minor: -250 }, { owner_rounding_minor: 251 },
+    { owner_cash_minor: 48501 }, { owner_total_minor: 58800 },
+    { owner_cash_before_rounding_minor: -1 }, { profit_minor: 59000 },
+  ])('rejects inconsistent rounding fields %j', changes => {
+    expect(isFinancialCloseSnapshot({ ...roundedSnapshot(), ...changes })).toBe(false);
+  });
+});
 
 const pending = (): PendingFinancialClose => ({
   version: 1, key: 'fclose_test_key_123456789',

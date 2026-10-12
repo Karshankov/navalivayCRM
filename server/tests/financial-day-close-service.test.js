@@ -11,6 +11,11 @@ function setup({ recipient = true, cashBalance = 3035 } = {}) {
   const database = new Database(':memory:');
   database.pragma('foreign_keys = ON');
   database.exec(`
+    CREATE TABLE cash_pacing_months (id TEXT PRIMARY KEY, month_key TEXT NOT NULL UNIQUE);
+    CREATE TABLE cash_pacing_daily_facts (id TEXT PRIMARY KEY, month_id TEXT NOT NULL REFERENCES cash_pacing_months(id) ON DELETE CASCADE,
+      fact_date TEXT NOT NULL, actual_amount REAL NOT NULL, note TEXT,
+      created_at TEXT NOT NULL DEFAULT (DATETIME('now')), updated_at TEXT NOT NULL DEFAULT (DATETIME('now')), UNIQUE(month_id, fact_date));
+    INSERT INTO cash_pacing_months VALUES ('pacing_october', '2026-10');
     CREATE TABLE employees (id TEXT PRIMARY KEY);
     CREATE TABLE cash_accounts (id TEXT PRIMARY KEY, name TEXT NOT NULL, balance REAL NOT NULL, active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL DEFAULT (DATETIME('now')));
     CREATE TABLE orders (id TEXT PRIMARY KEY, customer_id TEXT, status TEXT, final_amount REAL, total_amount REAL, profit REAL, paid_at TEXT);
@@ -63,6 +68,165 @@ function scenario(name, fn) {
   });
 }
 const code = (expected) => (error) => error.code === expected;
+
+scenario('rounded cash changes one owner settlement and revenue transfer, preserves profit and replays the saved report', create => {
+  for (const [card, ownerCash, rounding] of [['0', 59000, 200], ['101', 48500, -200]]) {
+    const f = create();
+    f.database.prepare('UPDATE orders SET profit = ? WHERE id = ?').run(588, 'paid');
+    const input = { ...f.input, terminal_card: card };
+    const preview = f.service.preview(input);
+    assert.equal(preview.snapshot.profit_minor, 58800);
+    assert.equal(preview.snapshot.owner_cash_minor, ownerCash);
+    assert.equal(preview.snapshot.owner_rounding_minor, rounding);
+    const payload = { ...input, expected_revision: preview.context.revision };
+    const first = f.service.close(payload, { requestKey: 'rounded_settlement_0001', actor: f.actor });
+    const saved = first.closure;
+    assert.equal(saved.snapshot.owner_total_minor, ownerCash + Number(card) * 100);
+    assert.equal(saved.snapshot.transfer_minor, 253500 - ownerCash - 3500);
+    assert.equal(saved.snapshot.cash_balance_after_minor, 3500);
+    assert.deepEqual(f.balances(), [
+      { id: 'cash', balance: 35 },
+      { id: 'revenue', balance: 600 + saved.snapshot.transfer_minor / 100 },
+    ]);
+    const movements = f.database.prepare("SELECT * FROM cash_transactions WHERE financial_close_id = ? AND closing_operation = 'owner_settlement'").all(saved.id);
+    assert.equal(movements.length, 1);
+    assert.equal(movements[0].amount, saved.snapshot.owner_total_minor / 100);
+    assert.match(saved.report_text, /Прибыль за день: 588,00 BYN/);
+    assert.doesNotMatch(saved.report_text, /Округление до ближайших|из выручки|остаётся в выручке/);
+    assert.match(saved.report_text, /Наличными до округления:/);
+    assert.equal(f.service.context().profit_minor, 58800);
+    const before = { balances: f.balances(), counts: f.counts() };
+    f.database.prepare('UPDATE orders SET profit = 777 WHERE id = ?').run('paid');
+    const retry = f.service.close(payload, { requestKey: 'rounded_settlement_0001', actor: f.actor });
+    assert.equal(retry.replay, true);
+    assert.deepEqual(retry.closure.snapshot, saved.snapshot);
+    assert.equal(retry.closure.report_text, saved.report_text);
+    assert.deepEqual({ balances: f.balances(), counts: f.counts() }, before);
+  }
+});
+
+scenario('all coins remain in cash in addition to retained banknotes and retries preserve the saved reserve', create => {
+  const f = create({ cashBalance: 3135 });
+  const input = { ...f.input, coins: '100', retained_cash: '135' };
+  const preview = f.service.preview(input);
+  assert.equal(preview.snapshot.coins_minor, 10000);
+  assert.equal(preview.snapshot.retained_notes_minor, 3500);
+  assert.equal(preview.snapshot.retained_cash_minor, 13500);
+  assert.equal(preview.snapshot.owner_cash_minor, 100000);
+  assert.equal(preview.snapshot.transfer_minor, 150000);
+  const payload = { ...input, expected_revision: preview.context.revision };
+  const options = { requestKey: 'coins_reserved_close_0001', actor: f.actor };
+  const first = f.service.close(payload, options);
+  assert.deepEqual(f.balances(), [{ id: 'cash', balance: 135 }, { id: 'revenue', balance: 2100 }]);
+  assert.equal(first.closure.snapshot.profit_minor, 150000);
+  assert.doesNotMatch(first.closure.report_text, /Остаток в кассе|Монеты и мелкие номиналы|Оставлено купюрами/);
+  const before = { balances: f.balances(), counts: f.counts(), fact: f.database.prepare('SELECT * FROM cash_pacing_daily_facts').all() };
+  const retry = f.service.close(payload, options);
+  assert.equal(retry.replay, true);
+  assert.deepEqual(retry.closure.snapshot, first.closure.snapshot);
+  assert.deepEqual({ balances: f.balances(), counts: f.counts(), fact: f.database.prepare('SELECT * FROM cash_pacing_daily_facts').all() }, before);
+});
+
+scenario('coins cannot cover insufficient banknotes or be omitted from the reserve', create => {
+  for (const [retained, expectedCode] of [['35', 'retained_cash_below_coins'], ['135', 'insufficient_counted_cash']]) {
+    const f = create();
+    const input = { ...f.input, counts: { 200: 0, 100: 0, 50: 0, 20: 1, 10: 1, 5: 1 }, coins: '1500', retained_cash: retained === '135' ? '1535' : retained };
+    const before = { balances: f.balances(), counts: f.counts() };
+    assert.throws(() => f.service.preview(input), code(expectedCode));
+    assert.throws(() => f.service.close({ ...input, expected_revision: f.service.context(input).revision },
+      { requestKey: 'coins_insufficient_0001', actor: f.actor }), code(expectedCode));
+    assert.deepEqual({ balances: f.balances(), counts: f.counts() }, before);
+    assert.equal(f.database.prepare('SELECT COUNT(*) AS n FROM cash_pacing_daily_facts').get().n, 0);
+  }
+});
+
+scenario('rounded-up cash that does not fit cannot write a closure, pacing fact, ledger or outbox', create => {
+  const f = create();
+  f.database.prepare('UPDATE orders SET profit = ? WHERE id = ?').run(502.5, 'paid');
+  const input = { ...f.input, counts: { 200: 0, 100: 0, 50: 0, 20: 1, 10: 1, 5: 1 }, coins: '2.50' };
+  const before = { balances: f.balances(), counts: f.counts() };
+  assert.throws(() => f.service.preview(input), code('insufficient_counted_cash'));
+  assert.throws(() => f.service.close({ ...input, expected_revision: f.service.context(input).revision },
+    { requestKey: 'rounding_insufficient_0001', actor: f.actor }), code('insufficient_counted_cash'));
+  assert.deepEqual({ balances: f.balances(), counts: f.counts() }, before);
+  assert.equal(f.database.prepare('SELECT COUNT(*) AS n FROM cash_pacing_daily_facts').get().n, 0);
+});
+
+scenario('terminal cash plus card is saved once for the closing business date, not CRM revenue or counted cash', create => {
+  const f = create();
+  f.setClock('2026-10-05T17:00:00Z');
+  f.database.exec("UPDATE orders SET paid_at = '2026-10-05 12:00:00'");
+  const input = { ...f.input, business_date: '2026-10-05', terminal_cash: '400,50', terminal_card: '160.25' };
+  const payload = { ...input, expected_revision: f.service.preview(input).context.revision };
+  assert.equal(f.database.prepare('SELECT COUNT(*) AS n FROM cash_pacing_daily_facts').get().n, 0);
+  const options = { requestKey: 'request_pacing_fifth_0001', actor: f.actor };
+  const first = f.service.close(payload, options);
+  const fact = f.database.prepare('SELECT * FROM cash_pacing_daily_facts').get();
+  assert.equal(fact.month_id, 'pacing_october'); assert.equal(fact.fact_date, '2026-10-05');
+  assert.equal(fact.actual_amount, 560.75);
+  assert.equal(first.closure.snapshot.cash_pacing_fact.status, 'inserted');
+  assert.equal(first.closure.snapshot.cash_pacing_fact.amount_minor, 56075);
+  assert.equal(f.service.close(payload, options).replay, true);
+  assert.deepEqual(f.database.prepare('SELECT * FROM cash_pacing_daily_facts').all(), [fact]);
+  f.database.exec('DELETE FROM cash_pacing_daily_facts');
+  assert.equal(f.service.close(payload, options).replay, true);
+  assert.equal(f.database.prepare('SELECT COUNT(*) AS n FROM cash_pacing_daily_facts').get().n, 0);
+});
+
+scenario('existing manual daily facts including zero are preserved byte for byte', create => {
+  for (const amount of [0, 560, 123.45]) {
+    const f = create();
+    f.database.prepare("INSERT INTO cash_pacing_daily_facts (id,month_id,fact_date,actual_amount,note) VALUES ('manual','pacing_october','2026-10-11',?,'Ручная запись')").run(amount);
+    const before = f.database.prepare('SELECT * FROM cash_pacing_daily_facts').all();
+    const result = f.complete();
+    assert.equal(result.closure.snapshot.cash_pacing_fact.status, 'preserved');
+    assert.equal(result.closure.snapshot.cash_pacing_fact.amount_minor, Math.round(amount * 100));
+    assert.deepEqual(f.database.prepare('SELECT * FROM cash_pacing_daily_facts').all(), before);
+  }
+});
+
+scenario('missing month rejects preview and final close without any financial writes or automatic month creation', create => {
+  const f = create(); f.database.exec('DELETE FROM cash_pacing_months');
+  const before = f.balances(); const current = f.service.context();
+  assert.equal(current.cash_pacing.month_id, null);
+  assert.throws(() => f.service.preview(f.input), code('closing_cash_pacing_month_required'));
+  assert.throws(() => f.service.close({ ...f.input, expected_revision: current.revision },
+    { actor: f.actor, requestKey: 'request_pacing_missing_0001' }), code('closing_cash_pacing_month_required'));
+  assert.deepEqual(f.balances(), before); assert.deepEqual(f.counts(), { closures: 0, transactions: 0, notifications: 0 });
+  assert.equal(f.database.prepare('SELECT COUNT(*) AS n FROM cash_pacing_months').get().n, 0);
+});
+
+scenario('daily fact changes after preview invalidate final confirmation and never overwrite manual data', create => {
+  const f = create(); const payload = { ...f.input, expected_revision: f.service.preview(f.input).context.revision };
+  f.database.exec("INSERT INTO cash_pacing_daily_facts (id,month_id,fact_date,actual_amount,note) VALUES ('manual','pacing_october','2026-10-11',560,'Сохранено после расчёта')");
+  const before = f.balances(); const fact = f.database.prepare('SELECT * FROM cash_pacing_daily_facts').get();
+  assert.throws(() => f.service.close(payload, { actor: f.actor, requestKey: 'request_pacing_race_0001' }), code('closing_preview_stale'));
+  assert.deepEqual(f.balances(), before); assert.deepEqual(f.database.prepare('SELECT * FROM cash_pacing_daily_facts').get(), fact);
+  assert.deepEqual(f.counts(), { closures: 0, transactions: 0, notifications: 0 });
+});
+
+scenario('failure inserting a fact or later outbox rolls back the entire closing and fact', create => {
+  for (const table of ['cash_pacing_daily_facts', 'internal_notification_outbox']) {
+    const f = create(); const before = f.balances();
+    f.database.exec(`CREATE TRIGGER pacing_failure BEFORE INSERT ON ${table} BEGIN SELECT RAISE(ABORT, 'pacing_atomic_failure'); END`);
+    assert.throws(() => f.complete(), /pacing_atomic_failure/);
+    assert.deepEqual(f.balances(), before); assert.deepEqual(f.counts(), { closures: 0, transactions: 0, notifications: 0 });
+    assert.equal(f.database.prepare('SELECT COUNT(*) AS n FROM cash_pacing_daily_facts').get().n, 0);
+  }
+});
+
+scenario('Minsk midnight at month and year boundaries chooses the new business month', create => {
+  for (const [clock, date] of [['2026-10-31T21:00:00Z', '2026-11-01'], ['2026-12-31T21:00:00Z', '2027-01-01']]) {
+    const f = create(); const month = date.slice(0, 7);
+    f.database.prepare('INSERT INTO cash_pacing_months VALUES (?, ?)').run('boundary_month', month);
+    f.setClock(clock);
+    const input = { ...f.input, business_date: date, terminal_cash: '560', terminal_card: '0' };
+    const payload = { ...input, expected_revision: f.service.preview(input).context.revision };
+    f.service.close(payload, { actor: f.actor, requestKey: 'request_pacing_boundary_0001' });
+    const fact = f.database.prepare('SELECT * FROM cash_pacing_daily_facts').get();
+    assert.equal(fact.month_id, 'boundary_month'); assert.equal(fact.fact_date, date); assert.equal(fact.actual_amount, 560);
+  }
+});
 
 scenario('shared totals use inclusive Minsk midnight and exclusive next midnight for orders and POS', (create) => {
   const f = create();
@@ -302,6 +466,33 @@ function deliveryScenario(name, run) {
 
 const outboxRow = (f) => f.database.prepare('SELECT * FROM internal_notification_outbox').get();
 const deliveryTime = () => new Date(Date.now() + 1000);
+
+deliveryScenario('financial closing captures a shift without closing it until the saved report is delivered', async (f, worker) => {
+  f.database.exec(`
+    CREATE TABLE staff_shifts (id TEXT PRIMARY KEY, employee_id TEXT, business_date TEXT,
+      started_at TEXT, planned_end_at TEXT, status TEXT, ended_at TEXT, close_reason TEXT,
+      version INTEGER, updated_at TEXT);
+    CREATE TABLE staff_sessions (id TEXT PRIMARY KEY, employee_id TEXT, scope TEXT, revoked_at TEXT);
+    CREATE TABLE staff_shift_audit (id TEXT PRIMARY KEY, shift_id TEXT, action TEXT, actor_kind TEXT,
+      before_json TEXT, after_json TEXT, reason TEXT, created_at TEXT);
+    INSERT INTO staff_shifts VALUES ('closing-shift', 'employee_test', '2026-10-11',
+      '2026-10-11T07:00:00.000Z', '2026-10-11T18:15:00.000Z', 'active', NULL, NULL, 1,
+      '2026-10-11T07:00:00.000Z');
+    INSERT INTO staff_sessions VALUES ('closing-token', 'employee_test', 'shift', NULL);
+  `);
+  const closure = f.complete().closure;
+  assert.equal(closure.snapshot.staff_shift_to_close.id, 'closing-shift');
+  assert.equal(f.database.prepare("SELECT status FROM staff_shifts WHERE id = 'closing-shift'").get().status, 'active');
+  const baseline = { balances: f.balances(), counts: f.counts() };
+  const result = await worker.deliverInternalNotification(f.database, outboxRow(f), {
+    now: deliveryTime(), sender: async () => ({ ok: true, telegram_message_id: 44 }),
+  });
+  assert.equal(result.outcome, 'sent');
+  assert.equal(f.database.prepare("SELECT status FROM staff_shifts WHERE id = 'closing-shift'").get().status, 'closed');
+  assert.ok(f.database.prepare("SELECT revoked_at FROM staff_sessions WHERE id = 'closing-token'").get().revoked_at);
+  assert.equal(f.database.prepare('SELECT COUNT(*) AS n FROM staff_shift_audit').get().n, 1);
+  assert.deepEqual({ balances: f.balances(), counts: f.counts() }, baseline);
+});
 
 deliveryScenario('worker sends the immutable saved report once without changing financial or staff records', async (f, worker) => {
   const closure = f.complete().closure;

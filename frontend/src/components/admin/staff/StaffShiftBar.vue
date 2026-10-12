@@ -43,6 +43,7 @@
             variant="secondary"
             size="sm"
             :loading="staffShiftLoading"
+            data-test="shift-manual-close"
             @click="requestCloseShift"
           >
             Закрыть смену
@@ -78,6 +79,9 @@
             </span>
           </CrmButton>
         </template>
+        <div v-if="$slots['financial-close']" class="crm-shift-financial-action" data-test="shift-financial-action">
+          <slot name="financial-close" />
+        </div>
       </div>
     </div>
 
@@ -117,6 +121,9 @@
     aria-label="Учёт сотрудников выключен"
   >
     Учёт сотрудников выключен. Руководитель может включить его в разделе «Сотрудники и зарплаты».
+    <div v-if="$slots['financial-close']" class="crm-shift-financial-action crm-shift-financial-action--standalone" data-test="shift-financial-action">
+      <slot name="financial-close" />
+    </div>
   </section>
 
   <StaffAccessModal
@@ -515,3 +522,17 @@ onUnmounted(() => {
   if (clockTimer) clearInterval(clockTimer);
 });
 </script>
+
+<style scoped>
+.crm-shift-financial-action { display: flex; align-items: center; min-width: 0; margin-left: 12px; padding-left: 20px; border-left: 1px solid #dce8fa; }
+.crm-shift-financial-action :deep(button) { max-width: 100%; white-space: normal; }
+.crm-shift-financial-action--standalone { margin: 12px 0 0; padding: 12px 0 0; border-left: 0; border-top: 1px solid #dce8fa; }
+.crm-shift-extra { position: relative; }
+.crm-shift-extra > summary { display: flex; align-items: center; justify-content: center; min-height: 36px; padding: 8px 12px; border: 1px solid #dce8fa; border-radius: 10px; color: #50658a; font-size: 13px; font-weight: 650; cursor: pointer; list-style: none; }
+.crm-shift-extra > summary::-webkit-details-marker { display: none; }
+.crm-shift-extra > summary:focus-visible { outline: 2px solid #0958ff; outline-offset: 3px; }
+.crm-shift-extra > div { margin-top: 8px; }
+@media (max-width: 640px) {
+  .crm-shift-financial-action { flex: 1 1 100%; margin: 8px 0 0; padding: 12px 0 0; border-left: 0; border-top: 1px solid #dce8fa; }
+}
+</style>

@@ -13,6 +13,14 @@ import {
   parseMoneyMinor,
 } from './financial-close-calculations.js';
 import { buildFinancialCloseReport } from './financial-close-report.js';
+import { captureFinancialCloseShift } from './financial-close-shift.js';
+import { isFinancialCloseTestResetEnabled } from './financial-close-activation.js';
+import {
+  financialCloseLedgerFingerprint,
+  getFinancialCloseResetRevision,
+  resetFinancialCloseForTesting,
+  wasFinancialCloseReset,
+} from './financial-close-test-reset.js';
 import {
   enqueueInternalNotificationForGroup,
   listInternalNotificationRecipients,
@@ -85,6 +93,36 @@ export function createFinancialDayCloseService(database, { now = () => new Date(
     return { cash, revenue };
   }
 
+  function cashPacingRows(businessDate) {
+    const monthKey = businessDate.slice(0, 7);
+    const month = database.prepare('SELECT * FROM cash_pacing_months WHERE month_key = ?').get(monthKey);
+    const fact = month ? database.prepare('SELECT * FROM cash_pacing_daily_facts WHERE month_id = ? AND fact_date = ?')
+      .get(month.id, businessDate) : null;
+    return { monthKey, month, fact };
+  }
+
+  /** Called only inside the immediate closing transaction. Never overwrite a fact. */
+  function saveCashPacingFact(businessDate, totalMinor, reference) {
+    const { monthKey, month, fact } = cashPacingRows(businessDate);
+    if (!month) throw new FinancialCloseError('closing_cash_pacing_month_required', 409, { month_key: monthKey });
+    if (!Number.isSafeInteger(totalMinor) || totalMinor < 0 || ledgerMoneyMinor(totalMinor / 100) !== totalMinor) {
+      throw new FinancialCloseError('invalid_money');
+    }
+    let saved = fact;
+    if (!saved) {
+      const factId = makeId('cpf');
+      const timestamp = reference.toISOString().replace('T', ' ').slice(0, 19);
+      database.prepare(`INSERT INTO cash_pacing_daily_facts
+        (id, month_id, fact_date, actual_amount, note, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)`).run(factId, month.id, businessDate, totalMinor / 100,
+          `Из закрытия финансового дня ${businessDate}: наличные + карта по терминалу`, timestamp, timestamp);
+      saved = database.prepare('SELECT * FROM cash_pacing_daily_facts WHERE id = ?').get(factId);
+    }
+    return { status: fact ? 'preserved' : 'inserted', fact_id: saved.id, month_id: month.id,
+      fact_date: businessDate, amount_minor: ledgerMoneyMinor(saved.actual_amount),
+      row_hash: digest(saved) };
+  }
+
   function context(input = {}, reference = now()) {
     const businessDate = financialBusinessDate(reference);
     const parts = getTimeZoneDateParts(reference);
@@ -92,6 +130,7 @@ export function createFinancialDayCloseService(database, { now = () => new Date(
     const accounts = resolveAccounts(input);
     const stats = queryCrmFinancialStats(database, range);
     const recipients = listInternalNotificationRecipients(database, FINANCIAL_CLOSE_NOTIFICATION_GROUP);
+    const pacing = cashPacingRows(businessDate);
     const values = {
       business_date: businessDate,
       time_zone: BUSINESS_TIME_ZONE,
@@ -104,6 +143,12 @@ export function createFinancialDayCloseService(database, { now = () => new Date(
       total_sales: stats.total_sales,
       unique_customers: stats.unique_customers,
       recipient_ids: recipients.map((item) => item.telegram_id),
+      test_reset_revision: getFinancialCloseResetRevision(database),
+      owner_cash_rounding: 'nearest_5_byn_half_up_v1',
+      coins_retention: 'all_coins_reserved_in_total_retained_cash_v1',
+      cash_pacing: { month_key: pacing.monthKey, month_id: pacing.month?.id ?? null,
+        existing_amount_minor: pacing.fact ? ledgerMoneyMinor(pacing.fact.actual_amount) : null,
+        revision: digest({ month_id: pacing.month?.id ?? null, fact: pacing.fact ?? null }) },
     };
     return {
       ...values,
@@ -142,6 +187,7 @@ export function createFinancialDayCloseService(database, { now = () => new Date(
       terminalCashMinor: input.terminal_cash_minor,
       terminalCardMinor: input.terminal_card_minor,
       retainedCashMinor: input.retained_cash_minor,
+      coinsMinor: input.coins_minor,
     });
   }
 
@@ -151,6 +197,8 @@ export function createFinancialDayCloseService(database, { now = () => new Date(
       const current = context(normalized);
       if (normalized.business_date !== current.business_date) throw new FinancialCloseError('closing_day_changed', 409);
       if (current.closure) throw new FinancialCloseError('financial_day_already_closed', 409, { closure_id: current.closure.id });
+      if (!current.cash_pacing.month_id) throw new FinancialCloseError('closing_cash_pacing_month_required', 409,
+        { month_key: current.cash_pacing.month_key });
       return { context: current, snapshot: calculate(normalized, current) };
     })();
   }
@@ -183,6 +231,9 @@ export function createFinancialDayCloseService(database, { now = () => new Date(
     const requestHash = digest({ ...normalized, actor_id: actor.employeeId || actor.username });
     return database.transaction(() => {
       verifyActor();
+      if (wasFinancialCloseReset(database, requestKey)) {
+        throw new FinancialCloseError('closing_request_was_reset', 409);
+      }
       const replay = database.prepare('SELECT * FROM financial_day_closures WHERE request_key = ?').get(requestKey);
       if (replay) {
         if (replay.request_hash !== requestHash) throw new FinancialCloseError('closing_idempotency_conflict', 409);
@@ -192,6 +243,8 @@ export function createFinancialDayCloseService(database, { now = () => new Date(
       const current = context(normalized, reference);
       if (normalized.business_date !== current.business_date) throw new FinancialCloseError('closing_day_changed', 409);
       if (current.closure) throw new FinancialCloseError('financial_day_already_closed', 409, { closure_id: current.closure.id });
+      if (!current.cash_pacing.month_id) throw new FinancialCloseError('closing_cash_pacing_month_required', 409,
+        { month_key: current.cash_pacing.month_key });
       if (typeof input.expected_revision !== 'string' || input.expected_revision !== current.revision) {
         throw new FinancialCloseError('closing_preview_stale', 409);
       }
@@ -215,6 +268,11 @@ export function createFinancialDayCloseService(database, { now = () => new Date(
         ...snapshot, coins_minor: normalized.coins_minor,
         cash_account_name: current.cash_account_name, revenue_account_name: current.revenue_account_name,
         operations: movements,
+        staff_shift_to_close: captureFinancialCloseShift(database, actor, current.business_date),
+        cash_pacing_fact: saveCashPacingFact(current.business_date, snapshot.terminal_total_minor, reference),
+        ...(isFinancialCloseTestResetEnabled() ? {
+          test_reset_ledger_hash: financialCloseLedgerFingerprint(database, current.cash_account_id, current.revenue_account_id),
+        } : {}),
       };
       const report = buildFinancialCloseReport({ businessDate: current.business_date, employeeName: actor.name, snapshot: savedSnapshot });
       database.prepare(`
@@ -261,6 +319,7 @@ export function createFinancialDayCloseService(database, { now = () => new Date(
   return {
     context: (input) => database.transaction(() => context(input))(),
     preview, close, list,
+    resetForTesting: (id, options) => resetFinancialCloseForTesting(database, id, options),
     get: (id) => publicClosure(rowById(id)),
     enqueueReport: (id) => database.transaction(() => enqueueReport(id)).immediate(),
   };

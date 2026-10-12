@@ -24,6 +24,85 @@ describe("StaffShiftBar", () => {
     setActivePinia(createPinia());
   });
 
+  it.each([true, false])('keeps financial closing separately accessible with tracking enabled=%s', async enabled => {
+    const store = useCrmStore();
+    store.$patch({ staffTrackingEnabled: enabled });
+    vi.spyOn(store, 'fetchStaffSettings').mockResolvedValue({ trackingEnabled: enabled, orderShiftRestrictionEnabled: enabled });
+    vi.spyOn(store, 'fetchStaffShift').mockResolvedValue(null);
+    const wrapper = mount(StaffShiftBar, {
+      slots: { 'financial-close': '<button data-test="financial-close-slot">Закрыть финансовый день</button>' },
+      global: { stubs: { AdminModal: true, StaffAccessModal: true, StaffTasksModal: true } },
+    });
+    try {
+      await flushPromises();
+      expect(wrapper.findAll('[data-test="financial-close-slot"]')).toHaveLength(1);
+      expect(wrapper.get('[data-test="shift-financial-action"]').text()).toContain('Закрыть финансовый день');
+      expect(wrapper.find('[data-test="shift-manual-close"]').exists()).toBe(false);
+    } finally { wrapper.unmount(); }
+  });
+
+  it.each([false, true])('requires confirmation for manual closing and handles failure=%s', async fails => {
+    const store = useCrmStore();
+    store.$patch({ staffTrackingEnabled: true, staffToken: 'employee-token',
+      staffIdentity: { role: 'employee', employee: { id: 'employee-1', first_name: 'Анна', last_name: 'Иванова', role: 'employee', active: true, position: null } },
+      currentStaffShift: { id: 'shift-1', version: 1, employee_id: 'employee-1', status: 'active', started_at: new Date().toISOString() },
+    });
+    vi.spyOn(store, 'fetchStaffSettings').mockResolvedValue({ trackingEnabled: true, orderShiftRestrictionEnabled: true });
+    vi.spyOn(store, 'fetchStaffShift').mockResolvedValue(store.currentStaffShift);
+    vi.spyOn(store, 'refreshStaffWorkspace').mockResolvedValue(undefined);
+    vi.spyOn(store, 'fetchStaffTasks').mockResolvedValue(undefined as never);
+    const close = vi.spyOn(store, 'closeStaffShift');
+    if (fails) close.mockRejectedValue(new Error('Не удалось закрыть смену'));
+    else close.mockResolvedValue(undefined as never);
+    const wrapper = mountBar();
+    try {
+      await flushPromises();
+      expect(wrapper.find('[data-test="shift-extra-actions"]').exists()).toBe(false);
+      expect(wrapper.text()).not.toContain('Дополнительно');
+      const manual = wrapper.get('[data-test="shift-manual-close"]');
+      expect(manual.text()).toBe('Закрыть смену');
+      await manual.trigger('click');
+      expect(wrapper.text()).toContain('После закрытия рабочие действия потребуют открытия новой смены.');
+      expect(close).not.toHaveBeenCalled();
+      const cancel = wrapper.findAll('button').find(button => button.text() === 'Продолжить смену')!;
+      await cancel.trigger('click');
+      expect(close).not.toHaveBeenCalled();
+      expect(wrapper.text()).not.toContain('Продолжить смену');
+      store.$patch({ staffShiftLoading: true });
+      await flushPromises();
+      await manual.trigger('click');
+      expect(wrapper.text()).not.toContain('Продолжить смену');
+      store.$patch({ staffShiftLoading: false });
+      await flushPromises();
+      await manual.trigger('click');
+      const confirm = wrapper.findAll('button').find(button => button.text() === 'Закрыть смену' && button.attributes('data-test') !== 'shift-manual-close')!;
+      await confirm.trigger('click');
+      await flushPromises();
+      expect(close).toHaveBeenCalledTimes(1);
+      expect(wrapper.text()).toContain(fails ? 'Не удалось закрыть смену' : 'Смена закрыта');
+      expect(wrapper.text().includes('Продолжить смену')).toBe(fails);
+    } finally { wrapper.unmount(); }
+  });
+
+  it.each(['no-access', 'another-employee'])('hides manual closing for %s', async mode => {
+    const store = useCrmStore();
+    store.$patch({ staffTrackingEnabled: true,
+      staffToken: mode === 'no-access' ? '' : 'employee-token',
+      staffIdentity: mode === 'no-access' ? null : { role: 'employee', employee: { id: 'employee-2', first_name: 'Анна', last_name: null, role: 'employee', active: true, position: null } },
+      currentStaffShift: { id: 'shift-1', version: 1, employee_id: 'employee-1', status: 'active', started_at: new Date().toISOString() },
+    });
+    vi.spyOn(store, 'fetchStaffSettings').mockResolvedValue({ trackingEnabled: true, orderShiftRestrictionEnabled: true });
+    vi.spyOn(store, 'fetchStaffShift').mockResolvedValue(store.currentStaffShift);
+    vi.spyOn(store, 'refreshStaffWorkspace').mockResolvedValue(undefined);
+    const close = vi.spyOn(store, 'closeStaffShift');
+    const wrapper = mountBar();
+    try {
+      await flushPromises();
+      expect(wrapper.find('[data-test="shift-manual-close"]').exists()).toBe(false);
+      expect(close).not.toHaveBeenCalled();
+    } finally { wrapper.unmount(); }
+  });
+
   it("не предлагает открыть смену, когда учёт выключен", async () => {
     const store = useCrmStore();
     store.$patch({ staffTrackingEnabled: false });
