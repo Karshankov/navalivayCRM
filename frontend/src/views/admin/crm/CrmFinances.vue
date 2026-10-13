@@ -1,29 +1,27 @@
 <template>
-  <div class="min-h-screen bg-gray-50 px-4 py-6 sm:px-6 lg:px-8">
-    <div class="mx-auto w-full max-w-7xl space-y-8">
+  <div class="crm-orders-page">
+    <div class="crm-orders-content">
       <!-- Back Button -->
-      <div>
-        <h1 class="text-2xl font-bold text-gray-900 sm:text-3xl">Финансы</h1>
-        <p class="mt-2 text-sm text-gray-600 sm:text-base">Управление счетами и транзакциями</p>
-      </div>
-
-      <div class="flex flex-wrap gap-2">
-        <button
-          type="button"
-          class="rounded-full px-4 py-2 text-sm font-semibold transition"
-          :class="activePanel === 'money' ? 'bg-blue-600 text-white shadow-sm' : 'bg-white text-gray-700 shadow-sm hover:bg-gray-100'"
-          @click="activePanel = 'money'"
-        >
-          Счета и транзакции
-        </button>
-        <button
-          type="button"
-          class="rounded-full px-4 py-2 text-sm font-semibold transition"
-          :class="activePanel === 'pacing' ? 'bg-blue-600 text-white shadow-sm' : 'bg-white text-gray-700 shadow-sm hover:bg-gray-100'"
-          @click="activePanel = 'pacing'"
-        >
-          План пробития
-        </button>
+      <div class="crm-orders-heading">
+        <h1 class="crm-orders-title">Финансы</h1>
+        <div class="flex items-center gap-2">
+          <button
+            type="button"
+            class="crm-reference-button"
+            :class="activePanel === 'money' ? 'crm-reference-button--primary' : 'crm-reference-button--gray'"
+            @click="activePanel = 'money'"
+          >
+            Счета и транзакции
+          </button>
+          <button
+            type="button"
+            class="crm-reference-button"
+            :class="activePanel === 'pacing' ? 'crm-reference-button--primary' : 'crm-reference-button--gray'"
+            @click="activePanel = 'pacing'"
+          >
+            План пробития
+          </button>
+        </div>
       </div>
 
       <template v-if="profitUnlocked">

@@ -49,7 +49,7 @@
               
               <div v-else class="space-y-6">
             <!-- Main Dashboard Card -->
-            <section class="relative overflow-hidden rounded-3xl bg-gradient-to-r from-gray-900 via-red-700 to-red-500 text-white shadow-2xl">
+            <section class="relative overflow-hidden rounded-3xl bg-gradient-to-r from-slate-900 via-blue-900 to-indigo-600 text-white shadow-2xl">
               <Transition name="dash-fade" mode="out-in">
                 <div :key="`${overviewPeriod}-${selectedMetric}`" class="relative z-10 p-6 sm:p-8">
                   <div class="flex flex-col lg:flex-row gap-6 lg:gap-8">
@@ -123,7 +123,7 @@
                           :key="option.value"
                           type="button"
                           class="rounded-xl px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all duration-200"
-                          :class="overviewPeriod === option.value ? 'bg-white text-red-600 shadow-lg scale-105' : 'bg-white/15 text-white/90 hover:bg-white/25'"
+                          :class="overviewPeriod === option.value ? 'bg-white text-blue-600 shadow-lg scale-105' : 'bg-white/15 text-white/90 hover:bg-white/25'"
                           @click="overviewPeriod = option.value; overviewOffset = 0"
                         >
                           {{ option.label }}
@@ -392,7 +392,7 @@
                         </div>
                         <div class="mt-4 h-2 w-full rounded-full bg-gray-100">
                           <div
-                            class="h-full rounded-full bg-gradient-to-r from-brand-dark via-red-500 to-brand-primary"
+                            class="h-full rounded-full bg-gradient-to-r from-blue-600 via-indigo-500 to-sky-400"
                             :style="{ width: `${Math.min(100, Math.max(0, topGroupsMaxValue ? ((Number(topGroupsSort === 'quantity' ? group.total_quantity : group.total_profit) || 0) / topGroupsMaxValue) * 100 : 0))}%` }"
                           ></div>
                         </div>
@@ -414,7 +414,7 @@
                   </div>
 
                   <div class="space-y-6">
-                    <div class="card-base relative overflow-hidden rounded-3xl border border-red-100/60 bg-white p-6 shadow-lg">
+                    <div class="card-base relative overflow-hidden rounded-3xl border border-blue-100/60 bg-white p-6 shadow-lg">">
                       <div class="mb-5 flex flex-col items-start gap-3 sm:flex-row sm:items-center">
                         <span class="rounded-xl bg-brand-primary/20 p-2 text-brand-dark">
                           <ClipboardDocumentCheckIcon class="h-6 w-6" />
@@ -432,7 +432,7 @@
                           </div>
                           <div class="h-1.5 w-full rounded-full bg-gray-100">
                             <div
-                              class="h-full rounded-full bg-gradient-to-r from-brand-dark via-red-500 to-brand-primary"
+                              class="h-full rounded-full bg-gradient-to-r from-blue-600 via-indigo-500 to-sky-400"
                           :style="{ width: `${status.count ? Math.min(100, Math.max(4, overviewStatusTotal ? (status.count / overviewStatusTotal) * 100 : 0)) : 0}%` }"
                             ></div>
                           </div>
@@ -443,7 +443,7 @@
                       </div>
                     </div>
 
-                    <div class="card-base relative overflow-hidden rounded-3xl border border-red-100/60 bg-white p-6 shadow-lg">
+                    <div class="card-base relative overflow-hidden rounded-3xl border border-blue-100/60 bg-white p-6 shadow-lg">">
                       <div class="flex flex-col items-start gap-3 sm:flex-row sm:items-center">
                         <span class="rounded-xl bg-brand-primary/20 p-2 text-brand-dark">
                           <TruckIcon class="h-6 w-6" />
@@ -1338,7 +1338,7 @@ const overviewPeriods = [
   { value: 'custom', label: 'произвольный' }
 ] as const
 type OverviewPeriod = typeof overviewPeriods[number]['value']
-const overviewPeriod = ref<OverviewPeriod>('year')
+const overviewPeriod = ref<OverviewPeriod>('today')
 const selectedMetric = ref<'revenue' | 'profit' | 'orders'>('profit')
 const overviewOffset = ref(0)
 // Произвольный диапазон (используется когда overviewPeriod === 'custom')

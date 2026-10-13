@@ -1,30 +1,29 @@
 <template>
-  <div class="min-h-screen bg-gray-50 px-4 py-6 sm:px-6 lg:px-8">
-    <div class="mx-auto w-full max-w-7xl space-y-8">
-      <div>
-        <h1 class="text-2xl font-bold text-gray-900 sm:text-3xl">Клиенты</h1>
-        <p class="mt-2 text-sm text-gray-600 sm:text-base">Клиенты, авторизации и ограничения</p>
+  <div class="crm-orders-page">
+    <div class="crm-orders-content">
+      <div class="crm-orders-heading">
+        <h1 class="crm-orders-title">Клиенты</h1>
       </div>
 
       <!-- Tabs -->
-      <div class="flex flex-wrap gap-2">
-        <button type="button" @click="activeTab = 'inactive'" :class="tabButtonClass('inactive')" :aria-pressed="activeTab === 'inactive'">
+      <div class="crm-orders-toolbar">
+        <button type="button" @click="activeTab = 'inactive'" class="crm-reference-button" :class="activeTab === 'inactive' ? 'crm-reference-button--primary' : 'crm-reference-button--gray'" :aria-pressed="activeTab === 'inactive'">
           Не заказывали более 45 дней
         </button>
-        <button type="button" @click="activeTab = 'processed'" :class="tabButtonClass('processed')" :aria-pressed="activeTab === 'processed'">
+        <button type="button" @click="activeTab = 'processed'" class="crm-reference-button" :class="activeTab === 'processed' ? 'crm-reference-button--primary' : 'crm-reference-button--gray'" :aria-pressed="activeTab === 'processed'">
           Обработанные
         </button>
-        <button type="button" @click="activeTab = 'all'" :class="tabButtonClass('all')" :aria-pressed="activeTab === 'all'">
+        <button type="button" @click="activeTab = 'all'" class="crm-reference-button" :class="activeTab === 'all' ? 'crm-reference-button--primary' : 'crm-reference-button--gray'" :aria-pressed="activeTab === 'all'">
           Все клиенты
         </button>
-        <button type="button" @click="activeTab = 'authorization'" :class="tabButtonClass('authorization')" :aria-pressed="activeTab === 'authorization'">
+        <button type="button" @click="activeTab = 'authorization'" class="crm-reference-button" :class="activeTab === 'authorization' ? 'crm-reference-button--primary' : 'crm-reference-button--gray'" :aria-pressed="activeTab === 'authorization'">
           Авторизация
           <span
             v-if="pendingAuthorizationCount"
             class="ml-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700"
           >{{ pendingAuthorizationCount }}</span>
         </button>
-        <button type="button" @click="activeTab = 'blocked'" :class="tabButtonClass('blocked')" :aria-pressed="activeTab === 'blocked'">
+        <button type="button" @click="activeTab = 'blocked'" class="crm-reference-button" :class="activeTab === 'blocked' ? 'crm-reference-button--primary' : 'crm-reference-button--gray'" :aria-pressed="activeTab === 'blocked'">
           Заблокированные
           <span
             v-if="blockedTotalCount > 0"

@@ -1663,6 +1663,25 @@
         </div>
       </Transition>
     </Teleport>
+
+    <!-- Dota 2 Style Quick Number Input Overlay: мгновенное появление и исчезновение, без переходов и блюра -->
+    <Teleport to="body">
+      <div
+        v-if="dotaOverlayActive"
+        class="fixed inset-0 z-[9998] flex items-center justify-center bg-black/45 pointer-events-none"
+      >
+        <div
+          class="flex items-center justify-center rounded-3xl bg-black/85 px-14 py-9 text-white shadow-2xl border border-white/15"
+        >
+          <div class="text-center">
+            <div class="text-[11px] uppercase tracking-[0.3em] text-amber-400 font-semibold mb-1">Поиск по ячейке / номеру</div>
+            <div class="text-8xl font-black tracking-wider text-amber-300 font-mono drop-shadow-[0_0_30px_rgba(251,191,36,0.8)]">
+              {{ dotaKeyBuffer }}
+            </div>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -2292,6 +2311,101 @@ const hasActiveSettings = computed(() =>
 
 const searchQuery = ref("");
 let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+let dotaKeyBuffer = "";
+let dotaKeyTimer: ReturnType<typeof setTimeout> | null = null;
+const dotaOverlayActive = ref(false);
+let dotaOverlayTimer: ReturnType<typeof setTimeout> | null = null;
+
+function triggerDotaOverlay() {
+  // Мгновенное появление без анимации
+  dotaOverlayActive.value = true;
+  if (dotaOverlayTimer) {
+    clearTimeout(dotaOverlayTimer);
+  }
+  dotaOverlayTimer = setTimeout(() => {
+    if (!dotaKeyBuffer) {
+      dotaOverlayActive.value = false;
+    }
+  }, 450);
+}
+
+function hideDotaOverlay() {
+  // Мгновенное исчезновение без анимации
+  if (dotaOverlayTimer) {
+    clearTimeout(dotaOverlayTimer);
+    dotaOverlayTimer = null;
+  }
+  dotaOverlayActive.value = false;
+}
+
+function handleGlobalKeydown(event: KeyboardEvent) {
+  // Ignore if user is typing in an input, textarea, select, or contenteditable
+  const target = event.target as HTMLElement | null;
+  if (
+    target &&
+    (target.tagName === "INPUT" ||
+     target.tagName === "TEXTAREA" ||
+     target.tagName === "SELECT" ||
+     target.isContentEditable)
+  ) {
+    return;
+  }
+
+  // Check if pressed key is a digit 0-9
+  if (/^[0-9]$/.test(event.key)) {
+    event.preventDefault();
+
+    // Append digit to buffer
+    dotaKeyBuffer += event.key;
+    // Keep max 2 digits for cell numbers (e.g. up to 99 or specific 2-digit cell numbers)
+    if (dotaKeyBuffer.length > 2) {
+      dotaKeyBuffer = dotaKeyBuffer.slice(-2);
+    }
+
+    if (dotaKeyTimer) {
+      clearTimeout(dotaKeyTimer);
+    }
+
+    // Set search query immediately for responsive Dota-style feel
+    searchQuery.value = dotaKeyBuffer;
+    handleSearch();
+    triggerDotaOverlay();
+
+    // Reset buffer after 1.2 seconds of inactivity so next typing starts fresh
+    dotaKeyTimer = setTimeout(() => {
+      dotaKeyBuffer = "";
+      dotaKeyTimer = null;
+      hideDotaOverlay();
+    }, 1200);
+  } else if (event.key === "Backspace") {
+    // Backspace removes last digit or clears quick filter
+    if (dotaKeyBuffer.length > 0) {
+      event.preventDefault();
+      dotaKeyBuffer = dotaKeyBuffer.slice(0, -1);
+      searchQuery.value = dotaKeyBuffer;
+      handleSearch();
+      if (dotaKeyBuffer.length > 0) {
+        triggerDotaOverlay();
+      } else {
+        hideDotaOverlay();
+      }
+    } else if (searchQuery.value) {
+      event.preventDefault();
+      searchQuery.value = "";
+      handleSearch();
+      hideDotaOverlay();
+    }
+  } else if (event.key === "Escape") {
+    // Clear quick filter on ESC
+    if (searchQuery.value || dotaKeyBuffer) {
+      event.preventDefault();
+      searchQuery.value = "";
+      dotaKeyBuffer = "";
+      handleSearch();
+      hideDotaOverlay();
+    }
+  }
+}
 
 // Use store for notification settings (global)
 const {
@@ -3138,6 +3252,7 @@ onMounted(async () => {
 
   // Close dropdowns on click outside
   document.addEventListener('click', handleClickOutside);
+  window.addEventListener('keydown', handleGlobalKeydown);
 });
 
 onUnmounted(() => {
@@ -3155,6 +3270,7 @@ onUnmounted(() => {
     unsubscribeOrderActivity = null;
   }
   document.removeEventListener('visibilitychange', handleVisibilityChange);
+  window.removeEventListener('keydown', handleGlobalKeydown);
   if (highlightTimer) {
     clearTimeout(highlightTimer);
     highlightTimer = null;
@@ -3162,6 +3278,14 @@ onUnmounted(() => {
   if (searchDebounceTimer) {
     clearTimeout(searchDebounceTimer);
     searchDebounceTimer = null;
+  }
+  if (dotaKeyTimer) {
+    clearTimeout(dotaKeyTimer);
+    dotaKeyTimer = null;
+  }
+  if (dotaOverlayTimer) {
+    clearTimeout(dotaOverlayTimer);
+    dotaOverlayTimer = null;
   }
   if (pollActivityRefreshTimer) {
     clearTimeout(pollActivityRefreshTimer);

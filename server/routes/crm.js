@@ -660,7 +660,45 @@ crmRouter.get('/api/admin/crm/dashboard-timeseries', authMiddleware, requireDash
       return toSqliteUtcString(date);
     }
 
-    if (granularity === 'month') {
+    if (period === 'today') {
+      // По часам (24 часа) для выбранного дня с учетом таймзоны (Минск UTC+3)
+      for (let h = 0; h < 24; h++) {
+        // start - это начало календарного дня в UTC (например 21:00 UTC предыдущего дня). 
+        // В Минске это 00:00 местного времени. Прибавляем h часов + 3 часа (для перехода к локальному времени Минска в UTC объекте Date для точного toSqliteUtcString).
+        const hourStart = new Date(start.getTime() + h * 3600 * 1000);
+        const hourEnd = new Date(hourStart.getTime() + 3600 * 1000);
+
+        const stats = db.prepare(`
+          SELECT 
+            COALESCE(COUNT(o.id), 0)                              AS orders,
+            COALESCE(SUM(COALESCE(o.final_amount, o.total_amount)), 0) AS revenue,
+            COALESCE(SUM(COALESCE(o.profit, 0)), 0)               AS profit
+          FROM orders o
+          WHERE o.status IN ('completed', 'delivered')
+            AND o.paid_at IS NOT NULL
+            AND o.paid_at >= ?
+            AND o.paid_at < ?
+        `).get(toSqliteDate(hourStart), toSqliteDate(hourEnd));
+
+        const posStats = db.prepare(`
+          SELECT 
+            COALESCE(COUNT(*), 0) AS orders,
+            COALESCE(SUM(price), 0) AS revenue,
+            COALESCE(SUM(profit), 0) AS profit
+          FROM pos_sales
+          WHERE status = 'completed'
+            AND datetime(completed_at) >= ?
+            AND datetime(completed_at) < ?
+        `).get(toSqliteDate(hourStart), toSqliteDate(hourEnd));
+
+        data.push({
+          label: `${String(h).padStart(2, '0')}:00`,
+          orders: (stats?.orders || 0) + (posStats?.orders || 0),
+          revenue: (stats?.revenue || 0) + (posStats?.revenue || 0),
+          profit: (stats?.profit || 0) + (posStats?.profit || 0)
+        });
+      }
+    } else if (granularity === 'month') {
       // По месяцам для года
       const monthNames = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
       

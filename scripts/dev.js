@@ -61,7 +61,7 @@ function addPrefix(data, prefix, color) {
 
 // Start frontend development server
 console.log('🎨 Starting frontend development server...');
-const frontend = spawnProcess('npm', ['run', 'dev', '--', '--host', '0.0.0.0', '--port', String(DEV_FRONTEND_PORT)], {
+const frontend = spawnProcess('npm', ['run', 'dev', '--', '--port', String(DEV_FRONTEND_PORT)], {
   cwd: join(projectRoot, 'frontend')
 });
 
