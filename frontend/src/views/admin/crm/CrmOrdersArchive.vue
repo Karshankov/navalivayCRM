@@ -161,18 +161,19 @@
           v-model="passwordInput"
           :password-error="passwordError"
           :verifying-password="verifyingPassword"
+          input-class="w-full rounded-xl border border-[#eaf0f9] px-4 py-3 text-sm text-[#081b4b] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0958ff]"
         />
         <div class="flex gap-3 pt-2">
           <button
             type="submit"
-            class="flex-1 rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-400"
+            class="flex-1 rounded-xl bg-[linear-gradient(100deg,#05b8ff,#185dff)] px-4 py-3 text-[13px] font-bold text-white shadow-[0_8px_16px_#148cff30] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
             :disabled="verifyingPassword"
           >
             {{ verifyingPassword ? "Проверяем…" : "Подтвердить" }}
           </button>
           <button
             type="button"
-            class="flex-1 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+            class="flex-1 rounded-xl bg-[linear-gradient(#f7faff,#e9f0fa)] px-4 py-3 text-[13px] font-bold text-[#233e70] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
             @click="closePasswordModal"
             :disabled="verifyingPassword"
           >
@@ -315,6 +316,8 @@ function toggleView() {
 }
 
 onMounted(() => {
+  // Ключ спрашивается при каждом входе в раздел: допуск живёт один визит.
+  crmStore.resetProfitAccess()
   if (profitUnlocked.value) {
     fetchArchivedOrders()
   }

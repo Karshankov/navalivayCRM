@@ -24,27 +24,14 @@
             <!-- Overview -->
             <template v-if="activeTab === 'dashboard'">
               <!-- Profit access form for dashboard -->
-              <div v-if="!dashboardReady" class="flex justify-center py-12">
-                <div class="w-full max-w-sm rounded-2xl bg-white p-6 shadow">
-                  <h3 class="text-lg font-semibold text-gray-900 text-center mb-3">Введите код доступа</h3>
-                  <form class="space-y-4" @submit.prevent="handleProfitUnlocked">
-                    <input
-                      v-model="profitPassword"
-                      type="password"
-                      autocomplete="current-password"
-                      class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-dark focus:outline-none focus:ring-2 focus:ring-brand-dark/20"
-                      placeholder="Пароль"
-                    />
-                    <p v-if="profitError" class="text-sm text-red-600">{{ profitError }}</p>
-                    <button
-                      type="submit"
-                      class="w-full rounded-lg bg-brand-dark px-4 py-2 text-sm font-semibold text-white hover:bg-brand-dark/90 disabled:cursor-not-allowed disabled:bg-brand-dark/60"
-                      :disabled="verifyingProfit"
-                    >
-                      {{ verifyingProfit ? 'Проверяем…' : 'Войти' }}
-                    </button>
-                  </form>
-                </div>
+              <div v-if="!dashboardReady">
+                <ProfitAccessGate
+                  title="Введите код доступа"
+                  description="Сводная статистика закрыта. В окне проверок 10:00–16:00 по Минску сюда пускает только ключ владельца."
+                  :verifying="verifyingProfit"
+                  :error="profitError"
+                  @submit="handleProfitGateSubmit"
+                />
               </div>
               
               <div v-else class="space-y-6">
@@ -492,27 +479,14 @@
           </template>
 
           <template v-else-if="activeTab === 'categories'">
-            <div v-if="!profitUnlocked" class="flex justify-center py-12">
-              <div class="w-full max-w-sm rounded-2xl bg-white p-6 shadow">
-                <h3 class="text-lg font-semibold text-gray-900 text-center mb-3">Введите код доступа</h3>
-                <form class="space-y-4" @submit.prevent="handleProfitUnlocked">
-                  <input
-                    v-model="profitPassword"
-                    type="password"
-                    autocomplete="current-password"
-                    class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-dark focus:outline-none focus:ring-2 focus:ring-brand-dark/20"
-                    placeholder="Пароль"
-                  />
-                  <p v-if="profitError" class="text-sm text-red-600">{{ profitError }}</p>
-                  <button
-                    type="submit"
-                    class="w-full rounded-lg bg-brand-dark px-4 py-2 text-sm font-semibold text-white hover:bg-brand-dark/90 disabled:cursor-not-allowed disabled:bg-brand-dark/60"
-                    :disabled="verifyingProfit"
-                  >
-                    {{ verifyingProfit ? 'Проверяем…' : 'Войти' }}
-                  </button>
-                </form>
-              </div>
+            <div v-if="!profitUnlocked">
+              <ProfitAccessGate
+                title="Введите код доступа"
+                description="Категории содержат оптовые цены и структуру ассортимента. Введите ключ, чтобы продолжить."
+                :verifying="verifyingProfit"
+                :error="profitError"
+                @submit="handleProfitGateSubmit"
+              />
             </div>
             <div v-else class="space-y-6">
               <IncompleteGroupsPanel @open-group="handleOpenIncompleteGroup" />
@@ -533,27 +507,14 @@
           </template>
 
           <template v-else-if="activeTab === 'products'">
-            <div v-if="!profitUnlocked" class="flex justify-center py-12">
-              <div class="w-full max-w-sm rounded-2xl bg-white p-6 shadow">
-                <h3 class="text-lg font-semibold text-gray-900 text-center mb-3">Введите код доступа</h3>
-                <form class="space-y-4" @submit.prevent="handleProfitUnlocked">
-                  <input
-                    v-model="profitPassword"
-                    type="password"
-                    autocomplete="current-password"
-                    class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-dark focus:outline-none focus:ring-2 focus:ring-brand-dark/20"
-                    placeholder="Пароль"
-                  />
-                  <p v-if="profitError" class="text-sm text-red-600">{{ profitError }}</p>
-                  <button
-                    type="submit"
-                    class="w-full rounded-lg bg-brand-dark px-4 py-2 text-sm font-semibold text-white hover:bg-brand-dark/90 disabled:cursor-not-allowed disabled:bg-brand-dark/60"
-                    :disabled="verifyingProfit"
-                  >
-                    {{ verifyingProfit ? 'Проверяем…' : 'Войти' }}
-                  </button>
-                </form>
-              </div>
+            <div v-if="!profitUnlocked">
+              <ProfitAccessGate
+                title="Введите код доступа"
+                description="Каталог содержит себестоимость и остатки. Введите ключ, чтобы продолжить."
+                :verifying="verifyingProfit"
+                :error="profitError"
+                @submit="handleProfitGateSubmit"
+              />
             </div>
             <div v-else class="space-y-6">
               <AdminProductsTable
@@ -1309,6 +1270,8 @@ import IncompleteGroupsPanel from '@/components/admin/IncompleteGroupsPanel.vue'
 import AdminAgreementsSection from '@/components/admin/AdminAgreementsSection.vue'
 import AdminBotSection from '@/components/admin/AdminBotSection.vue'
 import CashierLockScreen from '@/components/admin/CashierLockScreen.vue'
+import ProfitAccessGate from '@/components/admin/ProfitAccessGate.vue'
+import '@/styles/crm-reference-page.css'
 import CountUp from '@/components/CountUp.vue'
 import CountUpCurrency from '@/components/CountUpCurrency.vue'
 import { adminTabs, crmLinks, adminTabOptions, type AdminTabId } from '@/constants/adminNavigation'
@@ -1600,6 +1563,25 @@ async function ensureTabData(tab: AdminTabId) {
   // этот магазин пароль вообще.
   await crmStore.fetchDashboardAccessState().catch(() => undefined)
 
+  // Ключ спрашивается при каждом входе в закрытый раздел: допуск выдаётся
+  // на один визит и отбирается при выходе (см. resetProfitAccess в сторе).
+  // Пока человек в разделе, перезагрузки данных его не трогают.
+  if (tab === 'dashboard' || tab === 'products' || tab === 'categories') {
+    const isReentry = tab !== ensureTabDataLastTab
+    ensureTabDataLastTab = tab
+    if (isReentry) {
+      crmStore.resetProfitAccess()
+      profitPassword.value = ''
+      profitError.value = ''
+      resetLoadedState()
+    }
+  } else {
+    // Ушли из закрытых разделов — допуск больше не нужен, отбираем его,
+    // чтобы следующий вход спросил ключ заново.
+    ensureTabDataLastTab = tab
+    crmStore.resetProfitAccess()
+  }
+
   if (tab === 'dashboard') {
     if (dataLoaded.dashboard || !dashboardReady.value) {
       return
@@ -1759,6 +1741,14 @@ const dataLoaded = reactive<Record<DataSliceKey, boolean>>({
   settings: false,
   dashboard: false
 })
+
+/**
+ * Вкладка последнего входа в ensureTabData. Через неё отличаем настоящий
+ * вход в раздел от повторных прогонов ensureTabData (watch, авторизация,
+ * возврат в раздел после разблокировки): настоящий вход отбирает допуск
+ * и спрашивает ключ заново, повторные — нет.
+ */
+let ensureTabDataLastTab: AdminTabId | null = null
 
 const getInitialTab = (): AdminTabId => {
   const tabParam = route.query.tab as string | undefined
@@ -2236,6 +2226,11 @@ async function submitProfitPassword() {
   }
 }
 
+async function handleProfitGateSubmit(entered: string) {
+  profitPassword.value = entered
+  await handleProfitUnlocked()
+}
+
 async function handleProfitUnlocked() {
   if (!profitPassword.value.trim()) {
     profitError.value = 'Введите ключ'
@@ -2254,6 +2249,7 @@ async function handleProfitUnlocked() {
       await crmStore.verifyProfitPassword(entered)
     }
     profitPassword.value = ''
+    profitError.value = ''
     await loadDataAfterProfitUnlock()
   } catch (error: any) {
     console.error('Failed to unlock profit access:', error)

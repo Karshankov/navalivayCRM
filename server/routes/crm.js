@@ -661,8 +661,11 @@ crmRouter.get('/api/admin/crm/dashboard-timeseries', authMiddleware, requireDash
     }
 
     if (period === 'today') {
-      // По часам (24 часа) для выбранного дня с учетом таймзоны (Минск UTC+3)
-      for (let h = 0; h < 24; h++) {
+      // По часам только в рабочее время магазина (10:00–21:00, Минск).
+      // Вне этих часов продаж нет — столбики-нули только мешали чтению.
+      const WORK_DAY_START_HOUR = 10;
+      const WORK_DAY_END_HOUR = 21; // последний отображаемый час включительно
+      for (let h = WORK_DAY_START_HOUR; h <= WORK_DAY_END_HOUR; h++) {
         // start - это начало календарного дня в UTC (например 21:00 UTC предыдущего дня). 
         // В Минске это 00:00 местного времени. Прибавляем h часов + 3 часа (для перехода к локальному времени Минска в UTC объекте Date для точного toSqliteUtcString).
         const hourStart = new Date(start.getTime() + h * 3600 * 1000);

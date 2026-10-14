@@ -1,217 +1,225 @@
 <template>
-  <div class="space-y-6">
-    <AdminSectionHero
-      title="Категории"
-      description="Управление категориями"
-      :icon="TagIcon"
-      tone="violet"
-    >
-      <template #meta>
-        <span class="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/12 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-white/85">
-          Всего: {{ localCategories.length }}
-        </span>
-        <span
-          v-if="searchQuery"
-          class="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/12 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-white/80"
+  <div class="crm-ref">
+    <!-- Заголовок страницы (как «Заказы») -->
+    <div class="crm-ref-heading">
+      <h1 class="crm-ref-title">Категории</h1>
+      <div class="crm-ref-search">
+        <input
+          v-model="searchQuery"
+          type="search"
+          placeholder="Поиск по названию или slug..."
+          class="crm-ref-search-input"
+          aria-label="Поиск по категориям"
+        />
+        <svg
+          v-if="!searchQuery"
+          class="crm-ref-search-icon"
+          aria-hidden="true"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
         >
-          Отфильтровано: {{ displayedCategories.length }}
-        </span>
-      </template>
-      <template #actions>
-        <div class="flex flex-wrap items-center justify-end gap-2">
-          <button
-            @click="$emit('manage-wholesale-links')"
-            class="flex items-center justify-center gap-2 rounded-xl border border-white/25 bg-white/10 px-5 py-3 text-sm font-semibold text-white shadow-lg transition-all duration-200 hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-white/60 focus:ring-offset-2 focus:ring-offset-transparent"
-          >
-            <span>Оптовые ссылки</span>
-          </button>
-          <button
-            @click="$emit('create')"
-            class="flex items-center justify-center gap-2 rounded-xl bg-white/15 px-5 py-3 text-sm font-semibold text-white shadow-lg transition-all duration-200 hover:bg-white/25 focus:outline-none focus:ring-2 focus:ring-white/60 focus:ring-offset-2 focus:ring-offset-transparent"
-          >
-            <span>Добавить категорию</span>
-          </button>
-        </div>
-      </template>
-    </AdminSectionHero>
-
-    <div class="relative overflow-hidden rounded-3xl border border-white/60 bg-white/85 p-4 md:p-6 shadow-xl backdrop-blur">
-      <div class="pointer-events-none absolute -top-16 -right-10 h-40 w-40 rounded-full bg-violet-200/35 blur-3xl"></div>
-      <div class="pointer-events-none absolute bottom-0 left-6 h-28 w-28 rounded-full bg-brand-dark/10 blur-2xl"></div>
-      <div class="relative z-10 space-y-6">
-      <div v-if="isLoading" class="py-12 text-center">
-        <div class="animate-spin w-8 h-8 border-4 border-brand-dark border-t-transparent rounded-full mx-auto"></div>
-        <p class="mt-2 text-gray-600">Загрузка категорий...</p>
-      </div>
-
-      <div v-else-if="hasAnyCategories" class="space-y-6">
-        <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div class="relative w-full lg:max-w-md">
-            <span class="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-violet-400">
-              <MagnifyingGlassIcon class="h-5 w-5" />
-            </span>
-            <input
-              v-model="searchQuery"
-              type="search"
-              placeholder="Поиск по названию или slug"
-              class="w-full rounded-2xl border border-white/60 bg-white/85 px-4 py-3 pl-12 text-sm font-medium text-gray-900 shadow-inner transition focus:border-violet-200 focus:outline-none focus:ring-2 focus:ring-violet-200/70"
-            />
-          </div>
-          <div class="flex flex-wrap items-center justify-between gap-2 text-xs font-semibold uppercase tracking-[0.28em] text-gray-500">
-            <span>Всего: {{ localCategories.length }}</span>
-            <span v-if="searchQuery" class="text-violet-500">Отфильтровано: {{ displayedCategories.length }}</span>
-          </div>
-        </div>
-
-        <div v-if="displayedCategories.length" class="grid gap-4 lg:gap-6 grid-cols-1 lg:grid-cols-2 xl:grid-cols-3">
-          <div
-            v-for="category in displayedCategories"
-            :key="category.id"
-            class="relative overflow-hidden rounded-2xl border border-white/70 bg-white/90 shadow-lg backdrop-blur transition-all duration-300 hover:-translate-y-1 hover:shadow-xl"
-          >
-            <div
-              v-if="category.cover_image"
-              class="absolute inset-0 bg-cover bg-center opacity-85"
-              :style="{ backgroundImage: `url(${category.cover_image})` }"
-            ></div>
-            <div class="absolute inset-0 pointer-events-none bg-gradient-to-b from-white/80 via-white/70 to-white/85"></div>
-
-            <div class="relative z-10 p-5 space-y-4">
-              <!-- ========== ЗАГОЛОВОЧНАЯ ОБЛАСТЬ ========== -->
-              <div class="flex items-center justify-between gap-4">
-              <div class="flex-1 min-w-0">
-                <h3 class="text-lg font-semibold text-gray-900 leading-tight mb-1">{{ category.name }}</h3>
-                <p class="text-sm text-gray-500 font-mono">{{ category.slug }}</p>
-              </div>
-              <button
-                @click="copyCategoryLink(category.slug)"
-                class="inline-flex items-center gap-1 rounded-lg border border-white/70 bg-white/80 px-3 py-1 text-xs font-semibold text-blue-600 shadow-sm transition hover:-translate-y-0.5 hover:bg-blue-50"
-                :title="`Копировать ссылку на категорию`"
-              >
-                <DocumentDuplicateIcon class="w-3 h-3" />
-                Ссылка
-              </button>
-            </div>
-
-              <!-- ========== БЛОК МЕТРИК ========== -->
-              <div class="flex items-center justify-between rounded-2xl border border-white/70 bg-white/85 p-4 shadow-sm backdrop-blur">
-              <div class="space-y-1">
-                <div class="flex items-center gap-1">
-                  <span class="text-base font-medium text-gray-900">Товаров:</span>
-                  <span class="text-base font-semibold text-emerald-600">{{ category.productCount || 0 }}</span>
-                </div>
-                <div class="flex items-center gap-1 text-sm text-gray-600">
-                  <span>Линеек:</span>
-                  <span class="font-semibold text-gray-900">{{ props.groupCounts?.[category.id] ?? 0 }}</span>
-                </div>
-                <div class="flex items-center gap-1 text-sm text-gray-600">
-                  <span>Вдруг пригодится:</span>
-                  <span class="font-semibold text-gray-900">{{ props.crossSellCounts?.[category.id] ?? 0 }}</span>
-                </div>
-              </div>
-              <div class="text-sm text-gray-600 text-right">
-                <span class="block">Порядок</span>
-                <span class="font-medium text-gray-900">{{ getDisplayOrder(category.id) }}</span>
-              </div>
-            </div>
-
-            <!-- ========== ДОПОЛНИТЕЛЬНЫЕ МЕТКИ ========== -->
-            <div v-if="category.hide_empty === 1 || category.hide_empty === true" class="mb-5">
-              <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
-                🚫 Скрывается при отсутствии товаров
-              </span>
-            </div>
-
-            <!-- ========== УПРАВЛЕНИЕ ПОРЯДКОМ ========== -->
-              <div class="flex items-center justify-center gap-3 mb-5">
-              <span class="text-sm text-gray-600 font-medium">Порядок</span>
-              <button
-                class="flex h-9 w-9 items-center justify-center rounded-xl border border-white/70 bg-white/85 text-gray-600 transition-all duration-200 hover:-translate-y-0.5 hover:bg-violet-500/90 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
-                :disabled="!canMoveUp(category.id)"
-                title="Переместить вверх"
-                @click="moveUp(category.id)"
-              >
-                <ChevronUpIcon class="w-4 h-4" />
-              </button>
-              <button
-                class="flex h-9 w-9 items-center justify-center rounded-xl border border-white/70 bg-white/85 text-gray-600 transition-all duration-200 hover:-translate-y-0.5 hover:bg-violet-500/90 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
-                :disabled="!canMoveDown(category.id)"
-                title="Переместить вниз"
-                @click="moveDown(category.id)"
-              >
-                <ChevronDownIcon class="w-4 h-4" />
-              </button>
-            </div>
-
-            <!-- ========== БЛОК ДЕЙСТВИЙ ========== -->
-            <div class="grid grid-cols-2 gap-2 text-[0.875rem] leading-tight">
-              <button
-                class="flex items-center justify-center gap-2 rounded-xl border border-emerald-200/70 bg-emerald-50/80 px-4 py-2 font-semibold text-emerald-700 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-emerald-100 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-emerald-300/60 active:translate-y-0 active:scale-[0.99]"
-                @click="$emit('manage-groups', category)"
-              >
-                Линейки
-              </button>
-              <button
-                class="flex items-center justify-center gap-2 rounded-xl border border-purple-200/70 bg-purple-50/80 px-4 py-2 font-semibold text-purple-700 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-purple-100 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-purple-300/60 active:translate-y-0 active:scale-[0.99]"
-                @click="$emit('manage-cross-sell', category)"
-              >
-                Вдруг пригодится
-              </button>
-              <button 
-                @click="$emit('edit', category)" 
-                class="flex items-center justify-center gap-2 rounded-xl border border-blue-200/70 bg-blue-50/80 px-4 py-2 font-semibold text-blue-700 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-blue-100 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-300/60 active:translate-y-0 active:scale-[0.99]"
-              >
-                Редактировать
-              </button>
-              <button
-                @click="$emit('delete', category.id)"
-                :disabled="(category.productCount || 0) > 0"
-                class="admin-link-button admin-link-button--danger w-full disabled:cursor-not-allowed disabled:opacity-40"
-                :class="(category.productCount || 0) > 0 ? 'border border-gray-200 bg-gray-50 text-gray-400' : ''"
-                :title="(category.productCount || 0) > 0 ? `Нельзя удалить категорию с товарами (${category.productCount})` : 'Удалить категорию'"
-              >
-                Удалить
-              </button>
-            </div>
-            </div>
-          </div>
-        </div>
-
-        <div
-          v-if="displayedCategories.length"
-          class="relative overflow-hidden rounded-2xl border border-dashed border-violet-200/70 bg-violet-50/50 px-4 py-3 text-center text-[0.65rem] font-semibold uppercase tracking-[0.3em] text-violet-500 shadow-sm backdrop-blur"
-        >
-          <div class="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(139,92,246,0.18),transparent_55%)]"></div>
-          <div class="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_bottom_left,rgba(79,70,229,0.12),transparent_60%)]"></div>
-          <p class="relative hidden sm:block">Используйте стрелки для изменения порядка</p>
-          <p class="relative sm:hidden">Стрелки помогут изменить порядок</p>
-        </div>
-
-        <div v-else class="text-center py-6 px-4 rounded-2xl border border-dashed border-violet-200/60 bg-white/85 text-gray-600 shadow-inner backdrop-blur">
-          По запросу «{{ searchQuery }}» категории не найдены
-        </div>
-      </div>
-
-      <div v-else class="relative text-center py-8 px-4">
-        <div class="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(139,92,246,0.12),transparent_60%)]"></div>
-        <div class="relative mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-violet-100">
-          <svg class="h-8 w-8 text-violet-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 113 12V7a4 4 0 014-4z"/>
-          </svg>
-        </div>
-        <h3 class="text-lg font-semibold text-gray-900 mb-2">Категорий пока нет</h3>
-        <p class="text-sm text-gray-600 mb-4">Создайте первую категорию для организации товаров</p>
-        <button
-          @click="$emit('create')"
-          class="w-full sm:w-auto rounded-2xl bg-gradient-to-r from-brand-dark via-rose-500 to-brand-primary px-6 py-3 text-sm font-semibold text-white shadow-md transition hover:shadow-lg"
-        >
-          + Создать категорию
-        </button>
-      </div>
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+          />
+        </svg>
       </div>
     </div>
-    
-    <!-- Toast notification -->
+
+    <!-- Тулбар (как «Заказы») -->
+    <div class="crm-ref-toolbar">
+      <button
+        type="button"
+        class="crm-ref-button crm-ref-button--primary"
+        @click="$emit('create')"
+      >
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+        </svg>
+        <span>Добавить категорию</span>
+      </button>
+      <button
+        type="button"
+        class="crm-ref-button crm-ref-button--gray"
+        @click="$emit('manage-wholesale-links')"
+      >
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" />
+        </svg>
+        <span>Оптовые ссылки</span>
+      </button>
+      <span class="crm-ref-toolbar-spacer" aria-hidden="true" />
+      <span class="crm-ref-counter">{{ localCategories.length }} всего</span>
+      <span v-if="searchQuery" class="crm-ref-counter crm-ref-counter--accent">
+        {{ displayedCategories.length }} найдено
+      </span>
+    </div>
+
+    <!-- Загрузка -->
+    <div v-if="isLoading" class="crm-ref-card crm-ref-empty">
+      <span class="crm-ref-empty-symbol">
+        <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+        </svg>
+      </span>
+      <b>Загружаем категории…</b>
+      <span>минуту</span>
+    </div>
+
+    <!-- Сетка категорий -->
+    <div v-else-if="hasAnyCategories" class="grid gap-4 grid-cols-1 lg:grid-cols-2 xl:grid-cols-3">
+      <article
+        v-for="category in displayedCategories"
+        :key="category.id"
+        class="crm-ref-card p-5 flex flex-col gap-4"
+      >
+        <!-- Обложка -->
+        <div class="relative h-28 rounded-[13px] overflow-hidden bg-[#f4f7fd]">
+          <div
+            v-if="category.cover_image"
+            class="absolute inset-0 bg-cover bg-center"
+            :style="{ backgroundImage: `url(${category.cover_image})` }"
+          ></div>
+          <div v-else class="absolute inset-0 grid place-items-center text-[#c3cde2]" aria-hidden="true">
+            <svg class="h-9 w-9" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" d="M9.53 16.122a3 3 0 00-5.78 1.128 2.25 2.25 0 01-2.4 2.245 4.5 4.5 0 008.4-2.245c0-.399-.078-.78-.22-1.128zm0 0a15.998 15.998 0 003.388-1.62m-5.043-.025a15.994 15.994 0 011.622-3.395m3.42 3.42a15.995 15.995 0 004.764-4.648l3.876-5.814a1.151 1.151 0 00-1.597-1.597L14.146 6.32a15.996 15.996 0 00-4.649 4.763m3.42 3.42a6.776 6.776 0 00-3.42-3.42" />
+            </svg>
+          </div>
+          <span
+            v-if="category.hide_empty === 1 || category.hide_empty === true"
+            class="absolute left-3 top-3 rounded-[30px] bg-white/95 px-3 py-1 text-[10px] font-bold text-[#8a6d3b] shadow-sm"
+          >
+            Скрывается без товаров
+          </span>
+          <span class="absolute right-3 top-3 rounded-[30px] bg-[#f0f4fa] px-3 py-1 text-[11px] font-bold text-[#253663]">
+            №{{ getDisplayOrder(category.id) }}
+          </span>
+        </div>
+
+        <!-- Название и slug -->
+        <div class="flex items-start justify-between gap-3 min-w-0">
+          <div class="min-w-0">
+            <h3 class="m-0 text-[17px] font-bold leading-tight text-[#081b4b] truncate">{{ category.name }}</h3>
+            <p class="m-0 mt-1 text-[11px] text-[#8898b5] font-mono truncate">{{ category.slug }}</p>
+          </div>
+          <button
+            type="button"
+            class="crm-ref-chip-button shrink-0"
+            :title="`Копировать ссылку на категорию`"
+            @click="copyCategoryLink(category.slug)"
+          >
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 01-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 011.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 00-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 01-1.125-1.125v-9.25m0 0H5.625" />
+            </svg>
+            <span>Ссылка</span>
+          </button>
+        </div>
+
+        <!-- Метрики -->
+        <div class="flex items-center justify-between gap-3 rounded-[13px] border border-[#eaf0f9] bg-[#f7fbff] px-4 py-3">
+          <div class="flex flex-wrap gap-x-5 gap-y-1 text-[12px] text-[#66799e]">
+            <span>Товаров: <b class="text-[#081b4b]">{{ category.productCount || 0 }}</b></span>
+            <span>Линеек: <b class="text-[#081b4b]">{{ props.groupCounts?.[category.id] ?? 0 }}</b></span>
+            <span>Вдруг пригодится: <b class="text-[#081b4b]">{{ props.crossSellCounts?.[category.id] ?? 0 }}</b></span>
+          </div>
+          <div class="flex items-center gap-2 shrink-0">
+            <span class="text-[11px] font-bold text-[#8898b5]">Порядок</span>
+            <button
+              type="button"
+              class="crm-ref-chip-button !px-2.5"
+              :disabled="!canMoveUp(category.id)"
+              title="Переместить вверх"
+              @click="moveUp(category.id)"
+            >
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M4.5 15.75l7.5-7.5 7.5 7.5" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              class="crm-ref-chip-button !px-2.5"
+              :disabled="!canMoveDown(category.id)"
+              title="Переместить вниз"
+              @click="moveDown(category.id)"
+            >
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Действия -->
+        <div class="grid grid-cols-2 gap-2">
+          <button type="button" class="crm-ref-chip-button" @click="$emit('manage-groups', category)">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+            </svg>
+            <span>Линейки</span>
+          </button>
+          <button type="button" class="crm-ref-chip-button" @click="$emit('manage-cross-sell', category)">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span>Вдруг пригодится</span>
+          </button>
+          <button type="button" class="crm-ref-chip-button crm-ref-chip-button--primary" @click="$emit('edit', category)">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.656 2.656L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
+            </svg>
+            <span>Редактировать</span>
+          </button>
+          <button
+            type="button"
+            class="crm-ref-chip-button crm-ref-chip-button--danger"
+            :class="{ 'crm-ref-chip-button--danger-gradient': (category.productCount || 0) === 0 }"
+            :disabled="(category.productCount || 0) > 0"
+            :title="(category.productCount || 0) > 0 ? `Нельзя удалить категорию с товарами (${category.productCount})` : 'Удалить категорию'"
+            @click="$emit('delete', category.id)"
+          >
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+            </svg>
+            <span>Удалить</span>
+          </button>
+        </div>
+      </article>
+    </div>
+
+    <!-- Пустые результаты поиска -->
+    <div v-else-if="searchQuery" class="crm-ref-card crm-ref-empty">
+      <span class="crm-ref-empty-symbol">⌕</span>
+      <b>Ничего не нашлось</b>
+      <span>По запросу «{{ searchQuery }}» категорий нет. Проверьте написание.</span>
+    </div>
+
+    <!-- Совсем нет категорий -->
+    <div v-else class="crm-ref-card crm-ref-empty">
+      <span class="crm-ref-empty-symbol">
+        <svg class="h-7 w-7" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" d="M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.567 3z" />
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" d="M6 6h.008v.008H6V6z" />
+        </svg>
+      </span>
+      <b>Категорий пока нет</b>
+      <span>Создайте первую категорию — в ней появятся товары и линейки.</span>
+      <button type="button" class="crm-ref-button crm-ref-button--primary mt-3" @click="$emit('create')">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+        </svg>
+        <span>Создать категорию</span>
+      </button>
+    </div>
+
+    <!-- Подсказка -->
+    <p v-if="hasAnyCategories" class="crm-ref-hint mt-4">
+      Стрелки меняют порядок · ссылка копируется для баннеров
+    </p>
+
+    <!-- Toast -->
     <Transition
       enter-active-class="transition-all duration-300 ease-out"
       enter-from-class="opacity-0 translate-y-2"
@@ -222,7 +230,8 @@
     >
       <div
         v-if="copiedToast"
-        class="fixed bottom-4 right-4 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg z-50 text-sm font-medium"
+        class="fixed bottom-4 right-4 z-50 rounded-xl bg-[#0f7b3f] px-4 py-2.5 text-sm font-semibold text-white shadow-lg"
+        role="status"
       >
         {{ copiedToast }}
       </div>
@@ -232,9 +241,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { ChevronUpIcon, ChevronDownIcon, DocumentDuplicateIcon, TagIcon, MagnifyingGlassIcon } from '@heroicons/vue/24/outline'
 import type { Category } from '@/stores/admin'
-import AdminSectionHero from '@/components/admin/layout/AdminSectionHero.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -328,23 +335,21 @@ function copyCategoryLink(slug: string) {
   if (copyInProgress.value) {
     return
   }
-  
+
   copyInProgress.value = true
-  
+
   // Создаём внутреннюю ссылку на категорию (для использования в баннерах)
   const categoryUrl = `/category/${slug}`
-  
+
   // Копируем в буфер обмена
   if (navigator.clipboard) {
     navigator.clipboard.writeText(categoryUrl).then(() => {
       showCopiedToast('Внутренняя ссылка для вставки в баннер скопирована')
-      console.log('Ссылка на категорию скопирована:', categoryUrl)
       // Сбрасываем флаг после успешного копирования
       setTimeout(() => {
         copyInProgress.value = false
       }, 500)
-    }).catch(err => {
-      console.error('Ошибка копирования:', err)
+    }).catch(() => {
       fallbackCopy(categoryUrl)
     })
   } else {
@@ -372,13 +377,11 @@ function fallbackCopy(text: string) {
   try {
     document.execCommand('copy')
     showCopiedToast('Внутренняя ссылка для вставки в баннер скопирована')
-    console.log('Ссылка на категорию скопирована (fallback):', text)
-  } catch (err) {
-    console.error('Ошибка fallback копирования:', err)
+  } catch {
     showCopiedToast('Ошибка копирования')
   }
   document.body.removeChild(textArea)
-  
+
   // Сбрасываем флаг после fallback копирования
   setTimeout(() => {
     copyInProgress.value = false

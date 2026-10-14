@@ -1605,12 +1605,12 @@ async function fetchAPI<T>(
 }
 
 export const useCrmStore = defineStore("crm", () => {
-  // Profit access - restore localStorage handling
-  const savedProfitState =
-    typeof localStorage !== "undefined"
-      ? localStorage.getItem("crm_profit_unlocked")
-      : null;
-  const profitUnlocked = ref(savedProfitState === "true");
+  // Допуск к финансовым цифрам живёт только в памяти и живёт ровно до
+  // выхода из раздела: каждый вход в «Обзор», «Товары», «Категории»,
+  // «Финансы», «Кассу», «Закупки» и «Архив» спрашивает ключ заново.
+  // (Раньше допуск переживал всё благодаря localStorage — окно ключа
+  // показывалось один раз до полной перезагрузки страницы.)
+  const profitUnlocked = ref(false);
   /**
    * Пропуск в «Обзор» живёт только в памяти, а замок считаем закрытым, пока
    * сервер не ответил обратное: неизвестное состояние не должно открывать
@@ -1642,8 +1642,20 @@ export const useCrmStore = defineStore("crm", () => {
     // отрисуется из памяти, хотя доступ уже отобран.
     dashboardStats.value = null;
     dashboardTimeseries.value = [];
-    if (typeof localStorage !== "undefined") {
-      localStorage.removeItem("crm_profit_unlocked");
+  }
+
+  /**
+   * Отбирает допуск к финансовым цифрам, чтобы следующий вход в закрытый
+   * раздел снова спросил ключ. Вызывается при выходе из раздела: пока
+   * человек в разделе, допуск держится; ушёл — надо вводить заново.
+   */
+  function resetProfitAccess() {
+    if (overviewPasswordRequired.value) {
+      profitUnlocked.value = false;
+      dashboardToken.value = "";
+      dashboardLocked.value = true;
+      dashboardStats.value = null;
+      dashboardTimeseries.value = [];
     }
   }
 
@@ -4191,6 +4203,12 @@ export const useCrmStore = defineStore("crm", () => {
     if (response.transaction) {
       cashTransactions.value.unshift(response.transaction);
     }
+    // Выдача картой меняет карточные операции и лимиты (spent на дату выдачи).
+    // Обновляем снапшот в фоне, чтобы окно «Оплата картой и лимиты» и счётчик
+    // в тулбаре сразу показывали новую операцию и остаток дня.
+    if (data.payment_type === "card") {
+      void fetchCardPaymentAdmin({ background: true });
+    }
     return response;
   }
 
@@ -5386,11 +5404,9 @@ export const useCrmStore = defineStore("crm", () => {
       profitUnlocked.value = true;
     } else if (!wasRequired) {
       // Пароли включили обратно, пока вкладка была открыта. Поднятый нами
-      // допуск надо отобрать, иначе себестоимость и «Финансы» так и остались
-      // бы видны без пароля до перезагрузки страницы.
-      profitUnlocked.value =
-        typeof localStorage !== "undefined" &&
-        localStorage.getItem("crm_profit_unlocked") === "true";
+      // допуск надо отобрать: допуск выдаётся на один вход в раздел и
+      // больше нигде не переживается.
+      profitUnlocked.value = false;
     }
     return state;
   }
@@ -5405,9 +5421,6 @@ export const useCrmStore = defineStore("crm", () => {
       // Сервер уже подтвердил право на финансовые цифры, второй раз спрашивать
       // тот же пароль незачем.
       profitUnlocked.value = true;
-      if (typeof localStorage !== "undefined") {
-        localStorage.setItem("crm_profit_unlocked", "true");
-      }
     }
     return result;
   }
@@ -5428,16 +5441,10 @@ export const useCrmStore = defineStore("crm", () => {
       );
       if (result.ok) {
         profitUnlocked.value = true;
-        if (typeof localStorage !== "undefined") {
-          localStorage.setItem("crm_profit_unlocked", "true");
-        }
       }
       return result;
     } catch (error) {
       profitUnlocked.value = false;
-      if (typeof localStorage !== "undefined") {
-        localStorage.removeItem("crm_profit_unlocked");
-      }
       throw error;
     } finally {
       verifyingProfitAccess.value = false;
@@ -5450,6 +5457,7 @@ export const useCrmStore = defineStore("crm", () => {
     isProfitUnlocked,
     verifyingProfitAccess,
     lockProfitAccess,
+    resetProfitAccess,
 
     // Global Order Notifications
     newOrdersCount,

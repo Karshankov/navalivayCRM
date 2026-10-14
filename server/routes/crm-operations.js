@@ -2494,6 +2494,7 @@ crmOperationsRouter.post(
         }
 
         const completedAt = new Date().toISOString();
+        const completedAtSqlite = toSqliteUtcString(new Date());
         const issued = db.prepare(
           `
         UPDATE orders
@@ -2502,7 +2503,7 @@ crmOperationsRouter.post(
             payment_type = ?,
             payment_account_id = ?,
             paid_amount = ?,
-            paid_at = DATETIME('now'),
+            paid_at = ?,
             payment_notes = ?,
             completed_at = ?,
             issued_by_employee_id = ?,
@@ -2517,6 +2518,7 @@ crmOperationsRouter.post(
           payment_type,
             payment_account_id || null,
             payment_type === "card" ? totalAmount : parsedAmount,
+          completedAtSqlite,
           payment_notes || null,
           completedAt,
           shiftActor?.employeeId || null,

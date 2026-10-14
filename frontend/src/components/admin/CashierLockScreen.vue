@@ -44,8 +44,11 @@
 
               <div class="p-5 sm:p-6 pt-4">
                 <label class="block text-[11px] font-extrabold text-[#435777] mb-2">ПОИСК ТОВАРА</label>
-                <div class="relative">
-                  <span class="absolute left-4 top-1/2 -translate-y-1/2 text-[#92a1b8] text-base">⌕</span>
+                <!-- Поле лежит в форме без других полей: на мобильной клавиатуре
+                     клавиша «Готово» отправляет форму, keydown Enter там не
+                     приходит. -->
+                <form class="relative" @submit.prevent="handleSearchEnter">
+                  <span class="absolute left-4 top-1/2 -translate-y-1/2 text-[#92a1b8] text-base pointer-events-none">⌕</span>
                   <input
                     ref="searchInput"
                     v-model="searchQuery"
@@ -54,11 +57,11 @@
                     class="w-full h-[46px] border border-[#dfe7f3] bg-[#fbfcff] rounded-xl pl-11 pr-4 text-xs font-semibold text-[#1b3157] outline-none transition focus:border-[#5b9aff] focus:ring-4 focus:ring-[#197aff]/10 focus:bg-white placeholder:text-slate-400 placeholder:font-normal shadow-sm"
                     placeholder="Например, Одноразка PPWJ 2000 или пароль..."
                     @input="handleSearch"
-                    @keydown.enter="handleSearchEnter"
                   />
-                </div>
+                </form>
                 <div class="text-[11px] text-[#9aa8bd] mt-2">
                   <span v-if="isVerifying" class="text-blue-600 font-bold animate-pulse">Проверяем пароль...</span>
+                  <span v-else-if="notFoundMessage" class="text-[#8393af]">{{ notFoundMessage }}</span>
                   <span v-else>&nbsp;</span>
                 </div>
               </div>
@@ -264,6 +267,7 @@ const pendingCostInput = ref<HTMLInputElement>()
 // State
 const searchQuery = ref('')
 const lastSearchQuery = ref('')
+const notFoundMessage = ref('')
 const isVerifying = ref(false)
 const isSubmitting = ref(false)
 const successMessage = ref('')
@@ -314,7 +318,12 @@ function clearForm() {
 
 async function handleSearch() {
   const query = searchQuery.value.trim()
-  if (!query) return
+  if (!query) {
+    notFoundMessage.value = ''
+    return
+  }
+
+  notFoundMessage.value = ''
 
   // Check if it's admin password for unlock
   if (query.length >= 3) {
@@ -326,9 +335,11 @@ async function handleSearch() {
       })
       if (adminStore.isAuthenticated) {
         emit('unlocked')
+      } else {
+        notFoundMessage.value = 'товаров не найдено'
       }
     } catch (e) {
-      // ignore
+      notFoundMessage.value = 'товаров не найдено'
     } finally {
       isVerifying.value = false
     }

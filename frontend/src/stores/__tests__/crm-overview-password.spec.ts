@@ -105,16 +105,41 @@ describe("crm: выключатель паролей «Обзора»", () => {
     expect(crm.profitUnlocked).toBe(false);
   });
 
-  it("возврат паролей не трогает допуск, введённый паролем", async () => {
-    localStorage.setItem("crm_profit_unlocked", "true");
+  it("resetProfitAccess отбирает допуск и пропуск для следующего входа", () => {
     const crm = useCrmStore();
+    crm.overviewPasswordRequired = true;
+    crm.profitUnlocked = true;
+    crm.dashboardToken = "пропуск";
+
+    crm.resetProfitAccess();
+
+    expect(crm.profitUnlocked).toBe(false);
+    expect(crm.dashboardToken).toBe("");
+    expect(crm.dashboardLocked).toBe(true);
+  });
+
+  it("resetProfitAccess не запирает раздел с выключенными паролями", () => {
+    const crm = useCrmStore();
+    crm.overviewPasswordRequired = false;
+    crm.profitUnlocked = true;
+
+    crm.resetProfitAccess();
+
+    expect(crm.profitUnlocked).toBe(true);
+  });
+
+  it("возврат паролей отбирает допуск, введённый паролем", async () => {
+    // Допуск больше не переживает перезагрузку: localStorage убран, и
+    // возврат паролей отбирает его безусловно.
+    const crm = useCrmStore();
+    crm.profitUnlocked = true;
 
     stubState({ locked: false, profit_required: false });
     await crm.fetchDashboardAccessState();
     stubState({ locked: true, profit_required: true });
     await crm.fetchDashboardAccessState();
 
-    expect(crm.profitUnlocked).toBe(true);
+    expect(crm.profitUnlocked).toBe(false);
   });
 
   it("любое значение поля кроме false оставляет пароль на месте", async () => {

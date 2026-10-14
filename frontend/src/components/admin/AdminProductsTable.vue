@@ -1,148 +1,157 @@
 <template>
-  <div class="space-y-6">
-    <AdminSectionHero
-      title="Товары"
-      description="Управление товарами в каталоге"
-      :icon="CubeIcon"
-      eyebrow="Каталог"
-      tone="brand"
-    >
-      <template #actions>
-        <button
-          v-if="location === 'retail'"
-          @click="$emit('create')"
-          class="flex items-center justify-center gap-2 rounded-xl bg-white/15 px-5 py-3 text-sm font-semibold text-white shadow-lg transition-all duration-200 hover:bg-white/25 focus:outline-none focus:ring-2 focus:ring-white/60 focus:ring-offset-2 focus:ring-offset-transparent"
+  <div class="crm-ref">
+    <!-- Заголовок страницы (как «Заказы») -->
+    <div class="crm-ref-heading">
+      <h1 class="crm-ref-title">Товары</h1>
+      <div class="crm-ref-search">
+        <input
+          v-model="search"
+          type="search"
+          placeholder="Поиск по названию, описанию или линейке..."
+          class="crm-ref-search-input"
+          aria-label="Поиск по товарам"
+          @input="onSearchInput"
+        />
+        <svg
+          v-if="!search"
+          class="crm-ref-search-icon"
+          aria-hidden="true"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
         >
-          <PlusIcon class="h-4 w-4" />
-          <span>Создать товар</span>
-        </button>
-      </template>
-    </AdminSectionHero>
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+          />
+        </svg>
+      </div>
+    </div>
 
-    <div class="inline-flex w-full flex-col gap-2 rounded-3xl border border-white/70 bg-white/85 p-2 shadow-xl backdrop-blur sm:w-auto sm:flex-row sm:items-center">
-      <div class="grid w-full grid-cols-2 rounded-2xl bg-gray-100/80 p-1 sm:w-[360px]">
+    <!-- Тулбар (как «Заказы») -->
+    <div class="crm-ref-toolbar">
+      <button
+        v-if="location === 'retail'"
+        type="button"
+        class="crm-ref-button crm-ref-button--primary"
+        data-test="create-product"
+        @click="$emit('create')"
+      >
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+        </svg>
+        <span>Создать товар</span>
+      </button>
+      <button
+        type="button"
+        class="crm-ref-button crm-ref-button--gray"
+        @click="$emit('transfer', location)"
+      >
+        <ArrowsRightLeftIcon class="h-4 w-4" />
+        <span>Перемещение</span>
+      </button>
+      <div class="crm-ref-segment" role="group" aria-label="Точка">
         <button
           v-for="option in locationOptions"
           :key="option.value"
           type="button"
           :data-test="`location-${option.value}`"
+          :class="{ 'is-active': location === option.value }"
           :aria-pressed="location === option.value"
-          :class="[
-            'rounded-xl px-5 py-3 text-sm font-semibold transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-rose-300/70 focus:ring-offset-1',
-            location === option.value
-              ? 'bg-brand-dark text-white shadow-md'
-              : 'text-gray-500 hover:bg-white/70 hover:text-gray-900'
-          ]"
           @click="switchLocation(option.value)"
         >
           {{ option.label }}
         </button>
       </div>
-
-      <div class="hidden h-8 w-px bg-gray-200 sm:block"></div>
-
-      <button
-        type="button"
-        class="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-brand-dark via-rose-500 to-brand-primary px-6 py-3 text-sm font-semibold text-white shadow-md transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-rose-300/70 focus:ring-offset-2 sm:w-auto"
-        @click="$emit('transfer', location)"
-      >
-        <ArrowsRightLeftIcon class="h-5 w-5" />
-        Перемещение
-      </button>
+      <span class="crm-ref-toolbar-spacer" aria-hidden="true" />
+      <span class="crm-ref-counter">{{ total }} всего</span>
+      <span v-if="selectedIds.length" class="crm-ref-counter crm-ref-counter--danger">
+        Выбрано {{ selectedIds.length }}
+      </span>
     </div>
 
-    <div class="relative overflow-hidden rounded-3xl border border-white/60 bg-white/85 p-4 sm:p-6 shadow-xl backdrop-blur space-y-4">
-      <div class="pointer-events-none absolute -top-16 -right-14 h-44 w-44 rounded-full bg-rose-200/35 blur-3xl"></div>
-      <div class="pointer-events-none absolute bottom-0 left-6 h-28 w-28 rounded-full bg-brand-dark/10 blur-2xl"></div>
-
-      <div class="relative flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div class="flex flex-1 flex-col gap-3 sm:flex-row sm:items-center sm:gap-3">
-          <div class="relative flex-1 min-w-0">
-            <span class="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-rose-300">
-              <MagnifyingGlassIcon class="h-5 w-5" />
-            </span>
-            <input
-              v-model="search"
-              type="text"
-              placeholder="Поиск по названию..."
-              class="w-full rounded-2xl border border-white/60 bg-white/85 px-4 py-3 pl-12 text-sm font-medium text-gray-900 shadow-inner transition focus:border-rose-200 focus:outline-none focus:ring-2 focus:ring-rose-200/70"
-              @input="onSearchInput"
-            />
+    <!-- Панель фильтров -->
+    <div class="crm-ref-card p-5 mb-4">
+      <div class="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+        <div class="flex flex-1 flex-col gap-3 sm:flex-row sm:items-center sm:gap-3 flex-wrap">
+          <div class="flex items-center gap-2 min-w-0">
+            <select
+              v-model="category"
+              class="crm-ref-select w-full sm:w-[220px]"
+              @change="onCategoryFilterChange"
+            >
+              <option value="">Все категории</option>
+              <option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }}</option>
+            </select>
+            <button
+              type="button"
+              class="crm-ref-chip-button !px-3 shrink-0"
+              title="Создать категорию"
+              @click="openInlineCategoryModal"
+            >
+              <PlusIcon class="h-4 w-4" />
+              <span class="sr-only">Создать категорию</span>
+            </button>
           </div>
-          <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-3">
-            <div class="flex items-center gap-2">
-              <select
-                v-model="category"
-                class="rounded-2xl border border-white/60 bg-white/85 px-4 py-3 text-sm font-medium text-gray-900 shadow-inner transition focus:border-rose-200 focus:outline-none focus:ring-2 focus:ring-rose-200/70"
-                @change="onCategoryFilterChange"
-              >
-                <option value="">Все категории</option>
-                <option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }}</option>
-              </select>
+          <div class="flex items-center gap-2 min-w-0">
+            <div ref="groupDropdownTriggerRef" class="relative min-w-0">
               <button
                 type="button"
-                class="inline-flex items-center justify-center rounded-xl border border-white/60 bg-white/85 p-2 text-rose-500 transition hover:bg-white hover:text-rose-600"
-                title="Создать категорию"
-                @click="openInlineCategoryModal"
+                @click="toggleGroupDropdown"
+                :disabled="!groupFilterOptions.length"
+                class="crm-ref-select !w-[200px] flex items-center justify-between gap-2 text-left disabled:opacity-45 disabled:cursor-not-allowed"
               >
-                <PlusIcon class="h-4 w-4" />
-                <span class="sr-only">Создать категорию</span>
+                <span class="truncate">{{ selectedGroupName }}</span>
               </button>
             </div>
-            <div class="flex items-center gap-2">
-              <div ref="groupDropdownTriggerRef" class="relative">
-                <button
-                  type="button"
-                  @click="toggleGroupDropdown"
-                  :disabled="!groupFilterOptions.length"
-                  class="flex items-center justify-between gap-2 min-w-[180px] rounded-2xl border border-white/60 bg-white/85 px-4 py-3 text-sm font-medium text-gray-900 shadow-inner transition focus:border-rose-200 focus:outline-none focus:ring-2 focus:ring-rose-200/70 disabled:bg-gray-100 disabled:text-gray-400"
-                >
-                  <span class="truncate">{{ selectedGroupName }}</span>
-                  <svg class="h-4 w-4 flex-shrink-0 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
-              </div>
-              <button
-                type="button"
-                class="inline-flex items-center justify-center rounded-xl border border-white/60 bg-white/85 p-2 text-rose-500 transition hover:bg-white hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-40"
-                :disabled="!category"
-                :title="category ? 'Создать линейку' : 'Сначала выберите категорию'"
-                @click="openInlineGroupModal"
-              >
-                <PlusIcon class="h-4 w-4" />
-                <span class="sr-only">Создать линейку</span>
-              </button>
-            </div>
+            <button
+              type="button"
+              class="crm-ref-chip-button !px-3 shrink-0"
+              :disabled="!category"
+              :title="category ? 'Создать линейку' : 'Сначала выберите категорию'"
+              @click="openInlineGroupModal"
+            >
+              <PlusIcon class="h-4 w-4" />
+              <span class="sr-only">Создать линейку</span>
+            </button>
+          </div>
+
+          <div class="hidden lg:flex items-center gap-1 crm-ref-segment !p-1" role="group" aria-label="Вид">
+            <button
+              :class="{ 'is-active': viewMode === 'table' }"
+              title="Вид таблицы"
+              @click="viewMode = 'table'"
+            >
+              <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+            </button>
+            <button
+              :class="{ 'is-active': viewMode === 'list' }"
+              title="Вид списка"
+              @click="viewMode = 'list'"
+            >
+              <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+              </svg>
+            </button>
           </div>
         </div>
 
-        <div class="hidden lg:flex items-center gap-4">
-          <div class="flex items-center gap-1 rounded-2xl border border-white/60 bg-white/85 p-1 shadow-inner">
-            <button
-              @click="viewMode = 'table'"
-              :class="[
-                'flex items-center justify-center rounded-xl px-3 py-2 text-sm font-medium transition-all',
-                viewMode === 'table'
-                  ? 'bg-white text-gray-900 shadow'
-                  : 'text-gray-500 hover:text-gray-700'
-              ]"
-              title="Вид таблицы"
+        <div class="flex items-center gap-3 shrink-0">
+          <div class="flex items-center gap-2 text-[11px] font-bold text-[#8898b5] uppercase tracking-[.14em]">
+            <span>На странице</span>
+            <select
+              v-model.number="pageSize"
+              class="crm-ref-select !w-auto !py-2 !px-8"
+              @change="onPageSizeChange"
             >
-              Таблица
-            </button>
-            <button
-              @click="viewMode = 'list'"
-              :class="[
-                'flex items-center justify-center rounded-xl px-3 py-2 text-sm font-medium transition-all',
-                viewMode === 'list'
-                  ? 'bg-white text-gray-900 shadow'
-                  : 'text-gray-500 hover:text-gray-700'
-              ]"
-              title="Вид списка"
-            >
-              Список
-            </button>
+              <option :value="10">10</option>
+              <option :value="20">20</option>
+              <option :value="50">50</option>
+            </select>
           </div>
         </div>
       </div>
@@ -153,17 +162,15 @@
            для неё остаётся выпадающий список с поиском. -->
       <div
         v-if="location === 'warehouse' && groupChipOptions.length"
-        class="hidden gap-2 overflow-x-auto pb-1 sm:flex"
+        class="hidden gap-2 overflow-x-auto pb-1 mt-4 sm:flex"
         role="group"
         aria-label="Фильтр по линейкам"
       >
         <button
           type="button"
           data-test="product-group-chip"
-          class="flex-shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold transition"
-          :class="group
-            ? 'border-white/60 bg-white/85 text-gray-700 hover:border-rose-200'
-            : 'border-rose-300 bg-rose-500 text-white'"
+          class="crm-ref-chip-button !rounded-full !py-2 flex-shrink-0"
+          :class="!group ? 'crm-ref-chip-button--primary' : ''"
           :aria-pressed="!group"
           @click="selectGroupChip('')"
         >
@@ -174,116 +181,87 @@
           :key="option.id"
           type="button"
           data-test="product-group-chip"
-          class="flex-shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold transition"
-          :class="group === option.id
-            ? 'border-rose-300 bg-rose-500 text-white'
-            : 'border-white/60 bg-white/85 text-gray-700 hover:border-rose-200'"
+          class="crm-ref-chip-button !rounded-full !py-2 flex-shrink-0"
+          :class="group === option.id ? 'crm-ref-chip-button--primary' : ''"
           :aria-pressed="group === option.id"
           @click="selectGroupChip(option.id)"
         >
           {{ option.name }}
         </button>
       </div>
+    </div>
 
-      <div class="flex flex-wrap items-center justify-between gap-3 text-xs font-semibold uppercase tracking-[0.25em] text-gray-400">
-        <div class="flex flex-wrap items-center gap-2">
-          <span>Показано {{ total === 0 ? 0 : (to - from + 1) }} из {{ total }}</span>
-          <span
-            v-if="selectedIds.length"
-            class="inline-flex items-center gap-2 rounded-full bg-rose-100 px-3 py-1 text-[0.6rem] font-semibold uppercase tracking-[0.25em] text-rose-700"
-          >
-            Выбрано {{ selectedIds.length }}
-          </span>
-        </div>
-        <div class="flex w-full items-center justify-between gap-2 rounded-2xl border border-white/60 bg-white/85 px-3 py-2 text-[0.65rem] font-semibold uppercase tracking-[0.3em] text-gray-500 sm:w-auto sm:justify-end">
-          <span>На странице</span>
-          <select
-            v-model.number="pageSize"
-            class="rounded-xl border border-white/60 bg-white/90 px-3 py-1 text-sm font-medium text-gray-900 shadow-inner transition focus:border-rose-200 focus:outline-none focus:ring-2 focus:ring-rose-200/70"
-            @change="onPageSizeChange"
-          >
-            <option :value="10">10</option>
-            <option :value="20">20</option>
-            <option :value="50">50</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="flex flex-wrap items-center gap-2 sm:hidden">
+    <!-- Мобильная панель фильтров -->
+    <div class="flex flex-wrap items-center gap-2 sm:hidden mb-4">
+      <button
+        type="button"
+        class="crm-ref-button crm-ref-button--gray flex-1"
+        @click="showFiltersModal = true"
+      >
+        <FunnelIcon class="h-4 w-4" />
+        <span>Фильтры</span>
+      </button>
+      <div class="crm-ref-segment" role="group" aria-label="Вид">
         <button
-          type="button"
-          class="inline-flex flex-1 items-center justify-center gap-2 rounded-2xl border border-white/60 bg-white/85 px-4 py-2 text-sm font-medium text-gray-700 shadow-inner transition hover:bg-white hover:text-gray-900"
-          @click="showFiltersModal = true"
+          :class="{ 'is-active': viewMode === 'table' }"
+          title="Вид таблицы"
+          @click="viewMode = 'table'"
         >
-          <FunnelIcon class="h-5 w-5" />
-          <span>Фильтры</span>
+          <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+          </svg>
         </button>
-        <div class="flex items-center gap-1 rounded-2xl border border-white/60 bg-white/85 p-1 shadow-inner">
-          <button
-            @click="viewMode = 'table'"
-            :class="[
-              'flex items-center justify-center rounded-xl px-3 py-2 text-sm font-medium transition-all',
-              viewMode === 'table'
-                ? 'bg-white text-gray-900 shadow'
-                : 'text-gray-500 hover:text-gray-700'
-            ]"
-            title="Вид таблицы"
-          >
-            Таблица
-          </button>
-          <button
-            @click="viewMode = 'list'"
-            :class="[
-              'flex items-center justify-center rounded-xl px-3 py-2 text-sm font-medium transition-all',
-              viewMode === 'list'
-                ? 'bg-white text-gray-900 shadow'
-                : 'text-gray-500 hover:text-gray-700'
-            ]"
-            title="Вид списка"
-          >
-            Список
-          </button>
-        </div>
+        <button
+          :class="{ 'is-active': viewMode === 'list' }"
+          title="Вид списка"
+          @click="viewMode = 'list'"
+        >
+          <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+          </svg>
+        </button>
       </div>
     </div>
 
-    <div v-if="location === 'retail' && selectedIds.length" class="relative overflow-hidden rounded-3xl border border-rose-200/70 bg-white/90 p-4 sm:p-5 shadow-xl backdrop-blur space-y-3">
-      <div class="pointer-events-none absolute -top-12 right-0 h-28 w-28 rounded-full bg-rose-200/35 blur-3xl"></div>
-      <div class="pointer-events-none absolute bottom-0 left-4 h-24 w-24 rounded-full bg-brand-dark/10 blur-2xl"></div>
-      <div class="relative flex items-center justify-between">
-        <span class="text-sm font-semibold text-rose-900">Выбрано: {{ selectedIds.length }}</span>
+    <div v-if="location === 'retail' && selectedIds.length" class="crm-ref-card p-4 sm:p-5 mb-4 flex flex-col gap-3">
+      <div class="flex items-center justify-between">
+        <span class="text-[14px] font-bold text-[#081b4b]">Выбрано: {{ selectedIds.length }}</span>
         <button
+          type="button"
+          class="crm-ref-chip-button"
           @click="clearSelection"
-          class="inline-flex items-center gap-1 rounded-full border border-rose-400/40 bg-white/70 px-3 py-1 text-xs font-semibold text-rose-800 shadow-sm transition hover:border-rose-500/60 hover:bg-white"
         >
           ✕ Отменить
         </button>
       </div>
-      <div class="relative grid grid-cols-1 gap-2 sm:grid-cols-3">
+      <div class="grid grid-cols-1 gap-2 sm:grid-cols-3">
         <button
+          type="button"
+          class="crm-ref-chip-button"
           @click="batchChangeCategory"
-          class="flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-emerald-500/15 via-emerald-400/10 to-emerald-500/20 px-3 py-2 text-sm font-semibold text-emerald-700 shadow-sm transition hover:shadow-md hover:from-emerald-500/25 hover:via-emerald-400/20 hover:to-emerald-500/30"
         >
-          <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-            <path fill-rule="evenodd" d="M17.707 9.293a1 1 0 010 1.414l-7 7a1 1 0 01-1.414 0l-7-7A.997.997 0 012 10V5a3 3 0 013-3h5c.256 0 .512.098.707.293l7 7zM5 6a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" />
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
           </svg>
           Сменить категорию
         </button>
         <button
+          type="button"
+          class="crm-ref-chip-button"
           @click="batchChangeGroup"
-          class="flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-purple-500/15 via-purple-400/10 to-purple-500/20 px-3 py-2 text-sm font-semibold text-purple-700 shadow-sm transition hover:shadow-md hover:from-purple-500/25 hover:via-purple-400/20 hover:to-purple-500/30"
         >
-          <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M4 5a1 1 0 011-1h4.382a1 1 0 01.894.553L11 6h9a1 1 0 011 1v2a1 1 0 01-1 1h-1.382l-1.447 2.894A1 1 0 0116.236 13H11l-.724 1.447A1 1 0 019.382 15H5a1 1 0 01-1-1V5z" />
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
           </svg>
           Назначить линейку
         </button>
         <button
+          type="button"
+          class="crm-ref-chip-button crm-ref-chip-button--danger"
           @click="batchDelete"
-          class="flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-rose-500/15 via-red-500/10 to-rose-500/20 px-3 py-2 text-sm font-semibold text-rose-700 shadow-sm transition hover:shadow-md hover:from-rose-500/25 hover:via-red-500/20 hover:to-rose-500/30"
         >
-          <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-            <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" />
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
           </svg>
           Удалить
         </button>
@@ -291,138 +269,143 @@
     </div>
 
     <!-- Table View -->
-    <div v-if="viewMode === 'table'" class="relative overflow-hidden rounded-3xl border border-white/70 bg-white shadow-xl">
+    <div v-if="viewMode === 'table'" class="crm-ref-card">
       <div ref="tableScrollContainer" class="relative overflow-x-auto">
-        <table ref="tableRef" class="w-full text-left text-sm">
+        <table ref="tableRef" class="crm-ref-table">
           <colgroup>
             <col v-for="(width, index) in displayedColumnWidths" :key="index" :style="width ? { width: `${width}px` } : undefined" />
           </colgroup>
-          <thead class="bg-white border-b border-rose-100">
-            <tr class="text-gray-600">
+          <thead>
+            <tr>
               <th class="w-12 px-4 py-3" :style="columnStyle(0)">
                 <input
                   v-if="location === 'retail'"
                   type="checkbox"
                   :checked="isAllSelected"
                   @change="toggleSelectAll"
-                  class="rounded border-rose-200 text-brand-dark focus:ring-brand-dark"
+                  class="rounded border-[#c9d6ec] accent-[#1759ed]"
                 >
               </th>
 
               <th
-                class="p-0 text-left text-[0.7rem] font-semibold uppercase tracking-[0.25em] text-gray-500 whitespace-normal break-words"
+                class="p-0 text-left whitespace-normal break-words"
                 :style="columnStyle(1)"
                 :aria-sort="ariaSort('title')"
               >
                 <button
                   type="button"
-                  :class="sortButtonClass('title')"
+                  class="crm-ref-sort"
+                  :class="{ 'is-active': sortKey === 'title' }"
                   @click="toggleSort('title')"
                 >
                   <span>Товар</span>
-                  <span class="text-[10px] leading-none" :class="sortIndicatorClass('title')">{{ sortIndicator('title') }}</span>
+                  <span class="text-[10px] leading-none opacity-70">{{ sortIndicator('title') }}</span>
                 </button>
               </th>
               <th
-                class="p-0 text-left text-[0.7rem] font-semibold uppercase tracking-[0.25em] text-gray-500 whitespace-normal break-words"
+                class="p-0 text-left whitespace-normal break-words"
                 :style="columnStyle(2)"
                 :aria-sort="ariaSort('category')"
               >
                 <button
                   type="button"
-                  :class="sortButtonClass('category')"
+                  class="crm-ref-sort"
+                  :class="{ 'is-active': sortKey === 'category' }"
                   @click="toggleSort('category')"
                 >
                   <span>Категория</span>
-                  <span class="text-[10px] leading-none" :class="sortIndicatorClass('category')">{{ sortIndicator('category') }}</span>
+                  <span class="text-[10px] leading-none opacity-70">{{ sortIndicator('category') }}</span>
                 </button>
               </th>
               <th
-                class="p-0 text-left text-[0.7rem] font-semibold uppercase tracking-[0.25em] text-gray-500 whitespace-normal break-words"
+                class="p-0 text-left whitespace-normal break-words"
                 :style="columnStyle(3)"
                 :aria-sort="ariaSort('group')"
               >
                 <button
                   type="button"
-                  :class="sortButtonClass('group')"
+                  class="crm-ref-sort"
+                  :class="{ 'is-active': sortKey === 'group' }"
                   @click="toggleSort('group')"
                 >
                   <span>Линейка</span>
-                  <span class="text-[10px] leading-none" :class="sortIndicatorClass('group')">{{ sortIndicator('group') }}</span>
+                  <span class="text-[10px] leading-none opacity-70">{{ sortIndicator('group') }}</span>
                 </button>
               </th>
               <th
-                class="p-0 text-left text-[0.7rem] font-semibold uppercase tracking-[0.25em] text-gray-500 whitespace-normal break-words"
+                class="p-0 text-left whitespace-normal break-words"
                 :style="columnStyle(4)"
                 :aria-sort="ariaSort('strength')"
               >
                 <button
                   type="button"
-                  :class="sortButtonClass('strength')"
+                  class="crm-ref-sort"
+                  :class="{ 'is-active': sortKey === 'strength' }"
                   @click="toggleSort('strength')"
                 >
                   <span>Крепость</span>
-                  <span class="text-[10px] leading-none" :class="sortIndicatorClass('strength')">{{ sortIndicator('strength') }}</span>
+                  <span class="text-[10px] leading-none opacity-70">{{ sortIndicator('strength') }}</span>
                 </button>
               </th>
               <th
-                class="p-0 text-left text-[0.7rem] font-semibold uppercase tracking-[0.25em] text-gray-500 whitespace-normal break-words"
+                class="p-0 text-left whitespace-normal break-words"
                 :style="columnStyle(5)"
                 :aria-sort="ariaSort('costPrice')"
               >
                 <button
                   type="button"
-                  :class="sortButtonClass('costPrice')"
+                  class="crm-ref-sort"
+                  :class="{ 'is-active': sortKey === 'costPrice' }"
                   @click="toggleSort('costPrice')"
                 >
                   <span>Себес</span>
-                  <span class="text-[10px] leading-none" :class="sortIndicatorClass('costPrice')">{{ sortIndicator('costPrice') }}</span>
+                  <span class="text-[10px] leading-none opacity-70">{{ sortIndicator('costPrice') }}</span>
                 </button>
               </th>
               <th
-                class="p-0 text-left text-[0.7rem] font-semibold uppercase tracking-[0.25em] text-gray-500 whitespace-normal break-words"
+                class="p-0 text-left whitespace-normal break-words"
                 :style="columnStyle(6)"
                 :aria-sort="ariaSort('stock')"
               >
                 <button
                   type="button"
-                  :class="sortButtonClass('stock')"
+                  class="crm-ref-sort"
+                  :class="{ 'is-active': sortKey === 'stock' }"
                   @click="toggleSort('stock')"
                 >
                   <span>Остаток</span>
-                  <span class="text-[10px] leading-none" :class="sortIndicatorClass('stock')">{{ sortIndicator('stock') }}</span>
+                  <span class="text-[10px] leading-none opacity-70">{{ sortIndicator('stock') }}</span>
                 </button>
               </th>
               <th
-                class="p-0 text-left text-[0.7rem] font-semibold uppercase tracking-[0.25em] text-gray-500 whitespace-normal break-words"
+                class="p-0 text-left whitespace-normal break-words"
                 :style="columnStyle(7)"
                 :aria-sort="ariaSort('priceRub')"
               >
                 <button
                   type="button"
-                  :class="sortButtonClass('priceRub')"
+                  class="crm-ref-sort"
+                  :class="{ 'is-active': sortKey === 'priceRub' }"
                   @click="toggleSort('priceRub')"
                 >
                   <span>Цена</span>
-                  <span class="text-[10px] leading-none" :class="sortIndicatorClass('priceRub')">{{ sortIndicator('priceRub') }}</span>
+                  <span class="text-[10px] leading-none opacity-70">{{ sortIndicator('priceRub') }}</span>
                 </button>
               </th>
               <th
-                class="p-0 text-right text-[0.7rem] font-semibold uppercase tracking-[0.25em] text-gray-500 whitespace-normal break-words"
+                class="p-0 text-right whitespace-normal break-words"
                 :style="columnStyle(8)"
               >Действия</th>
             </tr>
           </thead>
-          <tbody class="divide-y divide-rose-50">
+          <tbody>
             <tr v-if="isLoading">
-              <td colspan="9" class="py-8 text-center text-gray-600">Загрузка...</td>
+              <td colspan="9" class="py-8 text-center text-[#8898b5]">Загрузка...</td>
             </tr>
             <template v-for="p in paged" :key="p.id">
             <tr
-              class="transition-colors hover:bg-rose-50/50"
               :class="[
-                selectedIds.includes(p.id) ? 'bg-rose-50/70' : '',
-                isBelowMin(p) ? 'ring-1 ring-rose-200 ring-inset' : ''
+                selectedIds.includes(p.id) ? 'is-selected' : '',
               ]"
             >
             <td class="px-4 py-4" :style="columnStyle(0)">
@@ -430,11 +413,11 @@
                 <button
                   v-if="p.hasVariants && p.variants && p.variants.length > 0"
                   @click="toggleProductExpansion(p.id)"
-                  class="flex items-center justify-center w-5 h-5 rounded hover:bg-rose-100 transition-colors"
+                  class="flex items-center justify-center w-5 h-5 rounded hover:bg-[#e7f1ff] transition-colors"
                   :title="isProductExpanded(p.id) ? 'Свернуть' : 'Развернуть'"
                 >
                   <svg
-                    class="w-3 h-3 text-gray-600 transition-transform"
+                    class="w-3 h-3 text-[#66799e] transition-transform"
                     :class="{ 'rotate-90': isProductExpanded(p.id) }"
                     fill="currentColor"
                     viewBox="0 0 20 20"
@@ -447,97 +430,103 @@
                   type="checkbox"
                   :checked="selectedIds.includes(p.id)"
                   @change="toggleSelect(p.id)"
-                  class="rounded border-gray-300 text-brand-dark focus:ring-brand-dark"
+                  class="rounded border-[#c9d6ec] accent-[#1759ed]"
                 >
               </div>
             </td>
             <td class="px-4 py-4 min-w-[220px]" :style="columnStyle(1)">
               <div class="flex items-center gap-3 min-w-0">
-                <img :src="getProductCover(p)" class="w-12 h-12 object-cover rounded border" />
+                <img :src="getProductCover(p)" class="w-12 h-12 object-cover rounded-[10px] border border-[#eaf0f9]" />
                 <div class="min-w-0">
                   <div class="flex items-center gap-2">
-                    <span class="font-medium text-gray-900 truncate">{{ p.title || p.id }}</span>
+                    <span class="font-bold text-[#081b4b] truncate">{{ p.title || p.id }}</span>
                     <span
                       v-if="discountBadge(p)"
                       data-test="product-discount-badge"
-                      class="flex-shrink-0 rounded-full bg-rose-600 px-2 py-0.5 text-[0.65rem] font-bold text-white"
+                      class="flex-shrink-0 rounded-full bg-[#fa2948] px-2 py-0.5 text-[10px] font-bold text-white"
                       :title="discountTitle(p)"
                     >{{ discountBadge(p) }}</span>
                   </div>
-                  <div v-if="p.description" class="text-xs text-gray-500 truncate">{{ p.description }}</div>
+                  <div v-if="p.description" class="text-[11px] text-[#8898b5] truncate">{{ p.description }}</div>
                 </div>
               </div>
             </td>
-            <td class="px-4 py-4 text-gray-700" :style="columnStyle(2)">{{ categoryName(p.categoryId) }}</td>
-            <td class="px-4 py-4 text-gray-700" :style="columnStyle(3)">
+            <td class="text-[#425778]" :style="columnStyle(2)">{{ categoryName(p.categoryId) }}</td>
+            <td class="text-[#425778]" :style="columnStyle(3)">
               <span v-if="p.groupName">{{ p.groupName }}</span>
-              <span v-else class="text-gray-400">Без линейки</span>
+              <span v-else class="text-[#a0acc6]">Без линейки</span>
             </td>
-            <td class="px-4 py-4 text-gray-700" :style="columnStyle(4)">
-              <span v-if="p.strength && p.strength.trim().length && p.strength !== '0'" class="font-medium text-gray-900">{{ p.strength }}</span>
-              <span v-else class="text-gray-400">Без крепости</span>
+            <td class="text-[#425778]" :style="columnStyle(4)">
+              <span v-if="p.strength && p.strength.trim().length && p.strength !== '0'" class="font-bold text-[#081b4b]">{{ p.strength }}</span>
+              <span v-else class="text-[#a0acc6]">Без крепости</span>
             </td>
-            <td class="px-4 py-4 text-right text-gray-700 min-w-[100px]" :style="columnStyle(5)">
+            <td class="text-right min-w-[100px]" :style="columnStyle(5)">
               <div class="flex items-center justify-center">
-                <span v-if="profitUnlocked" class="font-medium text-gray-900">{{ formatRub(p.costPrice) }}</span>
+                <span v-if="profitUnlocked" class="font-bold text-[#081b4b]">{{ formatRub(p.costPrice) }}</span>
                 <span
                   v-else
-                  class="inline-flex items-center rounded-full bg-gray-100 p-1"
+                  class="inline-flex items-center rounded-full bg-[#f0f4fa] p-1.5 text-[#8999b7]"
                   :aria-label="`Себестоимость скрыта`"
                 >
-                  <LockClosedIcon class="h-4 w-4 text-gray-400" />
+                  <LockClosedIcon class="h-4 w-4" />
                 </span>
               </div>
             </td>
-            <td class="px-4 py-4 text-right" :style="columnStyle(6)">
+            <td class="text-right" :style="columnStyle(6)">
               <div class="flex items-center justify-end gap-2 whitespace-nowrap">
-                <span v-if="p.hasVariants" :class="isBelowMin(p) ? 'text-red-600 font-semibold' : 'text-gray-900 font-medium'">
+                <span
+                  v-if="p.hasVariants"
+                  class="font-bold"
+                  :class="isBelowMin(p) ? 'text-[#fa2948]' : 'text-[#081b4b]'"
+                >
                   {{ productStockLabel(p) }}
                 </span>
-                <span v-else :class="isBelowMin(p) ? 'text-red-600 font-semibold' : 'text-gray-900 font-medium'">
+                <span
+                  v-else
+                  class="font-bold"
+                  :class="isBelowMin(p) ? 'text-[#fa2948]' : 'text-[#081b4b]'"
+                >
                   {{ displayProductStock(p) }}
                 </span>
-                <span v-if="location === 'retail' && Number(p.minStock ?? 0) > 0" class="text-xs text-gray-500 whitespace-nowrap">
+                <span v-if="location === 'retail' && Number(p.minStock ?? 0) > 0" class="text-[11px] text-[#8898b5] whitespace-nowrap">
                   мин. {{ Number(p.minStock ?? 0) }}
                 </span>
               </div>
             </td>
-            <td class="px-4 py-4 text-right text-gray-700" :style="columnStyle(7)">
-              <span v-if="!p.hasVariants">{{ formatRub(p.priceRub) }}</span>
-              <span v-else class="text-[0.8em]">Вар-ты</span>
+            <td class="text-right text-[#425778]" :style="columnStyle(7)">
+              <span v-if="!p.hasVariants" class="font-bold text-[#081b4b]">{{ formatRub(p.priceRub) }}</span>
+              <span v-else class="text-[11px] text-[#66799e]">Вар-ты</span>
             </td>
-            <td class="px-4 py-4 text-right" :style="columnStyle(8)">
-              <div class="flex items-center justify-end gap-2">
+            <td class="text-right" :style="columnStyle(8)">
+              <div class="flex items-center justify-end gap-1.5">
                 <button
                   v-if="location === 'retail'"
                   data-test="product-discount-button"
                   @click="$emit('discount', p)"
-                  class="rounded-full p-2 transition"
-                  :class="activeDiscount(p)
-                    ? 'bg-rose-600 text-white hover:bg-rose-700'
-                    : 'bg-rose-500/10 text-rose-600 hover:bg-rose-500/20 hover:text-rose-800'"
+                  class="crm-ref-chip-button !p-2"
+                  :class="activeDiscount(p) ? 'crm-ref-chip-button--danger-gradient' : ''"
                   :title="activeDiscount(p) ? discountTitle(p) : 'Поставить скидку'"
                 >
-                  <span class="block h-4 w-4 text-center text-xs font-black leading-4">%</span>
+                  <span class="block text-[11px] font-black leading-none">%</span>
                 </button>
-                <button 
+                <button
                   v-if="location === 'retail'"
-                  @click="$emit('edit', p)" 
-                  class="rounded-full bg-blue-500/10 p-2 text-blue-600 transition hover:bg-blue-500/20 hover:text-blue-800"
+                  @click="$emit('edit', p)"
+                  class="crm-ref-chip-button !p-2"
                   title="Редактировать"
                 >
-                  <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                    <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.656 2.656L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
                   </svg>
                 </button>
-                <button 
+                <button
                   v-if="location === 'retail'"
-                  @click="$emit('delete', p)" 
-                  class="rounded-full bg-rose-500/10 p-2 text-rose-600 transition hover:bg-rose-500/20 hover:text-rose-800"
+                  @click="$emit('delete', p)"
+                  class="crm-ref-chip-button crm-ref-chip-button--danger !p-2"
                   title="Удалить"
                 >
-                  <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                    <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" />
+                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
                   </svg>
                 </button>
               </div>
@@ -549,11 +538,11 @@
             <tr
               v-for="(variant, vIndex) in p.variants"
               :key="`${p.id}-variant-${vIndex}`"
-              class="bg-rose-50/30 transition-colors hover:bg-rose-50/50"
+              class="!bg-[#f7fbff] hover:!bg-[#edf5ff]"
             >
               <td class="px-4 py-3" :style="columnStyle(0)">
                 <!-- Пустая ячейка или индикатор вложенности -->
-                <div class="pl-7 text-gray-400 text-xs">└</div>
+                <div class="pl-7 text-[#a0acc6] text-xs">└</div>
               </td>
               <td class="px-4 py-3 min-w-[220px]" :style="columnStyle(1)">
                 <div class="flex items-center gap-3 min-w-0 pl-4">
@@ -574,47 +563,47 @@
                   ></div>
                   <div class="min-w-0">
                     <div class="flex items-center gap-2">
-                      <span class="text-sm text-gray-700 truncate">{{ variant.name }}</span>
+                      <span class="text-sm text-[#081b4b] truncate">{{ variant.name }}</span>
                       <span
                         v-if="variantDiscountBadge(p, variant)"
                         data-test="variant-discount-badge"
-                        class="flex-shrink-0 rounded-full bg-rose-600 px-2 py-0.5 text-[0.65rem] font-bold text-white"
+                        class="flex-shrink-0 rounded-full bg-[#fa2948] px-2 py-0.5 text-[10px] font-bold text-white"
                         :title="variantDiscountTitle(p, variant)"
                       >{{ variantDiscountBadge(p, variant) }}</span>
                     </div>
-                    <div class="text-xs text-gray-500">Вариант</div>
+                    <div class="text-[11px] text-[#8898b5]">Вариант</div>
                   </div>
                 </div>
               </td>
-              <td class="px-4 py-3 text-gray-500 text-sm" :style="columnStyle(2)"></td>
-              <td class="px-4 py-3 text-gray-500 text-sm" :style="columnStyle(3)"></td>
-              <td class="px-4 py-3 text-gray-500 text-sm" :style="columnStyle(4)"></td>
-              <td class="px-4 py-3 text-right text-gray-700 min-w-[100px]" :style="columnStyle(5)">
+              <td class="py-3" :style="columnStyle(2)"></td>
+              <td class="py-3" :style="columnStyle(3)"></td>
+              <td class="py-3" :style="columnStyle(4)"></td>
+              <td class="text-right min-w-[100px]" :style="columnStyle(5)">
                 <div class="flex items-center justify-center">
-                  <span v-if="profitUnlocked" class="text-sm">{{ formatRub(p.costPrice) }}</span>
+                  <span v-if="profitUnlocked" class="text-sm text-[#425778]">{{ formatRub(p.costPrice) }}</span>
                   <span
                     v-else
-                    class="inline-flex items-center rounded-full bg-gray-100 p-1"
+                    class="inline-flex items-center rounded-full bg-[#f0f4fa] p-1 text-[#8999b7]"
                     :aria-label="`Себестоимость скрыта`"
                   >
-                    <LockClosedIcon class="h-4 w-4 text-gray-400" />
+                    <LockClosedIcon class="h-4 w-4" />
                   </span>
                 </div>
               </td>
-              <td class="px-4 py-3 text-right" :style="columnStyle(6)">
-                <span class="text-sm text-gray-900">{{ displayVariantStock(variant) }}</span>
+              <td class="text-right" :style="columnStyle(6)">
+                <span class="text-sm text-[#081b4b]">{{ displayVariantStock(variant) }}</span>
               </td>
-              <td class="px-4 py-3 text-right text-gray-700" :style="columnStyle(7)">
-                <span class="text-sm">{{ formatRub(getVariantPrice(p, variant)) }}</span>
+              <td class="text-right text-[#425778]" :style="columnStyle(7)">
+                <span class="text-sm font-bold text-[#081b4b]">{{ formatRub(getVariantPrice(p, variant)) }}</span>
               </td>
-              <td class="px-4 py-3 text-right" :style="columnStyle(8)">
+              <td class="text-right py-3" :style="columnStyle(8)">
                 <!-- Пустая ячейка для действий варианта -->
               </td>
             </tr>
           </template>
           </template>
             <tr v-if="!isLoading && !paged.length">
-              <td colspan="9" class="py-8 text-center text-gray-600">
+              <td colspan="9" class="py-8 text-center text-[#8898b5]">
                 {{ location === 'warehouse' && !search && !category && !group ? 'На складе пока нет товаров. Добавьте их через перемещение.' : 'Ничего не найдено' }}
               </td>
             </tr>
@@ -624,33 +613,33 @@
     </div>
 
     <!-- List View -->
-    <div v-else-if="viewMode === 'list'" class="relative overflow-hidden rounded-3xl border border-white/70 bg-white shadow-xl">
-      <div class="relative p-4 bg-white/80 border-b border-rose-100 flex items-center justify-between">
+    <div v-else-if="viewMode === 'list'" class="crm-ref-card">
+      <div class="p-4 border-b border-[#dce8fa] flex items-center justify-between">
         <div v-if="location === 'retail'" class="flex items-center gap-3">
           <input
             type="checkbox"
             :checked="isAllSelected"
             @change="toggleSelectAll"
-            class="rounded border-gray-300 text-brand-dark focus:ring-brand-dark"
+            class="rounded border-[#c9d6ec] accent-[#1759ed]"
           >
-          <span class="text-sm text-gray-600">Выбрать все</span>
+          <span class="text-[12px] text-[#66799e]">Выбрать все</span>
         </div>
-        <span class="text-xs text-gray-500">Показано {{ total === 0 ? 0 : (to - from + 1) }} из {{ total }}</span>
+        <span class="text-[11px] font-bold text-[#8898b5] uppercase tracking-[.14em]">Показано {{ total === 0 ? 0 : (to - from + 1) }} из {{ total }}</span>
       </div>
       
-      <div v-if="isLoading" class="py-12 text-center text-gray-600">
+      <div v-if="isLoading" class="py-12 text-center text-[#8898b5]">
         Загрузка...
       </div>
       
-      <div v-else-if="!paged.length" class="py-12 text-center text-gray-600">
+      <div v-else-if="!paged.length" class="py-12 text-center text-[#8898b5]">
         {{ location === 'warehouse' && !search && !category && !group ? 'На складе пока нет товаров. Добавьте их через перемещение.' : 'Ничего не найдено' }}
       </div>
       
-      <div v-else class="divide-y divide-rose-50">
+      <div v-else class="divide-y divide-[#eaf0f9]">
         <template v-for="p in paged" :key="p.id">
         <div
-          class="p-2 sm:p-4 transition-colors hover:bg-rose-50/50"
-          :class="{ 'bg-rose-50/70': selectedIds.includes(p.id) }"
+          class="p-3 sm:p-4 transition-colors hover:bg-[#f7fbff]"
+          :class="{ 'bg-[#e7f1ff]': selectedIds.includes(p.id) }"
         >
           <!-- Мобильная версия - компактный лейаут -->
           <div class="block sm:hidden">
@@ -659,11 +648,11 @@
                 <button
                   v-if="p.hasVariants && p.variants && p.variants.length > 0"
                   @click="toggleProductExpansion(p.id)"
-                  class="flex items-center justify-center w-5 h-5 rounded hover:bg-rose-100 transition-colors touch-manipulation"
+                  class="flex items-center justify-center w-5 h-5 rounded hover:bg-[#e7f1ff] transition-colors touch-manipulation"
                   :title="isProductExpanded(p.id) ? 'Свернуть' : 'Развернуть'"
                 >
                   <svg
-                    class="w-3 h-3 text-gray-600 transition-transform"
+                    class="w-3 h-3 text-[#66799e] transition-transform"
                     :class="{ 'rotate-90': isProductExpanded(p.id) }"
                     fill="currentColor"
                     viewBox="0 0 20 20"
@@ -676,43 +665,43 @@
                   type="checkbox"
                   :checked="selectedIds.includes(p.id)"
                   @change="toggleSelect(p.id)"
-                  class="rounded border-gray-300 text-brand-dark focus:ring-brand-dark w-4 h-4 touch-manipulation"
+                  class="rounded border-[#c9d6ec] accent-[#1759ed] w-4 h-4 touch-manipulation"
                 >
               </div>
               <img
                 :src="getProductCover(p)"
-                class="w-12 h-12 object-cover rounded border flex-shrink-0"
+                class="w-12 h-12 object-cover rounded-[10px] border border-[#eaf0f9] flex-shrink-0"
               />
               <div class="flex-1 min-w-0">
                 <div class="flex justify-between items-start gap-2">
                   <div class="flex-1 min-w-0">
-                    <h3 class="text-sm font-medium text-gray-900 truncate leading-tight">
+                    <h3 class="text-sm font-bold text-[#081b4b] truncate leading-tight">
                       {{ p.title || p.id }}
                     </h3>
                     <div class="mt-0.5">
-                    <p class="text-xs text-gray-500 leading-snug">
+                    <p class="text-xs text-[#8898b5] leading-snug">
                       {{ categoryName(p.categoryId) }}
                     </p>
-                    <p v-if="p.groupName" class="text-xs text-purple-600 leading-snug">
+                    <p v-if="p.groupName" class="text-xs text-[#1759ed] leading-snug">
                       Линейка: <span class="font-semibold">{{ p.groupName }}</span>
                     </p>
-                    <p v-if="p.strength && p.strength.trim() && p.strength !== '0'" class="text-xs text-gray-600 leading-snug">
-                      Крепость: <span class="font-semibold text-gray-900">{{ p.strength }}</span>
+                    <p v-if="p.strength && p.strength.trim() && p.strength !== '0'" class="text-xs text-[#66799e] leading-snug">
+                      Крепость: <span class="font-semibold text-[#081b4b]">{{ p.strength }}</span>
                     </p>
-                    <p class="text-base text-gray-900 mt-0.5 flex items-center gap-1.5">
+                    <p class="text-base font-bold text-[#081b4b] mt-0.5 flex items-center gap-1.5">
                       <span v-if="!p.hasVariants">{{ formatRub(p.priceRub) }}</span>
-                      <span v-else class="inline-flex items-center rounded-full bg-purple-100 px-1.5 py-0.5 text-[0.6rem] font-semibold text-purple-700">
+                      <span v-else class="inline-flex items-center rounded-full bg-[#e7f1ff] px-1.5 py-0.5 text-[10px] font-semibold text-[#1759ed]">
                         индивид
                       </span>
                     </p>
-                    <p class="text-xs text-gray-600 leading-snug">
+                    <p class="text-xs text-[#66799e] leading-snug">
                       Себес:
                       <span v-if="profitUnlocked" class="font-semibold">{{ formatRub(p.costPrice) }}</span>
-                      <span v-else class="inline-flex items-center rounded-full bg-gray-100 p-0.5">
-                        <LockClosedIcon class="h-3.5 w-3.5 text-gray-400" />
+                      <span v-else class="inline-flex items-center rounded-full bg-[#f0f4fa] p-0.5 text-[#8999b7]">
+                        <LockClosedIcon class="h-3.5 w-3.5" />
                       </span>
                     </p>
-                    <p class="text-xs leading-snug" :class="isBelowMin(p) ? 'text-red-600 font-semibold' : 'text-gray-600'">
+                    <p class="text-xs leading-snug" :class="isBelowMin(p) ? 'text-[#fa2948] font-semibold' : 'text-[#66799e]'">
                       Остаток: {{ displayStockLabel(p) }}<span v-if="location === 'retail' && Number(p.minStock ?? 0) > 0"> / мин. {{ Number(p.minStock ?? 0) }}</span>
                     </p>
                     </div>
@@ -722,7 +711,7 @@
                     <button 
                       v-if="location === 'retail'"
                       @click="$emit('edit', p)" 
-                      class="flex items-center justify-center rounded-full bg-blue-500/10 p-1.5 text-blue-600 transition-colors hover:bg-blue-500/20 hover:text-blue-800 touch-manipulation"
+                      class="crm-ref-chip-button !p-1.5 touch-manipulation"
                       title="Редактировать"
                     >
                       <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
@@ -732,7 +721,7 @@
                     <button 
                       v-if="location === 'retail'"
                       @click="$emit('delete', p)" 
-                      class="flex items-center justify-center rounded-full bg-rose-500/10 p-1.5 text-rose-600 transition-colors hover:bg-rose-500/20 hover:text-rose-800 touch-manipulation"
+                      class="crm-ref-chip-button crm-ref-chip-button--danger !p-1.5 touch-manipulation"
                       title="Удалить"
                     >
                       <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
@@ -751,11 +740,11 @@
               <button
                 v-if="p.hasVariants && p.variants && p.variants.length > 0"
                 @click="toggleProductExpansion(p.id)"
-                class="flex items-center justify-center w-6 h-6 rounded hover:bg-rose-100 transition-colors"
+                class="flex items-center justify-center w-6 h-6 rounded hover:bg-[#e7f1ff] transition-colors"
                 :title="isProductExpanded(p.id) ? 'Свернуть' : 'Развернуть'"
               >
                 <svg
-                  class="w-4 h-4 text-gray-600 transition-transform"
+                  class="w-4 h-4 text-[#66799e] transition-transform"
                   :class="{ 'rotate-90': isProductExpanded(p.id) }"
                   fill="currentColor"
                   viewBox="0 0 20 20"
@@ -768,31 +757,31 @@
                 type="checkbox"
                 :checked="selectedIds.includes(p.id)"
                 @change="toggleSelect(p.id)"
-                class="rounded border-gray-300 text-brand-dark focus:ring-brand-dark"
+                class="rounded border-[#c9d6ec] accent-[#1759ed]"
               >
             </div>
             <img
               :src="getProductCover(p)"
-              class="w-20 h-20 object-cover rounded-lg border flex-shrink-0"
+              class="w-20 h-20 object-cover rounded-[13px] border border-[#eaf0f9] flex-shrink-0"
             />
             <div class="flex-1 min-w-0">
               <div class="flex items-start justify-between gap-4">
                 <div class="min-w-0 flex-1">
-                  <h3 class="text-lg font-medium text-gray-900 truncate">
+                  <h3 class="text-[17px] font-bold text-[#081b4b] truncate">
                     {{ p.title || p.id }}
                   </h3>
                   <div class="mt-1 space-y-1">
-                    <p v-if="p.description" class="text-sm text-gray-500">
+                    <p v-if="p.description" class="text-sm text-[#8898b5]">
                       {{ p.description }}
                     </p>
-                    <p class="text-sm text-gray-600">
+                    <p class="text-sm text-[#66799e]">
                       Категория: <span class="font-medium">{{ categoryName(p.categoryId) }}</span>
                     </p>
-                    <p v-if="p.groupName" class="text-sm text-purple-600">
+                    <p v-if="p.groupName" class="text-sm text-[#1759ed]">
                       Линейка: <span class="font-medium">{{ p.groupName }}</span>
                     </p>
-                    <p v-if="p.strength && p.strength.trim() && p.strength !== '0'" class="text-sm text-gray-600">
-                      Крепость: <span class="font-medium text-gray-900">{{ p.strength }}</span>
+                    <p v-if="p.strength && p.strength.trim() && p.strength !== '0'" class="text-sm text-[#66799e]">
+                      Крепость: <span class="font-semibold text-[#081b4b]">{{ p.strength }}</span>
                     </p>
                     <div class="flex flex-wrap gap-4 text-sm">
                       <span class="text-gray-600">
@@ -803,10 +792,10 @@
                           class="inline-flex items-center rounded-full bg-gray-100 p-1"
                           :aria-label="`Себестоимость скрыта`"
                         >
-                          <LockClosedIcon class="h-4 w-4 text-gray-400" />
+                          <LockClosedIcon class="h-4 w-4" />
                         </span>
                       </span>
-                      <span :class="isBelowMin(p) ? 'text-red-600 font-semibold' : 'text-gray-600'">
+                      <span :class="isBelowMin(p) ? 'text-[#fa2948] font-semibold' : 'text-[#66799e]'">
                         Остаток: {{ displayStockLabel(p) }}<span v-if="location === 'retail' && Number(p.minStock ?? 0) > 0"> / мин. {{ Number(p.minStock ?? 0) }}</span>
                       </span>
                     </div>
@@ -814,9 +803,9 @@
                 </div>
                 <div class="flex items-center gap-4">
                   <div class="text-right">
-                    <div class="text-xl text-gray-900 flex items-center gap-2">
+                    <div class="text-xl font-bold text-[#081b4b] flex items-center gap-2">
                       <span v-if="!p.hasVariants">{{ formatRub(p.priceRub) }}</span>
-                      <span v-else class="inline-flex items-center rounded-full bg-purple-100 px-2 py-1 text-[0.7rem] font-semibold text-purple-700">
+                      <span v-else class="inline-flex items-center rounded-full bg-[#e7f1ff] px-2 py-1 text-[0.7rem] font-semibold text-[#1759ed]">
                         индивид
                       </span>
                     </div>
@@ -825,7 +814,7 @@
                     <button 
                       v-if="location === 'retail'"
                       @click="$emit('edit', p)" 
-                    class="rounded-full bg-blue-500/10 p-2 text-blue-600 transition hover:bg-blue-500/20 hover:text-blue-800"
+                    class="crm-ref-chip-button !p-2"
                       title="Редактировать"
                     >
                       <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
@@ -835,7 +824,7 @@
                     <button 
                       v-if="location === 'retail'"
                       @click="$emit('delete', p)" 
-                    class="rounded-full bg-rose-500/10 p-2 text-rose-600 transition hover:bg-rose-500/20 hover:text-rose-800"
+                    class="crm-ref-chip-button crm-ref-chip-button--danger !p-2"
                       title="Удалить"
                     >
                       <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
@@ -850,13 +839,13 @@
 
           <!-- Variants list (for both mobile and desktop) -->
           <div v-if="p.hasVariants && p.variants && p.variants.length > 0 && isProductExpanded(p.id)" class="mt-3 space-y-2">
-            <div class="border-t border-rose-100 pt-3">
-              <h4 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 px-2">Варианты товара</h4>
+            <div class="border-t border-[#eaf0f9] pt-3">
+              <h4 class="text-[11px] font-bold text-[#8898b5] uppercase tracking-[.14em] mb-2 px-2">Варианты товара</h4>
               <div class="space-y-2">
                 <div
                   v-for="(variant, vIndex) in p.variants"
                   :key="`${p.id}-variant-list-${vIndex}`"
-                  class="bg-rose-50/40 rounded-lg p-3 hover:bg-rose-50/60 transition-colors"
+                  class="bg-[#f7fbff] rounded-[11px] p-3 hover:bg-[#edf5ff] transition-colors"
                 >
                   <div class="flex items-start gap-3">
                     <!-- Картинка цвета -->
@@ -877,12 +866,12 @@
                     <div class="flex-1 min-w-0">
                       <div class="flex items-start justify-between gap-2">
                         <div class="flex-1">
-                          <div class="text-sm font-medium text-gray-900">{{ variant.name }}</div>
+                          <div class="text-sm font-bold text-[#081b4b]">{{ variant.name }}</div>
                           <div class="mt-1 grid grid-cols-2 sm:grid-cols-4 gap-x-3 gap-y-1 text-xs">
                             <div class="text-gray-600">
                               <span class="font-medium">Себес:</span>
                               <span v-if="profitUnlocked" class="ml-1">{{ formatRub(p.costPrice) }}</span>
-                              <LockClosedIcon v-else class="inline h-3 w-3 text-gray-400 ml-1" />
+                              <LockClosedIcon v-else class="inline h-3 w-3 text-[#8999b7] ml-1" />
                             </div>
                             <div class="text-gray-600">
                               <span class="font-medium">Цена:</span>
@@ -906,12 +895,35 @@
       </div>
     </div>
     
-    <!-- Help text -->
-    <div class="relative overflow-hidden rounded-2xl border border-dashed border-rose-200/60 bg-rose-50/40 px-6 py-3 text-center text-[0.65rem] font-semibold uppercase tracking-[0.28em] text-rose-500 shadow-inner">
-      <div class="relative">
-        {{ location === 'warehouse' ? 'На сайте показывается только розничный остаток.' : 'Используйте чекбоксы для массовых операций с товарами.' }}
+    <!-- Пагинация (как «Заказы») -->
+    <div class="pt-5 flex justify-center">
+      <div class="flex items-center gap-3">
+        <button
+          type="button"
+          class="crm-ref-button crm-ref-button--gray"
+          :disabled="page <= 1"
+          @click="go(page - 1)"
+        >
+          Назад
+        </button>
+        <div class="rounded-[40px] bg-[#f0f4fa] px-5 py-2.5 text-[12px] font-bold text-[#253663] tabular-nums">
+          Стр. {{ page }} / {{ totalPages }}
+        </div>
+        <button
+          type="button"
+          class="crm-ref-button crm-ref-button--gray"
+          :disabled="page >= totalPages"
+          @click="go(page + 1)"
+        >
+          Вперёд
+        </button>
       </div>
     </div>
+
+    <!-- Help text -->
+    <p class="crm-ref-hint mt-4">
+      {{ location === 'warehouse' ? 'На сайте показывается только розничный остаток' : 'Чекбоксы включают массовые операции с товарами' }}
+    </p>
 
     <!-- Category Change Modal -->
     <div v-if="showCategoryModal" class="fixed inset-0 bg-white/40 backdrop-blur-sm flex items-center justify-center z-50">
@@ -949,53 +961,44 @@
     </div>
 
     <!-- Group Change Modal -->
-    <div v-if="showGroupModal" class="fixed inset-0 bg-white/40 backdrop-blur-sm flex items-center justify-center z-50">
-      <div class="bg-white rounded-lg p-6 w-full max-w-md mx-4">
-        <h3 class="text-lg font-semibold text-gray-900 mb-4">Назначить линейку</h3>
-        <p class="text-sm text-gray-600 mb-4">Выбрано товаров: {{ selectedIds.length }}</p>
+    <div v-if="showGroupModal" class="fixed inset-0 z-50 flex items-center justify-center bg-[#081b4b]/38 backdrop-blur-[9px] p-4">
+      <div class="w-full max-w-md rounded-[20px] border border-[#eaf0f9] bg-[radial-gradient(ellipse_at_75%_0%,#e7f1ff_0%,transparent_60%),#ffffff] p-6 text-[#081b4b] shadow-[0_24px_70px_#03071140]">
+        <h3 class="text-lg font-bold tracking-[-.02em] mb-2">Назначить линейку</h3>
+        <p class="text-sm text-[#66799e] mb-4">Выбрано товаров: {{ selectedIds.length }}</p>
 
-        <div class="space-y-5">
+        <div class="space-y-4">
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Категория</label>
-            <select
-              v-model="groupModalCategoryId"
-              class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-dark focus:border-transparent"
-            >
+            <label class="block text-[12px] font-bold text-[#253663] mb-2">Категория</label>
+            <select v-model="groupModalCategoryId" class="crm-ref-select">
               <option value="">Выберите категорию</option>
               <option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }}</option>
             </select>
           </div>
 
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Линейка</label>
-            <select
-              v-model="selectedGroupId"
-              :disabled="!groupModalCategoryId || groupModalLoading"
-              class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-dark focus:border-transparent disabled:bg-gray-100 disabled:text-gray-500"
-            >
+            <label class="block text-[12px] font-bold text-[#253663] mb-2">Линейка</label>
+            <select v-model="selectedGroupId" :disabled="!groupModalCategoryId || groupModalLoading" class="crm-ref-select">
               <option value="">Без линейки</option>
               <option v-for="group in modalGroupOptions" :key="group.id" :value="group.id">
                 {{ group.name }}
               </option>
             </select>
-            <p v-if="groupModalLoading" class="text-xs text-gray-500 mt-2 animate-pulse">Загружаем список линеек…</p>
-            <p v-else-if="groupModalCategoryId && !modalGroupOptions.length" class="text-xs text-gray-500 mt-2">
+            <p v-if="groupModalLoading" class="text-xs text-[#8898b5] mt-2 animate-pulse">Загружаем список линеек…</p>
+            <p v-else-if="groupModalCategoryId && !modalGroupOptions.length" class="text-xs text-[#8898b5] mt-2">
               Для выбранной категории пока нет линеек.
             </p>
           </div>
         </div>
 
-        <div class="flex justify-end gap-3 mt-6">
-          <button
-            @click="cancelGroupChange"
-            class="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-          >
+        <div class="flex justify-end gap-2.5 mt-6">
+          <button type="button" class="crm-ref-button crm-ref-button--gray" @click="cancelGroupChange">
             Отмена
           </button>
           <button
-            @click="confirmGroupChange"
+            type="button"
+            class="crm-ref-button crm-ref-button--primary"
             :disabled="!groupModalCategoryId"
-            class="px-4 py-2 text-sm bg-brand-dark text-white rounded-lg hover:bg-brand-dark/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            @click="confirmGroupChange"
           >
             Применить
           </button>
@@ -1003,29 +1006,7 @@
       </div>
     </div>
 
-    <!-- Pagination -->
-    <div class="pt-6">
-      <div class="mx-auto flex w-full max-w-sm items-center justify-center gap-3 rounded-2xl border border-white/60 bg-white/90 px-4 py-3 text-sm font-semibold text-gray-700 shadow-lg shadow-rose-100/40 backdrop-blur">
-        <button
-          class="inline-flex items-center gap-2 rounded-xl border border-rose-100/70 bg-white/75 px-4 py-2 text-xs uppercase tracking-[0.25em] text-gray-600 transition-all duration-200 hover:-translate-y-0.5 hover:bg-white hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-rose-200/60 focus:ring-offset-2 focus:ring-offset-white disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:bg-white"
-          :disabled="page <= 1"
-          @click="go(page - 1)"
-        >
-          Назад
-        </button>
-        <div class="rounded-xl border border-white/70 bg-white px-5 py-2 text-xs uppercase tracking-[0.35em] text-gray-500 shadow-inner">
-          Стр. {{ page }} / {{ totalPages }}
-        </div>
-        <button
-          class="inline-flex items-center gap-2 rounded-xl border border-rose-100/70 bg-white/75 px-4 py-2 text-xs uppercase tracking-[0.25em] text-gray-600 transition-all duration-200 hover:-translate-y-0.5 hover:bg-white hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-rose-200/60 focus:ring-offset-2 focus:ring-offset-white disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:bg-white"
-          :disabled="page >= totalPages"
-          @click="go(page + 1)"
-        >
-          Вперёд
-        </button>
-      </div>
-    </div>
-    
+
     <!-- Filters Modal (mobile) -->
     <Transition
       enter-active-class="transition-opacity duration-200 ease-out"
@@ -1040,38 +1021,38 @@
         class="fixed inset-0 z-50 flex items-end justify-center bg-black/40 px-4 py-6 sm:items-center"
         v-safe-backdrop-close="closeFiltersModal"
       >
-        <div class="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
-          <div class="flex items-center justify-between gap-2">
-            <h3 class="text-lg font-semibold text-gray-900">Фильтры</h3>
+        <div class="w-full max-w-md rounded-[20px] border border-[#eaf0f9] bg-[radial-gradient(ellipse_at_75%_0%,#e7f1ff_0%,transparent_60%),#ffffff] p-6 text-[#081b4b] shadow-[0_24px_70px_#03071140]">
+          <div class="flex items-center justify-between gap-2 mb-4">
+            <h3 class="text-lg font-bold tracking-[-.02em]">Фильтры</h3>
             <button
               type="button"
-              class="inline-flex items-center justify-center rounded-full p-2 text-gray-500 transition hover:bg-gray-100 hover:text-gray-800"
+              class="crm-ref-chip-button !p-2"
               @click="closeFiltersModal"
             >
-              <XMarkIcon class="h-5 w-5" />
+              <XMarkIcon class="h-4 w-4" />
               <span class="sr-only">Закрыть</span>
             </button>
           </div>
 
           <div class="mt-4 space-y-4">
             <div class="space-y-2">
-              <label class="text-sm font-medium text-gray-700">Поиск</label>
+              <label class="block text-[12px] font-bold text-[#253663] mb-1">Поиск</label>
               <input
                 v-model="search"
                 type="text"
                 placeholder="Поиск по названию..."
-                class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 focus:border-transparent focus:ring-2 focus:ring-brand-primary"
+                class="crm-ref-input"
                 @input="onSearchInput"
               />
             </div>
 
             <div class="space-y-3">
-              <label class="text-sm font-medium text-gray-700">Категория и линейка</label>
+              <label class="block text-[12px] font-bold text-[#253663] mb-1">Категория и линейка</label>
               <div class="flex flex-col gap-3">
                 <div class="flex items-center gap-2">
                   <select
                     v-model="category"
-                    class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 focus:border-transparent focus:ring-2 focus:ring-brand-primary"
+                    class="crm-ref-select"
                     @change="onCategoryFilterChange"
                   >
                     <option value="">Все категории</option>
@@ -1079,7 +1060,7 @@
                   </select>
                   <button
                     type="button"
-                    class="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white p-2 text-gray-600 transition hover:bg-gray-100 hover:text-gray-800"
+                    class="crm-ref-chip-button !p-2.5"
                     title="Создать категорию"
                     @click="handleFiltersModalAction('category')"
                   >
@@ -1094,14 +1075,14 @@
                       v-model="mobileGroupSearchQuery"
                       type="text"
                       placeholder="Поиск линейки..."
-                      class="w-full rounded-lg border border-gray-300 bg-white py-2 pl-9 pr-3 text-gray-900 focus:border-transparent focus:ring-2 focus:ring-brand-primary"
+                      class="crm-ref-input !pl-9"
                     />
                   </div>
                   <div class="flex items-center gap-2">
                     <select
                       v-model="group"
                       :disabled="!groupFilterOptions.length"
-                      class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 focus:border-transparent focus:ring-2 focus:ring-brand-primary disabled:bg-gray-100 disabled:text-gray-400"
+                      class="crm-ref-select"
                       @change="onFiltersChanged"
                     >
                       <option value="">Все линейки</option>
@@ -1111,7 +1092,7 @@
                     </select>
                     <button
                       type="button"
-                      class="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white p-2 text-gray-600 transition hover:bg-gray-100 hover:text-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
+                      class="crm-ref-chip-button !p-2.5"
                       :disabled="!category"
                       :title="category ? 'Создать линейку' : 'Сначала выберите категорию'"
                       @click="handleFiltersModalAction('group')"
@@ -1125,10 +1106,10 @@
             </div>
 
             <div class="space-y-2">
-              <label class="text-sm font-medium text-gray-700">Показывать на странице</label>
+              <label class="block text-[12px] font-bold text-[#253663] mb-1">Показывать на странице</label>
               <select
                 v-model.number="pageSize"
-                class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 focus:border-transparent focus:ring-2 focus:ring-brand-primary"
+                class="crm-ref-select"
                 @change="onPageSizeChange"
               >
                 <option :value="10">10</option>
@@ -1138,16 +1119,12 @@
             </div>
 
             <div class="space-y-2">
-              <label class="text-sm font-medium text-gray-700">Режим отображения</label>
-              <div class="flex items-center gap-1 rounded-lg bg-gray-100 p-1">
+              <label class="block text-[12px] font-bold text-[#253663] mb-1">Режим отображения</label>
+              <div class="crm-ref-segment w-full">
                 <button
                   @click="viewMode = 'table'"
-                  :class="[
-                    'flex flex-1 items-center justify-center rounded-md p-2 transition-all',
-                    viewMode === 'table' 
-                      ? 'bg-white text-gray-900 shadow-sm' 
-                      : 'text-gray-500 hover:text-gray-700'
-                  ]"
+                  :class="{ 'is-active': viewMode === 'table' }"
+                  class="flex-1"
                   title="Вид таблицы"
                 >
                   <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
@@ -1156,12 +1133,8 @@
                 </button>
                 <button
                   @click="viewMode = 'list'"
-                  :class="[
-                    'flex flex-1 items-center justify-center rounded-md p-2 transition-all',
-                    viewMode === 'list' 
-                      ? 'bg-white text-gray-900 shadow-sm' 
-                      : 'text-gray-500 hover:text-gray-700'
-                  ]"
+                  :class="{ 'is-active': viewMode === 'list' }"
+                  class="flex-1"
                   title="Вид списка"
                 >
                   <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
@@ -1175,7 +1148,7 @@
           <div class="mt-6 flex justify-end">
             <button
               type="button"
-              class="inline-flex items-center justify-center rounded-lg bg-brand-dark px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-dark/90"
+              class="crm-ref-button crm-ref-button--primary"
               @click="closeFiltersModal"
             >
               Готово
@@ -1214,18 +1187,18 @@
       <div
         v-if="showGroupDropdown"
         ref="groupDropdownRef"
-        class="fixed z-[100] w-72 rounded-2xl border border-white/60 bg-white shadow-2xl"
+        class="fixed z-[100] w-72 rounded-2xl border border-[#eaf0f9] bg-white shadow-[0_12px_35px_#20386926]"
         :style="groupDropdownStyle"
       >
-        <div class="p-2 border-b border-gray-100">
+        <div class="p-2 border-b border-[#eaf0f9]">
           <div class="relative">
-            <MagnifyingGlassIcon class="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+            <MagnifyingGlassIcon class="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9ba8c0] pointer-events-none" />
             <input
               ref="groupSearchInputRef"
               v-model="groupSearchQuery"
               type="text"
               placeholder="Поиск линейки..."
-              class="w-full rounded-xl border border-gray-200 bg-white py-2 pl-9 pr-3 text-sm focus:border-rose-300 focus:outline-none focus:ring-2 focus:ring-rose-200"
+              class="w-full rounded-[11px] border border-[#eaf0f9] bg-white py-2 pl-9 pr-3 text-sm text-[#081b4b] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0958ff]"
               @keydown.escape="closeGroupDropdown"
               @keydown.enter="selectFirstFilteredGroup"
             />
@@ -1237,7 +1210,7 @@
             @click="selectGroup('')"
             :class="[
               'w-full px-3 py-2 text-left text-sm transition bg-white border-0',
-              group === '' ? 'text-rose-600 font-medium' : 'text-gray-700 hover:text-rose-600'
+              group === '' ? 'text-[#1759ed] font-bold' : 'text-[#425778] hover:text-[#1759ed]'
             ]"
           >
             Все линейки
@@ -1249,12 +1222,12 @@
             @click="selectGroup(option.id)"
             :class="[
               'w-full px-3 py-2 text-left text-sm transition bg-white border-0',
-              group === option.id ? 'text-rose-600 font-medium' : 'text-gray-700 hover:text-rose-600'
+              group === option.id ? 'text-[#1759ed] font-bold' : 'text-[#425778] hover:text-[#1759ed]'
             ]"
           >
             {{ option.name }}
           </button>
-          <div v-if="filteredGroupOptions.length === 0 && groupSearchQuery" class="px-3 py-4 text-center text-sm text-gray-500">
+          <div v-if="filteredGroupOptions.length === 0 && groupSearchQuery" class="px-3 py-4 text-center text-sm text-[#8898b5]">
             Ничего не найдено
           </div>
         </div>
@@ -1265,8 +1238,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch, onMounted, onUnmounted, nextTick } from 'vue'
-import { PlusIcon, FunnelIcon, XMarkIcon, CubeIcon, MagnifyingGlassIcon, LockClosedIcon, ArrowsRightLeftIcon } from '@heroicons/vue/24/outline'
-import AdminSectionHero from '@/components/admin/layout/AdminSectionHero.vue'
+import { PlusIcon, FunnelIcon, XMarkIcon, MagnifyingGlassIcon, LockClosedIcon, ArrowsRightLeftIcon } from '@heroicons/vue/24/outline'
 import { useAdminStore } from '@/stores/admin'
 import { useCrmStore } from '@/stores/crm'
 import { storeToRefs } from 'pinia'

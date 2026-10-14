@@ -256,10 +256,10 @@ async function fetchDashboardTodayTimeseries() {
     method: "GET",
     headers: authHeaders(),
   });
-  // Если у нас 24 часа, суммируем или берем нужный срез для проверки общих сумм в старых тестах,
-  // либо если тест ожидает 1 элемент, вернем массив с агрегированным объектом (или обновим проверки).
-  // Но удобнее вернуть агрегированный объект с суммами, чтобы не переписывать все assertions.
-  if (res.response.status === 200 && Array.isArray(res.data) && res.data.length === 24) {
+  // Агрегируем почасовой ряд (рабочие часы 10:00–21:00) в один объект с
+  // суммами, чтобы старые проверки totalSales/revenue/profit не зависели от
+  // количества столбиков на графике.
+  if (res.response.status === 200 && Array.isArray(res.data) && res.data.length > 1) {
     const agg = res.data.reduce((acc, curr) => ({
       orders: acc.orders + curr.orders,
       revenue: acc.revenue + curr.revenue,
@@ -391,12 +391,18 @@ async function testDashboardUsesBusinessDayBoundary() {
     );
 
     assert.equal(todayTimeseries.response.status, 200);
-    assert.equal(todayTimeseries.data.length, 24);
-    // Ищем час, на который пришлась продажа, или проверяем общую сумму по всем часам
+    // График за день показывает только рабочие часы магазина (10:00–21:00)
+    assert.equal(todayTimeseries.data.length, 12);
+    assert.equal(todayTimeseries.data[0]?.label, "10:00");
+    assert.equal(todayTimeseries.data[todayTimeseries.data.length - 1]?.label, "21:00");
+    // Продажи этого сценария приходятся на полночь Минска (00:00 следующего
+    // дня) — вне рабочих часов, поэтому в почасовом ряду их нет. Итоги дня
+    // при этом полностью учитываются дашбордом (проверки выше) и месячным
+    // графиком (day24/day25 ниже по тесту).
     const totalTodayRev = todayTimeseries.data.reduce((sum, h) => sum + h.revenue, 0);
     const totalTodayProf = todayTimeseries.data.reduce((sum, h) => sum + h.profit, 0);
-    assert.equal(totalTodayRev, 35);
-    assert.equal(totalTodayProf, 15);
+    assert.equal(totalTodayRev, 0);
+    assert.equal(totalTodayProf, 0);
 
     const deliveredToday = await requestJson(
       "/api/admin/crm/orders/delivered?period=today&limit=10",
@@ -647,12 +653,16 @@ async function testInsufficientReplacementStockRollsBackAtomically() {
 }
 
 async function testIssuedOrderPaymentRollbackAndCancellationRestoreStock() {
+  // Время внутри рабочих часов магазина (18:00 Минска), чтобы выдача заказа
+  // попадала в почасовый график 10:00–21:00, и вне окна замка «Обзора»
+  // (10:00–16:00), чтобы дашборд отвечал без X-Dashboard-Token.
+  await withMockedNow("2026-10-14T15:00:00.000Z", async () => {
   const productId = insertProduct({ stock: 1, title: "Rollback Product" });
   const orderId = insertOrder({
     orderNumber: 1007,
     status: "in_progress",
     stockDeducted: 1,
-    createdAt: "2026-03-25 09:00:00",
+    createdAt: "2026-10-14 09:00:00",
     items: [{ productId, quantity: 1, price: 20, cost: 12 }],
   });
 
@@ -845,6 +855,7 @@ async function testIssuedOrderPaymentRollbackAndCancellationRestoreStock() {
     Number(timeseriesAfterCancellation.data[0].profit || 0),
     baselineTimeseriesProfit,
   );
+  });
 }
 
 async function testCatalogPriceSnapshotSurvivesEdits() {

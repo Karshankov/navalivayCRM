@@ -32,9 +32,6 @@ describe("AdminProductsTable search regressions", () => {
       },
       global: {
         stubs: {
-          AdminSectionHero: {
-            template: "<section><slot name=\"actions\" /><slot /></section>",
-          },
           Teleport: true,
         },
       },
@@ -43,7 +40,7 @@ describe("AdminProductsTable search regressions", () => {
 
   it("debounces product search and emits only the final query", async () => {
     const wrapper = mountTable();
-    const searchInput = wrapper.find('input[type="text"]');
+    const searchInput = wrapper.find('input[type="search"]');
 
     await searchInput.setValue("п");
     await searchInput.setValue("пе");
@@ -60,7 +57,7 @@ describe("AdminProductsTable search regressions", () => {
 
   it("category changes cancel pending search debounce and emit immediately", async () => {
     const wrapper = mountTable();
-    const searchInput = wrapper.find('input[type="text"]');
+    const searchInput = wrapper.find('input[type="search"]');
     const categorySelect = wrapper.find("select");
 
     await searchInput.setValue("персик");

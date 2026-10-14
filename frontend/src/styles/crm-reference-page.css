@@ -1,0 +1,270 @@
+/*
+ * Общие примитивы эталонного дизайна «Заказов» (crm-orders-reference.css)
+ * для страниц, не связанных с заказами: «Товары», «Категории», окно ввода
+ * ключа доступа. Цвета, радиусы и типографика скопированы 1:1 из эталона,
+ * но селекторы не зависят от .crm-orders-page — классы вешаются напрямую.
+ */
+
+.crm-ref {
+  --crm-ref-ink: #081b4b;
+  --crm-ref-primary: linear-gradient(100deg, #05b8ff, #185dff);
+  --crm-ref-danger: linear-gradient(115deg, #ff685a, #fa104f);
+  min-width: 0;
+  color: var(--crm-ref-ink);
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+}
+.crm-ref * { box-sizing: border-box; }
+.crm-ref button { font-family: inherit; }
+.crm-ref button:focus-visible { outline: 2px solid #0958ff; outline-offset: 3px; }
+.crm-ref button:disabled { cursor: not-allowed; }
+.crm-ref ::selection { background: #d9ecff; color: #081b4b; }
+
+/* ===== Заголовок страницы и поиск (как «Заказы») ===== */
+.crm-ref-heading {
+  display: flex; align-items: center; gap: 26px;
+  margin: 32px 0 18px;
+}
+.crm-ref-title {
+  flex-shrink: 0; margin: 0;
+  font-size: 37px; font-weight: 700; letter-spacing: -.04em; line-height: normal;
+  color: #081b4b;
+}
+.crm-ref-search { position: relative; flex: 1; min-width: 200px; max-width: 680px; }
+.crm-ref-search-input {
+  display: block; width: 100%;
+  padding: 15px 18px 15px 40px;
+  border: 1px solid #eaf0f9; border-radius: 12px;
+  background: white; color: #081b4b;
+  font: inherit; font-size: 13px; line-height: normal;
+  caret-color: #0958ff;
+}
+.crm-ref-search-input::placeholder { color: #9ba8c0; opacity: 1; }
+.crm-ref-search-input:focus-visible { outline: 2px solid #0958ff; outline-offset: 2px; }
+.crm-ref-search-icon {
+  position: absolute; left: 18px; top: 50%;
+  width: 14px; height: 14px; transform: translateY(-50%);
+  color: #9ba8c0; pointer-events: none;
+}
+
+/* ===== Тулбар и кнопки (как «Заказы») ===== */
+.crm-ref-toolbar {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 10px;
+  margin-bottom: 20px;
+}
+.crm-ref-toolbar-spacer { flex: 1; }
+.crm-ref-button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 0; max-width: 100%;
+  padding: 13px 21px;
+  border: none; border-radius: 12px;
+  font-size: 13px; font-weight: 750; line-height: normal;
+  white-space: nowrap; cursor: pointer;
+  background: linear-gradient(#f7faff, #e9f0fa); color: #233e70;
+}
+.crm-ref-button:hover { filter: brightness(1.04); }
+.crm-ref-button:disabled { opacity: .55; }
+.crm-ref-button--primary { background: var(--crm-ref-primary); color: white; box-shadow: 0 8px 16px #148cff30; }
+.crm-ref-button--danger { background: var(--crm-ref-danger); color: white; }
+.crm-ref-button--gray { background: linear-gradient(#f7faff, #e9f0fa); color: #233e70; }
+.crm-ref-button > svg { width: 16px; height: 16px; flex-shrink: 0; }
+/* Малая кнопка-пилюля для карточек и таблиц */
+.crm-ref-chip-button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 9px 14px;
+  border: 1px solid #dce8fa; border-radius: 12px;
+  background: #f7fbff; color: #233e70;
+  font-size: 12px; font-weight: 700; line-height: normal;
+  white-space: nowrap; cursor: pointer;
+  transition: background .15s, border-color .15s;
+}
+.crm-ref-chip-button:hover { background: #edf5ff; border-color: #b8cef5; }
+.crm-ref-chip-button:disabled { opacity: .45; }
+.crm-ref-chip-button--danger { background: #fff3f4; border-color: #ffd7dc; color: #c22036; }
+.crm-ref-chip-button--danger:hover { background: #ffe9ec; border-color: #ffb9c2; }
+.crm-ref-chip-button--primary { background: var(--crm-ref-primary); border-color: transparent; color: white; box-shadow: 0 8px 16px #148cff30; }
+.crm-ref-chip-button--danger-gradient { background: var(--crm-ref-danger); border-color: transparent; color: white; }
+.crm-ref-chip-button > svg { width: 14px; height: 14px; flex-shrink: 0; }
+
+/* ===== Поля ввода и селекты ===== */
+.crm-ref-input,
+.crm-ref-select {
+  display: block; width: 100%;
+  padding: 13px 16px;
+  border: 1px solid #eaf0f9; border-radius: 12px;
+  background: white; color: #081b4b;
+  font: inherit; font-size: 13px; line-height: normal;
+  caret-color: #0958ff;
+}
+.crm-ref-select {
+  appearance: none; padding-right: 38px; cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239ba8c0' stroke-width='2.2'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 14px center; background-size: 14px;
+}
+.crm-ref-input::placeholder { color: #9ba8c0; opacity: 1; }
+.crm-ref-input:focus-visible,
+.crm-ref-select:focus-visible { outline: 2px solid #0958ff; outline-offset: 1px; }
+.crm-ref-input:disabled,
+.crm-ref-select:disabled { background: #f2f6fd; color: #8999b7; cursor: not-allowed; }
+
+/* ===== Сегментный переключатель ===== */
+.crm-ref-segment {
+  display: inline-flex; gap: 2px; padding: 4px;
+  border: 1px solid #eaf0f9; border-radius: 12px;
+  background: #f4f8fd;
+}
+.crm-ref-segment button {
+  padding: 9px 16px;
+  border: 0; border-radius: 9px;
+  background: transparent; color: #253663;
+  font-size: 12.5px; font-weight: 700; line-height: normal;
+  white-space: nowrap; cursor: pointer;
+  transition: background .15s, color .15s, box-shadow .15s;
+}
+.crm-ref-segment button:hover { background: #ffffffa6; }
+.crm-ref-segment button.is-active {
+  background: white; color: #081b4b;
+  box-shadow: 0 4px 12px #20386914;
+}
+.crm-ref-segment button:disabled { opacity: .45; cursor: not-allowed; }
+
+/* ===== Карточка-контейнер (как колонки канбана) ===== */
+.crm-ref-card {
+  border: none; border-radius: 19px;
+  background: white;
+  box-shadow: 0 12px 35px #20386908;
+}
+
+/* ===== Таблица (как эталон, без розовых акцентов) ===== */
+.crm-ref-table { width: 100%; border-collapse: collapse; text-align: left; color: #081b4b; font-size: 13px; line-height: 1.4; }
+.crm-ref-table thead tr { border-bottom: 1px solid #dce8fa; }
+.crm-ref-table th {
+  padding: 15px 16px 13px;
+  color: #8898b5; font-size: 10.5px; font-weight: 700;
+  letter-spacing: .14em; text-transform: uppercase;
+  white-space: nowrap;
+}
+.crm-ref-table tbody tr { border-top: 1px solid #eaf0f9; transition: background-color .12s ease-out; }
+.crm-ref-table tbody tr:first-child { border-top: 0; }
+.crm-ref-table tbody tr:hover { background: #f7fbff; }
+.crm-ref-table tbody tr.is-selected { background: #e7f1ff; }
+.crm-ref-table td { padding: 13px 16px; vertical-align: middle; }
+.crm-ref-table .crm-ref-sort {
+  display: flex; align-items: center; gap: 6px;
+  width: 100%; padding: 0;
+  border: 0; border-radius: 8px;
+  background: transparent; color: inherit;
+  font: inherit; font-size: inherit; letter-spacing: inherit; text-transform: inherit;
+  cursor: pointer;
+}
+.crm-ref-table .crm-ref-sort:hover { color: #081b4b; }
+.crm-ref-table .crm-ref-sort.is-active { color: #1759ed; }
+
+/* ===== Пустое состояние (как crm-orders-empty) ===== */
+.crm-ref-empty {
+  display: flex; align-items: center; justify-content: center; flex-direction: column;
+  gap: 8px; min-height: 235px;
+  padding: 15px;
+  border: 1px dashed #dce6f4; border-radius: 13px;
+  color: #8493b0; font-size: 12px; line-height: normal; text-align: center;
+}
+.crm-ref-empty-symbol {
+  display: grid; place-items: center;
+  width: 57px; height: 57px; margin-bottom: 9px;
+  border-radius: 50%; background: #f4f7fd; color: #4d6089; font-size: 27px;
+}
+.crm-ref-empty b { color: #64799e; font-size: 13px; }
+
+/* ===== Подсказка внизу страницы ===== */
+.crm-ref-hint {
+  padding: 12px 20px;
+  border: 1px dashed #dce6f4; border-radius: 13px;
+  background: #f9fbff;
+  color: #8493b0; font-size: 10px; font-weight: 700;
+  letter-spacing: .22em; text-transform: uppercase; text-align: center;
+  line-height: normal;
+}
+
+/* ===== Счётчики в тулбаре ===== */
+.crm-ref-counter {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 11px; border-radius: 40px;
+  background: #f0f4fa; color: #253663;
+  font-size: 12px; font-weight: 700; line-height: normal;
+  white-space: nowrap;
+}
+.crm-ref-counter--accent { background: #e7f1ff; color: #1759ed; }
+.crm-ref-counter--danger { background: #fff3f4; color: #c22036; }
+
+/* ===== Окно ввода ключа доступа (по центру, эталонный стиль) ===== */
+.crm-ref-gate-wrap {
+  display: flex; justify-content: center;
+  padding: 48px 0 24px;
+}
+.crm-ref-gate {
+  width: min(430px, 100%);
+  padding: 30px 28px 28px;
+  border: 1px solid #eaf0f9; border-radius: 20px;
+  background: radial-gradient(ellipse at 75% 0%, #e7f1ff 0%, transparent 60%), #ffffff;
+  box-shadow: 0 24px 70px #03071140;
+  text-align: center;
+}
+.crm-ref-gate-icon {
+  display: grid; place-items: center;
+  width: 57px; height: 57px; margin: 0 auto 16px;
+  border-radius: 16px;
+  background: var(--crm-ref-primary);
+  color: white;
+  box-shadow: 0 8px 17px #328aff40;
+}
+.crm-ref-gate-icon svg { width: 26px; height: 26px; }
+.crm-ref-gate-title {
+  margin: 0 0 6px;
+  font-size: 23px; font-weight: 800; letter-spacing: -.03em; line-height: 1.2;
+  color: #081b4b;
+}
+.crm-ref-gate-text {
+  margin: 0 0 20px;
+  color: #66799e; font-size: 12.5px; line-height: 1.5;
+}
+.crm-ref-gate-form { text-align: left; }
+.crm-ref-gate-form label {
+  display: block; margin-bottom: 7px;
+  color: #253663; font-size: 12px; font-weight: 700; line-height: normal;
+}
+.crm-ref-gate-error {
+  margin: 9px 0 0;
+  color: #e5484d; font-size: 12.5px; line-height: 1.4;
+}
+.crm-ref-gate-actions { display: flex; gap: 10px; margin-top: 20px; }
+.crm-ref-gate-actions > button { flex: 1; }
+
+/* ===== Форма ключа внутри модального окна (эталон) ===== */
+.crm-ref-modal-form { text-align: left; }
+.crm-ref-modal-form label {
+  display: block; margin-bottom: 7px;
+  color: #253663; font-size: 12px; font-weight: 700; line-height: normal;
+}
+.crm-ref-modal-form .crm-ref-modal-error {
+  margin: 9px 0 0;
+  color: #e5484d; font-size: 12.5px; line-height: 1.4;
+}
+.crm-ref-modal-actions { display: flex; gap: 10px; margin-top: 20px; }
+.crm-ref-modal-actions > button { flex: 1; }
+
+/* ===== Адаптив ===== */
+@media (max-width: 700px) {
+  .crm-ref-heading { display: block; }
+  .crm-ref-title { font-size: 30px; }
+  .crm-ref-search { margin-top: 15px; }
+  .crm-ref-toolbar { align-items: stretch; }
+  .crm-ref-toolbar-spacer { display: none; }
+  .crm-ref-toolbar > .crm-ref-button,
+  .crm-ref-toolbar > .crm-ref-segment { flex: 1 1 auto; }
+  .crm-ref-button { white-space: normal; }
+  .crm-ref-gate-wrap { padding: 24px 0 12px; }
+  .crm-ref-gate { padding: 22px 18px 20px; }
+  .crm-ref-gate-title { font-size: 20px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .crm-ref * { transition-duration: 0ms; }
+}
