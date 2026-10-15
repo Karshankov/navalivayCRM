@@ -19,9 +19,11 @@ import {
   validatePromoCode as validatePromoCodeForOrder,
 } from "../promo-code-service.js";
 import {
+  attachWholesaleCustomerContext,
   getWholesaleTierById,
   getWholesaleUnitPriceForProduct,
   getWholesalePricedGroupIds,
+  resolveEffectiveWholesaleMinQuantity,
   resolveWholesaleContextFromRequest,
   validateWholesaleMinimum,
 } from "../wholesale-service.js";
@@ -373,7 +375,7 @@ function resolveWholesaleContextOrSendError(req, res) {
   }
 }
 
-function buildStoredWholesaleContext(order) {
+function buildStoredWholesaleContext(order, customerRef) {
   if (!order || Number(order.is_wholesale || 0) !== 1 || !order.wholesale_tier_id) {
     return null;
   }
@@ -383,22 +385,49 @@ function buildStoredWholesaleContext(order) {
     return null;
   }
 
-  return {
+  const storedMinQuantity = order.wholesale_min_quantity === null || order.wholesale_min_quantity === undefined
+    ? null
+    : Number(order.wholesale_min_quantity);
+
+  const storedMinAmount = Number(
+    order.wholesale_min_amount ?? tier.minOrderAmount ?? 0,
+  );
+
+  // Старый (суммовой) заказ: снапшота минимума в позициях нет, есть снапшот
+  // суммы — редактирование проверяется по сумме, как при создании заказа.
+  const isLegacyOrder = storedMinQuantity === null && storedMinAmount > 0;
+
+  const context = {
     isWholesale: true,
     tier: {
       ...tier,
       label: order.wholesale_tier_label || tier.label,
-      minOrderAmount: Number(
-        order.wholesale_min_amount ?? tier.minOrderAmount ?? 0,
-      ),
+      minOrderAmount: storedMinAmount,
+      minOrderQuantity: isLegacyOrder
+        ? null
+        : (storedMinQuantity ?? tier.minOrderQuantity),
     },
     code: tier.code,
     secret: "",
-    minOrderAmount: Number(order.wholesale_min_amount ?? tier.minOrderAmount ?? 0),
+    minOrderAmount: storedMinAmount,
+    minOrderQuantity: isLegacyOrder
+      ? null
+      : (storedMinQuantity ?? tier.minOrderQuantity),
     label: order.wholesale_tier_label || tier.label,
   };
+
+  // Персональный override клиента сильнее снапшота минимума
+  // (для старых суммовых заказов override в позициях не применяется).
+  const { effectiveMinQuantity, override } = resolveEffectiveWholesaleMinQuantity(context, customerRef);
+  context.effectiveMinQuantity = isLegacyOrder
+    ? null
+    : (override ?? storedMinQuantity ?? effectiveMinQuantity);
+  context.minOverride = isLegacyOrder ? null : override;
+  return context;
 }
 
+// В оптовом режиме прячет только товары линеек без цены для уровня.
+// Прямые товары (groupId IS NULL) видны в опте по розничной цене.
 function applyWholesaleTierFilter(whereClauses, whereParams, tierId, column = "p.groupId") {
   const normalizedTierId = typeof tierId === "string" ? tierId.trim() : "";
   if (!normalizedTierId) {
@@ -406,13 +435,13 @@ function applyWholesaleTierFilter(whereClauses, whereParams, tierId, column = "p
     return;
   }
 
-  whereClauses.push(`EXISTS (
+  whereClauses.push(`(${column} IS NULL OR EXISTS (
     SELECT 1
     FROM category_group_wholesale_prices gwp
     WHERE gwp.group_id = ${column}
       AND gwp.tier_id = ?
       AND gwp.price_byn > 0
-  )`);
+  ))`);
   whereParams.push(normalizedTierId);
 }
 
@@ -619,6 +648,7 @@ function loadCustomerOrderItems(orderId) {
         p.categoryId AS category_id,
         p.groupId AS group_id,
         p.description AS product_description,
+        p.excluded_from_wholesale_min AS excluded_from_wholesale_min,
         g.cover_image AS group_cover_image,
         c.cover_image AS category_cover_image
       FROM order_items oi
@@ -687,6 +717,8 @@ function loadCustomerOrderItems(orderId) {
         variantName: item.variant_name || null,
         groupId: item.group_id || null,
         categoryId: item.category_id || null,
+        excludedFromWholesaleMin: !item.group_id
+          || Number(item.excluded_from_wholesale_min || 0) === 1,
       },
     };
   });
@@ -725,6 +757,9 @@ function serializeCustomerOrder(order) {
     wholesale_min_amount: order.wholesale_min_amount === null || order.wholesale_min_amount === undefined
       ? null
       : Number(order.wholesale_min_amount),
+    wholesale_min_quantity: order.wholesale_min_quantity === null || order.wholesale_min_quantity === undefined
+      ? null
+      : Number(order.wholesale_min_quantity),
     telegram_username: normalizeTelegramUsername(
       order.resolved_telegram_username || order.telegram_username,
     ) || null,
@@ -739,32 +774,44 @@ function serializeCustomerOrder(order) {
   };
 }
 
-publicRouter.get("/api/wholesale/context", (req, res) => {
-  const wholesaleContext = resolveWholesaleContextOrSendError(req, res);
-  if (!wholesaleContext) {
-    if (res.headersSent) {
-      return;
+publicRouter.get(
+  "/api/wholesale/context",
+  optionalTelegramMiniAppAuth({ allowInsecureFallback: allowInsecureTelegramFallback }),
+  (req, res) => {
+    const wholesaleContext = resolveWholesaleContextOrSendError(req, res);
+    if (!wholesaleContext) {
+      if (res.headersSent) {
+        return;
+      }
+      return res.status(400).json({
+        error: "wholesale_required",
+        message: "Не указана оптовая ссылка",
+      });
     }
-    return res.status(400).json({
-      error: "wholesale_required",
-      message: "Не указана оптовая ссылка",
-    });
-  }
 
-  return res.json({
-    ok: true,
-    is_wholesale: true,
-    wholesale_code: wholesaleContext.tier.code,
-    wholesale_label: wholesaleContext.tier.label,
-    wholesale_min_amount: Number(wholesaleContext.tier.minOrderAmount || 0),
-    restrictions: {
-      hide_banners: true,
-      disable_loyalty: true,
-      disable_promos: true,
-      replace_bottom_tab_bar: true,
-    },
-  });
-});
+    // Персональный минимум (если клиент авторизован в Mini App).
+    attachWholesaleCustomerContext(wholesaleContext, req.telegramAuth);
+
+    return res.json({
+      ok: true,
+      is_wholesale: true,
+      wholesale_code: wholesaleContext.tier.code,
+      wholesale_label: wholesaleContext.tier.label,
+      wholesale_min_amount: Number(wholesaleContext.tier.minOrderAmount || 0),
+      wholesale_min_quantity: Number(wholesaleContext.tier.minOrderQuantity || 0),
+      wholesale_effective_min_quantity: Number(
+        wholesaleContext.effectiveMinQuantity ?? wholesaleContext.tier.minOrderQuantity ?? 0,
+      ),
+      wholesale_min_override: wholesaleContext.minOverride ?? null,
+      restrictions: {
+        hide_banners: true,
+        disable_loyalty: true,
+        disable_promos: true,
+        replace_bottom_tab_bar: true,
+      },
+    });
+  },
+);
 
 publicRouter.get("/api/categories", (req, res) => {
   const wholesaleContext = resolveWholesaleContextOrSendError(req, res);
@@ -1249,8 +1296,9 @@ publicRouter.get("/api/products", (req, res) => {
   }
 
   const where = `WHERE ${whereClauses.join(" AND ")}`;
+  // Прямые товары (без линейки) в опте продаются по розничной цене.
   const effectivePriceExpr = wholesaleContext?.tier
-    ? `(SELECT gwp.price_byn FROM category_group_wholesale_prices gwp WHERE gwp.group_id = p.groupId AND gwp.tier_id = ? LIMIT 1)`
+    ? `CASE WHEN p.groupId IS NULL THEN p.priceRub ELSE (SELECT gwp.price_byn FROM category_group_wholesale_prices gwp WHERE gwp.group_id = p.groupId AND gwp.tier_id = ? LIMIT 1) END`
     : `p.priceRub`;
 
   let orderBy = "ORDER BY effectivePriceRub ASC";
@@ -1289,6 +1337,7 @@ publicRouter.get("/api/products", (req, res) => {
       p.min_stock AS minStock,
       p.use_category_image AS useCategoryImage,
       p.has_variants AS hasVariants,
+      p.excluded_from_wholesale_min AS excludedFromWholesaleMin,
       p.createdAt,
       g.slug as groupSlug,
       g.name as groupName
@@ -1424,12 +1473,19 @@ publicRouter.get("/api/products", (req, res) => {
         wholesaleMinAmount: wholesaleContext?.tier
           ? Number(wholesaleContext.tier.minOrderAmount || 0)
           : null,
+        wholesaleMinQuantity: wholesaleContext?.tier
+          ? Number(wholesaleContext.tier.minOrderQuantity || 0)
+          : null,
+        // Товары без линейки не считаются в минимум всегда.
+        excludedFromWholesaleMin: p.groupId
+          ? Number(p.excludedFromWholesaleMin || 0) === 1
+          : true,
       };
 
       if (p.hasVariants) {
         const variants = variantsByProduct.get(p.id) ?? [];
         result.variants = variants.map((v) => {
-          const variantBase = resolveVariantPublicPriceRub(v, basePrice, Boolean(wholesaleContext?.tier));
+          const variantBase = resolveVariantPublicPriceRub(v, basePrice, Boolean(wholesaleContext?.tier) && p.groupId != null);
           const variantDiscount = activeDiscounts
             ? pickDiscountFromMaps(activeDiscounts, {
                 variantId: v.id,
@@ -1475,6 +1531,9 @@ publicRouter.get("/api/products", (req, res) => {
     wholesale_min_amount: wholesaleContext?.tier
       ? Number(wholesaleContext.tier.minOrderAmount || 0)
       : null,
+    wholesale_min_quantity: wholesaleContext?.tier
+      ? Number(wholesaleContext.tier.minOrderQuantity || 0)
+      : null,
   });
 });
 
@@ -1485,8 +1544,9 @@ publicRouter.get("/api/product/:id", (req, res) => {
   }
 
   const id = req.params.id;
+  // Прямые товары (без линейки) в опте продаются по розничной цене.
   const effectivePriceExpr = wholesaleContext?.tier
-    ? `(SELECT gwp.price_byn FROM category_group_wholesale_prices gwp WHERE gwp.group_id = p.groupId AND gwp.tier_id = ? LIMIT 1)`
+    ? `CASE WHEN p.groupId IS NULL THEN p.priceRub ELSE (SELECT gwp.price_byn FROM category_group_wholesale_prices gwp WHERE gwp.group_id = p.groupId AND gwp.tier_id = ? LIMIT 1) END`
     : `p.priceRub`;
 
   const p = db
@@ -1507,6 +1567,7 @@ publicRouter.get("/api/product/:id", (req, res) => {
       p.min_stock AS minStock,
       p.use_category_image AS useCategoryImage,
       p.has_variants AS hasVariants,
+      p.excluded_from_wholesale_min AS excludedFromWholesaleMin,
       p.createdAt,
       g.slug AS groupSlug,
       g.name AS groupName
@@ -1571,6 +1632,13 @@ publicRouter.get("/api/product/:id", (req, res) => {
     wholesaleMinAmount: wholesaleContext?.tier
       ? Number(wholesaleContext.tier.minOrderAmount || 0)
       : null,
+    wholesaleMinQuantity: wholesaleContext?.tier
+      ? Number(wholesaleContext.tier.minOrderQuantity || 0)
+      : null,
+    // Товары без линейки не считаются в минимум всегда.
+    excludedFromWholesaleMin: p.groupId
+      ? Number(p.excludedFromWholesaleMin || 0) === 1
+      : true,
   };
 
   if (p.hasVariants) {
@@ -1587,7 +1655,7 @@ publicRouter.get("/api/product/:id", (req, res) => {
       .all(id);
 
     result.variants = variants.map((v) => {
-      const variantBase = resolveVariantPublicPriceRub(v, effectivePrice, Boolean(wholesaleContext?.tier));
+      const variantBase = resolveVariantPublicPriceRub(v, effectivePrice, Boolean(wholesaleContext?.tier) && p.groupId != null);
       const variantDiscount = cardDiscounts
         ? pickDiscountFromMaps(cardDiscounts, { variantId: v.id, productId: p.id, groupId: p.groupId })
         : null;
@@ -2906,7 +2974,10 @@ publicRouter.put(
       const previousStatus = order.status;
       const statusBeforePhysicalAssembly =
         order.previous_status === "in_progress" ? "in_progress" : previousStatus;
-      const wholesaleContext = buildStoredWholesaleContext(order);
+      const wholesaleContext = buildStoredWholesaleContext(
+        order,
+        { customerId: order.customer_id || null },
+      );
 
       if (Number(order.is_wholesale || 0) === 1 && !wholesaleContext) {
         return res.status(400).json({
@@ -2971,8 +3042,9 @@ publicRouter.put(
         }
 
         const wholesaleMinError = validateWholesaleMinimum(
-          orderBuild.totalAmount,
+          orderBuild,
           wholesaleContext,
+          { customerId: order.customer_id || null },
         );
         if (wholesaleMinError) {
           const error = new Error(wholesaleMinError.message);
@@ -3117,6 +3189,7 @@ publicRouter.put(
               wholesale_tier_id = ?,
               wholesale_tier_label = ?,
               wholesale_min_amount = ?,
+              wholesale_min_quantity = ?,
               payment_type = ?,
               card_amount_minor = ?,
               cash_due_minor = ?,
@@ -3144,6 +3217,14 @@ publicRouter.put(
           wholesaleContext?.tier?.label || null,
           wholesaleContext?.tier
             ? Number(wholesaleContext.tier.minOrderAmount || 0)
+            : null,
+          // Снапшот применённого минимума (с персональным override).
+          wholesaleContext
+            ? Number(
+                wholesaleContext.effectiveMinQuantity
+                  ?? wholesaleContext.tier?.minOrderQuantity
+                  ?? 0,
+              ) || null
             : null,
           nextCardAmountMinor > 0 ? "card" : null,
           nextCardAmountMinor,
@@ -3532,6 +3613,13 @@ publicRouter.post(
           phone: phone || null,
         });
 
+        // Эффективный минимум с персональным override — для снапшота заказа.
+        if (wholesaleContext) {
+          attachWholesaleCustomerContext(wholesaleContext, {
+            customerId: resolvedCustomerId || null,
+          });
+        }
+
         const createdOrderId = generateId("order");
         const createdOrderNumber = getNextNumber("orders", "order_number");
         const orderBuild = buildPublicOrderItems({
@@ -3552,8 +3640,9 @@ publicRouter.post(
         }
 
         const wholesaleMinError = validateWholesaleMinimum(
-          orderBuild.totalAmount,
+          orderBuild,
           wholesaleContext,
+          { customerId: resolvedCustomerId || null },
         );
         if (wholesaleMinError) {
           const error = new Error(wholesaleMinError.message);
@@ -3615,10 +3704,10 @@ publicRouter.post(
           INSERT INTO orders (
             id, order_number, customer_id, status, delivery_type, delivery_address,
             total_amount, discount_amount, discount_percent, final_amount, profit, notes, phone, telegram_username,
-            promo_code_id, promo_code_text, is_wholesale, wholesale_tier_id, wholesale_tier_label, wholesale_min_amount,
+            promo_code_id, promo_code_text, is_wholesale, wholesale_tier_id, wholesale_tier_label, wholesale_min_amount, wholesale_min_quantity,
             accepted_agreements, payment_type, card_amount_minor, cash_due_minor
           ) VALUES (
-            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
           )
         `,
         ).run(
@@ -3643,6 +3732,14 @@ publicRouter.post(
           wholesaleContext?.tier?.label || null,
           wholesaleContext?.tier
             ? Number(wholesaleContext.tier.minOrderAmount || 0)
+            : null,
+          // Снапшот применённого минимума (с персональным override).
+          wholesaleContext
+            ? Number(
+                wholesaleContext.effectiveMinQuantity
+                  ?? wholesaleContext.tier?.minOrderQuantity
+                  ?? 0,
+              ) || null
             : null,
           acceptedAgreementsSnapshot,
           payment_method === "card" ? "card" : null,
@@ -4054,7 +4151,11 @@ function validatePublicOrderPreflight({
     }
   }
 
-  const wholesaleMinError = validateWholesaleMinimum(orderBuild.totalAmount, wholesaleContext);
+  const wholesaleMinError = validateWholesaleMinimum(
+    orderBuild,
+    wholesaleContext,
+    { customerId: customerId || null },
+  );
   if (wholesaleMinError) {
     const error = new Error(wholesaleMinError.message);
     error.code = wholesaleMinError.error;
@@ -4135,20 +4236,29 @@ function buildPublicOrderItems({
     }
 
     let pricePerUnit = basePricePerUnit;
+    // Прямые товары (без линейки) не считаются в минимум опта;
+    // товары с флагом — тоже, их администратор помечает вручную.
+    const excludedFromWholesaleMin =
+      !product.groupId || Number(product.excluded_from_wholesale_min || 0) === 1;
 
     if (wholesaleContext?.tier) {
-      const wholesalePrice = getWholesaleUnitPriceForProduct(
-        product,
-        wholesaleContext.tier.id,
-      );
-      if (!Number.isFinite(Number(wholesalePrice)) || Number(wholesalePrice) <= 0) {
-        const error = new Error(`Оптовая цена не найдена для товара: ${product.title}`);
-        error.code = "wholesale_price_unavailable";
-        throw error;
+      if (product.groupId) {
+        const wholesalePrice = getWholesaleUnitPriceForProduct(
+          product,
+          wholesaleContext.tier.id,
+        );
+        if (!Number.isFinite(Number(wholesalePrice)) || Number(wholesalePrice) <= 0) {
+          const error = new Error(`Оптовая цена не найдена для товара: ${product.title}`);
+          error.code = "wholesale_price_unavailable";
+          throw error;
+        }
+        pricePerUnit = Number(wholesalePrice);
+        // Оптовику скидки каталога не показывают, значит и снимать с них нечего.
+        basePricePerUnit = pricePerUnit;
+      } else {
+        // Товар вне линейки: в опте продаётся по розничной цене, без скидок.
+        pricePerUnit = basePricePerUnit;
       }
-      pricePerUnit = Number(wholesalePrice);
-      // Оптовику скидки каталога не показывают, значит и снимать с них нечего.
-      basePricePerUnit = pricePerUnit;
     } else {
       // Скидка каталога применяется только в рознице: у опта своя цена.
       // Базовую цену товара при этом не трогаем, на разнице между ней и
@@ -4192,6 +4302,7 @@ function buildPublicOrderItems({
       cost_per_unit: costPerUnit,
       manual_discount_amount: 0,
       loyalty_units_applied: Number(item.loyalty_units_applied || 0),
+      excludedFromWholesaleMin,
     };
   });
 
@@ -4216,12 +4327,22 @@ function buildPublicOrderItems({
       discount_amount: 0,
       total_price: Number(item.price_per_unit || 0) * Number(item.quantity || 0),
       total_cost: Number(item.cost_per_unit || 0) * Number(item.quantity || 0),
+      excludedFromWholesaleMin: Boolean(item.excludedFromWholesaleMin),
     }));
+
+    // Считаемые позиции: штуки товаров без флага исключения.
+    const countableUnits = finalizedItems.reduce(
+      (sum, item) => (item.excludedFromWholesaleMin
+        ? sum
+        : sum + Number(item.quantity || 0)),
+      0,
+    );
 
     return {
       items: finalizedItems,
       totalAmount,
       totalCost,
+      countableUnits,
       totalLoyaltyDiscount: 0,
       application: {
         items: finalizedItems,

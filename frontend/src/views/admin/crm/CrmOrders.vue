@@ -70,6 +70,17 @@
             <NoSymbolIcon class="h-4 w-4" />
             <span>Заблокировать клиента</span>
           </button>
+          <!-- Клиент: единый хаб действий -->
+          <button
+            @click="openCustomerHub()"
+            class="crm-reference-button crm-reference-button--gray"
+            data-test="orders-customer-hub"
+            title="Карточка клиента: блокировка, заметки, приглашения, опт и оплата картой"
+          >
+            <UserCircleIcon class="h-4 w-4" />
+            <span>Клиент</span>
+          </button>
+
           <div class="crm-orders-disclosure" ref="moreDropdownRef" @keydown.esc.stop="moreDropdownOpen = false; moreDropdownRef?.querySelector('button')?.focus()">
             <button type="button" class="crm-reference-button crm-reference-button--gray" data-test="orders-actions-toggle" aria-controls="crm-orders-actions" :aria-expanded="moreDropdownOpen" @click.stop="moreDropdownOpen = !moreDropdownOpen">
               <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" d="M4 7h16M4 12h16M4 17h16" /></svg>
@@ -717,20 +728,27 @@
                 <div class="order-card-customer space-y-2 text-sm text-gray-700">
                   <div class="order-card-client-row">
                     <div class="order-card-client-identity">
-                      <span class="order-card-client-name" data-test="order-customer-name">{{ order.customer_name || 'Без имени' }}</span>
+                      <!-- Имя клиента — точка входа в хаб действий с клиентом:
+                           сразу открывает его карточку, если у заказа есть username. -->
+                      <button
+                        type="button"
+                        class="order-card-client-name order-card-client-name--action"
+                        data-test="order-customer-name"
+                        aria-haspopup="dialog"
+                        :aria-expanded="isHubOpenForOrder(order)"
+                        :disabled="generatingMessageForOrder === order.id"
+                        :title="generatingMessageForOrder === order.id ? 'Подготавливаем данные клиента…' : 'Действия с клиентом'"
+                        @click.stop="openCustomerHub({
+                          username: order.telegram_username || null,
+                          customerId: order.customer_id || null,
+                          customerName: order.customer_name || null,
+                          orderId: order.id,
+                        })"
+                      >{{ order.customer_name || 'Без имени' }}</button>
                       <span v-if="order.customer_card_payment_enabled" class="order-card-card-access" data-test="order-card-card-access" role="img" aria-label="Клиенту разрешена оплата картой" title="Клиенту разрешена оплата картой">
                         <span class="order-card-card-access-icon" aria-hidden="true"></span>
                       </span>
                     </div>
-                    <button
-                      type="button"
-                      class="order-card-client-actions"
-                      data-test="order-customer-actions"
-                      aria-haspopup="dialog"
-                      :aria-expanded="showCustomerActionsModal && customerActionsOrderId === order.id"
-                      :disabled="Boolean(generatingMessageForOrder)"
-                      @click.stop="openCustomerActions(order)"
-                    >{{ generatingMessageForOrder === order.id ? 'Подготавливаем…' : 'Действия с клиентом' }}</button>
                   </div>
                   <div v-if="order.is_blocked" class="order-card-client-flags">
                     <span v-if="order.is_blocked" class="rounded-full bg-red-200 px-2 py-0.5 text-[10px] font-semibold text-red-800" title="Клиент заблокирован. Сообщения не отправляются.">Заблокирован</span>
@@ -1344,19 +1362,21 @@
     <FindInviterModal
       :is-open="showFindInviterModal"
       :busy="Boolean(lookupActionBusy || pendingLookupAction || removingInviterBanId || sendingInviterMessage)"
+      :prefill="findInviterPrefill"
       @close="closeFindInviter"
       @action="queueLookupInviterAction"
       @after-leave="runLookupInviterAction"
     />
 
-    <CustomerActionsModal
-      :is-open="showCustomerActionsModal"
-      :order="customerActionsOrder"
-      :busy="Boolean(generatingMessageForOrder || removingInviterBanId || sendingInviterMessage)"
-      @close="closeCustomerActions"
-      @action="queueCustomerAction"
-      @inviter-action="queueInviterAction"
-      @after-leave="runQueuedCustomerAction"
+    <CustomerHubModal
+      :is-open="showCustomerHubModal"
+      :prefill="customerHubPrefill"
+      :message-generating="Boolean(customerHubContactOrderId && generatingMessageForOrder === customerHubContactOrderId)"
+      @close="closeCustomerHub"
+      @action="handleCustomerHubAction"
+      @inviter-action="handleCustomerHubInviterAction"
+      @customer-found="rememberHubCustomer"
+      @notify="handleCustomerHubNotify"
     />
 
     <!-- Блокировка клиента -->
@@ -1364,7 +1384,7 @@
       :is-open="showBlockModal"
       :prefill-username="blockPrefillUsername"
       :customer-id="blockCustomerId"
-      @close="showBlockModal = false"
+      @close="showBlockModal = false; maybeReopenCustomerHub()"
       @created="handleBlockCreated"
       @notify-result="handleBlockNotifyResult"
     />
@@ -1373,7 +1393,7 @@
       :is-open="showInviteBanModal"
       :customer-id="inviteBanCustomerId"
       :username="inviteBanUsername"
-      @close="showInviteBanModal = false"
+      @close="showInviteBanModal = false; maybeReopenCustomerHub()"
       @created="handleInviteBanChanged"
     />
 
@@ -1410,8 +1430,15 @@
       :customer-id="noteCustomerId"
       :customer-name="noteCustomerName"
       :initial-notes="noteInitialText"
-      @close="showNoteModal = false"
+      @close="showNoteModal = false; maybeReopenCustomerHub()"
       @saved="handleNoteSaved"
+    />
+
+    <CustomerSettingsModal
+      :is-open="showCustomerSettingsModal"
+      :prefill="customerSettingsPrefill"
+      @close="showCustomerSettingsModal = false; customerSettingsPrefill = null; maybeReopenCustomerHub()"
+      @saved="handleCustomerSettingsSaved"
     />
 
     <!-- Стоимость заказа: скидка и отдельная надбавка -->
@@ -1697,12 +1724,13 @@ import ManagerActionSummary from "@/components/crm/ManagerActionSummary.vue";
 import AdminModal from "@/components/AdminModal.vue";
 import CustomerBlockModal from "@/components/admin/CustomerBlockModal.vue";
 import CustomerNoteModal from "@/components/admin/CustomerNoteModal.vue";
+import CustomerSettingsModal from "@/components/admin/crm/CustomerSettingsModal.vue";
 import CustomerInviteBanModal from "@/components/admin/CustomerInviteBanModal.vue";
-import CustomerActionsModal, { type CustomerAction, type InviterAction } from "@/components/admin/crm/CustomerActionsModal.vue";
-import FindInviterModal from "@/components/admin/crm/FindInviterModal.vue";
+import CustomerHubModal, { type CustomerHubAction, type CustomerHubActionContext, type CustomerHubInviter, type HubInviterAction } from "@/components/admin/crm/CustomerHubModal.vue";
+import FindInviterModal, { type InviterAction } from "@/components/admin/crm/FindInviterModal.vue";
 import FinancialDayCloseModal from "@/components/admin/crm/FinancialDayCloseModal.vue";
 import { lookupCrmInviter, type InviterLookupResult } from "@/utils/crmInviterLookup";
-import { LockClosedIcon, NoSymbolIcon } from "@heroicons/vue/24/outline";
+import { LockClosedIcon, NoSymbolIcon, UserCircleIcon } from "@heroicons/vue/24/outline";
 import { buildAutoNotifyToast } from "@/utils/auto-notify-message";
 import CrmProfitPasswordField from "@/components/crm/CrmProfitPasswordField.vue";
 import StaffCurrentActorBadge from "@/components/admin/staff/StaffCurrentActorBadge.vue";
@@ -1785,30 +1813,34 @@ async function refreshFinancialCloseAccounts() {
 }
 function openFinancialDayClose() {
   moreDropdownOpen.value = false;
-  if (showFindInviterModal.value || showCustomerActionsModal.value || showCreateModal.value || lookupActionBusy.value || pendingLookupAction.value || pendingCustomerAction.value) return;
+  if (showFindInviterModal.value || showCustomerHubModal.value || showCreateModal.value || lookupActionBusy.value || pendingLookupAction.value) return;
   financialCloseButtonRef.value?.focus({ preventScroll: true });
   showFinancialDayCloseModal.value = true;
 }
 const lookupActionBusy = ref(false);
 const pendingLookupAction = ref<{ action: InviterAction; result: InviterLookupResult } | null>(null);
 let lookupActionRevision = 0;
+// Предзаполнение «Найти пригласившего» из хаба клиента.
+const findInviterPrefill = ref<{ username: string | null } | null>(null);
 
 function openFindInviter() {
   moreDropdownOpen.value = false;
-  if (pendingCustomerAction.value || showCustomerActionsModal.value || lookupActionBusy.value || sendingInviterMessage.value || removingInviterBanId.value) return;
+  if (showCustomerHubModal.value || lookupActionBusy.value || sendingInviterMessage.value || removingInviterBanId.value) return;
   pendingLookupAction.value = null;
   lookupActionRevision += 1;
+  findInviterPrefill.value = null;
   moreDropdownRef.value?.querySelector('button')?.focus({ preventScroll: true });
   showFindInviterModal.value = true;
 }
 function closeFindInviter() {
   pendingLookupAction.value = null;
   lookupActionRevision += 1;
+  findInviterPrefill.value = null;
   showFindInviterModal.value = false;
 }
 function queueLookupInviterAction(action: InviterAction, result: InviterLookupResult) {
   const referral = result.referral;
-  if (!showFindInviterModal.value || lookupActionBusy.value || pendingLookupAction.value || pendingCustomerAction.value || !result.customer || !referral) return;
+  if (!showFindInviterModal.value || lookupActionBusy.value || pendingLookupAction.value || showCustomerHubModal.value || !result.customer || !referral) return;
   if (!referral.inviter_customer_id && !referral.inviter_username) return;
   if (action === 'copy' && !referral.inviter_username) return;
   if (action === 'message' && !referral.inviter_customer_id) return;
@@ -1820,7 +1852,11 @@ function queueLookupInviterAction(action: InviterAction, result: InviterLookupRe
 async function runLookupInviterAction() {
   const pending = pendingLookupAction.value;
   pendingLookupAction.value = null;
-  if (!pending || lookupActionBusy.value) return;
+  if (!pending || lookupActionBusy.value) {
+    // Поиск закрыли без действия — если хаб его запустил, возвращаемся в хаб.
+    maybeReopenCustomerHub();
+    return;
+  }
   const revision = ++lookupActionRevision;
   lookupActionBusy.value = true;
   try {
@@ -1834,115 +1870,168 @@ async function runLookupInviterAction() {
         (!before.inviter_customer_id && referral.inviter_username !== before.inviter_username)) {
       throw new Error('Пригласивший изменился. Выполните поиск заново.');
     }
-    const target = { referral };
-    if (pending.action === 'copy') await copyInviter(target);
-    else if (pending.action === 'message' && referral.inviter_customer_id) openInviterMessage(target);
-    else if (pending.action === 'block') openInviterBlockModal(target);
+    if (pending.action === 'copy') await copyInviterUsername(referral.inviter_username);
+    else if (pending.action === 'message' && referral.inviter_customer_id) openInviterMessage({ customerId: referral.inviter_customer_id || null, username: referral.inviter_username || '' });
+    else if (pending.action === 'block') openBlockModal(referral.inviter_username || '', referral.inviter_customer_id || null);
     else if (pending.action === 'invite-ban') {
       if (referral.inviter_is_invite_banned) throw new Error('Запрет уже установлен. Выполните поиск заново.');
-      openInviteBanModal(target);
+      openInviteBanModal({ customerId: referral.inviter_customer_id || null, username: referral.inviter_username || '' });
     } else if (pending.action === 'remove-ban') {
       if (!referral.inviter_is_invite_banned || referral.inviter_invite_ban_id !== before.inviter_invite_ban_id) throw new Error('Запрет изменился. Выполните поиск заново.');
-      await removeInviterBan(target);
+      await removeInviterBan(referral.inviter_invite_ban_id);
     }
   } catch (error) {
     if (revision === lookupActionRevision) showOrderToast({ kind: 'error', message: error instanceof Error ? error.message : 'Не удалось проверить пригласившего' });
   } finally {
     lookupActionBusy.value = false;
+    // Если поиск запущен из хаба и не открыл свою модалку — возвращаемся в хаб.
+    maybeReopenCustomerHub();
   }
 }
 onUnmounted(() => { lookupActionRevision += 1; pendingLookupAction.value = null; });
 
-const showCustomerActionsModal = ref(false);
-const customerActionsOrderId = ref<string | null>(null);
-const customerActionsOrder = computed(() =>
-  orders.value.find((order) => order.id === customerActionsOrderId.value) || null,
-);
-const pendingCustomerAction = ref<{
-  action: CustomerAction | InviterAction;
-  target?: 'inviter';
-  inviterCustomerId?: string | null;
-  inviterUsername?: string;
-  inviterBanId?: string | null;
-  orderId: string;
+// Единый хаб действий с клиентом: тулбар и карточка заказа открывают одну
+// модалку (из карточки заказа — с предзаполнением клиента).
+const showCustomerHubModal = ref(false);
+const customerHubPrefill = ref<{
+  username: string | null;
   customerId: string | null;
-  username: string;
+  customerName: string | null;
+  orderId: string | null;
 } | null>(null);
+// Последний найденный в хабе клиент: хаб возвращается к нему после действия,
+// даже если его искали вручную (prefill пуст).
+const lastHubCustomer = ref<{ username: string; customerId: string | null; customerName: string | null } | null>(null);
+// Предзаполнение «Настройки клиента» из хаба — клиент не вводится заново.
+const customerSettingsPrefill = ref<{ username: string | null } | null>(null);
+// Хаб возвращается после закрытия под-модалки действия: HeadlessUI не умеет
+// стек диалогов, поэтому закрываем хаб → открываем действие → возвращаемся.
+const customerHubReturnAfterAction = ref(false);
+const customerHubContactOrderId = ref<string | null>(null);
 
-function openCustomerActions(order: Order) {
-  if (generatingMessageForOrder.value || showCustomerActionsModal.value || pendingCustomerAction.value || showFindInviterModal.value || pendingLookupAction.value || lookupActionBusy.value) return;
-  customerActionsOrderId.value = order.id;
-  showCustomerActionsModal.value = true;
+function openCustomerHub(prefill: {
+  username?: string | null;
+  customerId?: string | null;
+  customerName?: string | null;
+  orderId?: string | null;
+} | null = null) {
+  if (showCustomerHubModal.value || showFindInviterModal.value || lookupActionBusy.value || pendingLookupAction.value) return;
+  // Без username хаб открывается в режиме поиска, но заказ помнит: после
+  // поиска появится «Написать клиенту» именно по этому заказу.
+  customerHubPrefill.value = prefill?.username || prefill?.orderId
+    ? {
+        username: prefill.username ?? null,
+        customerId: prefill.customerId ?? null,
+        customerName: prefill.customerName ?? null,
+        orderId: prefill.orderId ?? null,
+      }
+    : null;
+  customerHubReturnAfterAction.value = false;
+  customerHubContactOrderId.value = null;
+  showCustomerHubModal.value = true;
 }
 
-function closeCustomerActions() {
-  pendingCustomerAction.value = null;
-  showCustomerActionsModal.value = false;
+function closeCustomerHub() {
+  showCustomerHubModal.value = false;
+  customerHubReturnAfterAction.value = false;
+  customerHubContactOrderId.value = null;
 }
 
-function queueCustomerAction(action: CustomerAction) {
-  const order = customerActionsOrder.value;
-  if (!showCustomerActionsModal.value || !order || generatingMessageForOrder.value || pendingCustomerAction.value) return;
-  if ((action === 'block' || action === 'invite-ban') && !order.customer_id && !order.telegram_username) return;
-  if (action === 'block' && order.is_blocked) return;
-  if (action === 'note' && !order.customer_id) return;
-  if (action === 'contact' && !order.telegram_username && !order.customer_telegram_id) return;
-  pendingCustomerAction.value = {
-    action,
-    orderId: order.id,
-    customerId: order.customer_id,
-    username: order.telegram_username || '',
-  };
-  showCustomerActionsModal.value = false;
+// Хаб открыт для этой карточки: из неё (prefill с orderId) или после возврата
+// к последнему найденному клиенту (prefill без orderId).
+function isHubOpenForOrder(order: { id: string; telegram_username?: string | null }) {
+  if (!showCustomerHubModal.value) return false;
+  if (customerHubPrefill.value?.orderId === order.id) return true;
+  return !customerHubPrefill.value?.orderId && lastHubCustomer.value?.username === order.telegram_username;
 }
 
-function queueInviterAction(action: InviterAction) {
-  const order = customerActionsOrder.value;
-  const referral = order?.referral;
-  if (!showCustomerActionsModal.value || !order || !referral?.inviter_username || pendingCustomerAction.value || generatingMessageForOrder.value || removingInviterBanId.value || sendingInviterMessage.value) return;
-  if (action === 'message' && !referral.inviter_customer_id) return;
-  if (action === 'remove-ban' && (!referral.inviter_is_invite_banned || !referral.inviter_invite_ban_id)) return;
-  if (action === 'invite-ban' && referral.inviter_is_invite_banned) return;
-  pendingCustomerAction.value = { action, target: 'inviter', orderId: order.id, customerId: order.customer_id, username: order.telegram_username || '', inviterCustomerId: referral.inviter_customer_id || null, inviterUsername: referral.inviter_username, inviterBanId: referral.inviter_invite_ban_id || null };
-  showCustomerActionsModal.value = false;
+function rememberHubCustomer(payload: { username: string; customerId: string | null; customerName: string | null }) {
+  lastHubCustomer.value = payload;
 }
 
-async function runQueuedCustomerAction() {
-  const pending = pendingCustomerAction.value;
-  pendingCustomerAction.value = null;
-  customerActionsOrderId.value = null;
-  if (!pending) return;
-  // The first dialog must finish restoring focus before the existing dialog opens.
+function maybeReopenCustomerHub() {
+  if (!customerHubReturnAfterAction.value) return;
+  if (showCustomerHubModal.value || showBlockModal.value || showInviteBanModal.value || showNoteModal.value ||
+      showCustomerSettingsModal.value || showInviterMessageModal.value || showFindInviterModal.value || lookupActionBusy.value) return;
+  customerHubReturnAfterAction.value = false;
+  customerHubContactOrderId.value = null;
+  // Клиент искали вручную — возвращаемся к нему, а не к пустому поиску.
+  if (!customerHubPrefill.value && lastHubCustomer.value) {
+    customerHubPrefill.value = {
+      username: lastHubCustomer.value.username,
+      customerId: lastHubCustomer.value.customerId,
+      customerName: lastHubCustomer.value.customerName,
+      orderId: null,
+    };
+  }
+  // Хаб перезагружает данные при каждом открытии — клиент всегда свежий.
+  showCustomerHubModal.value = true;
+}
+
+function handleCustomerHubNotify(payload: { ok: boolean; message: string }) {
+  showOrderToast({ kind: payload.ok ? 'success' : 'error', message: payload.message });
+}
+
+async function handleCustomerHubAction(action: CustomerHubAction, context: CustomerHubActionContext) {
+  if (action === 'contact') {
+    // Генерация сообщения не открывает модалку — хаб остаётся открытым.
+    if (!context.orderId || generatingMessageForOrder.value) return;
+    customerHubContactOrderId.value = context.orderId;
+    await contactClient(context.orderId);
+    customerHubContactOrderId.value = null;
+    return;
+  }
+  customerHubReturnAfterAction.value = true;
+  showCustomerHubModal.value = false;
+  // Первая модалка должна вернуть фокус до открытия следующей (паттерн очереди).
   await nextTick();
-  const order = orders.value.find((item) => item.id === pending.orderId);
-  if (!order || order.customer_id !== pending.customerId ||
-      (!pending.customerId && (order.telegram_username || '') !== pending.username)) {
-    showOrderToast({ kind: 'error', message: 'Данные заказа изменились. Откройте действия клиента заново.' });
-    return;
-  }
-  if (pending.target === 'inviter') {
-    const referral = order.referral;
-    if (!referral?.inviter_username || (referral.inviter_customer_id || null) !== pending.inviterCustomerId || (!pending.inviterCustomerId && referral.inviter_username !== pending.inviterUsername)) {
-      showOrderToast({ kind: 'error', message: 'Пригласивший изменился. Откройте действия клиента заново.' });
-      return;
-    }
-    if (pending.action === 'copy') await copyInviter(order);
-    else if (pending.action === 'message' && referral.inviter_customer_id) openInviterMessage(order);
-    else if (pending.action === 'block') openInviterBlockModal(order);
-    else if (pending.action === 'invite-ban' && !referral.inviter_is_invite_banned) openInviteBanModal(order);
-    else if (pending.action === 'remove-ban' && referral.inviter_is_invite_banned && (referral.inviter_invite_ban_id || null) === pending.inviterBanId) await removeInviterBan(order);
-    return;
-  }
-  if (pending.action === 'block') {
-    if (!order.is_blocked) openBlockModal(order.telegram_username, order.customer_id);
-  } else if (pending.action === 'invite-ban') {
-    inviteBanCustomerId.value = order.customer_id;
-    inviteBanUsername.value = order.telegram_username || '';
+  if (action === 'block') {
+    openBlockModal(context.username, context.customerId);
+  } else if (action === 'invite-ban') {
+    inviteBanCustomerId.value = context.customerId;
+    inviteBanUsername.value = context.username;
     showInviteBanModal.value = true;
-  } else if (pending.action === 'note') {
-    openNoteModalForOrder(order);
-  } else if (pending.action === 'contact') {
-    await contactClient(order.id);
+  } else if (action === 'remove-invite-ban') {
+    // Снимаем запрет приглашать с самого клиента и возвращаемся в хаб —
+    // плашка статуса перечитается при переоткрытии.
+    await removeInviterBan(context.inviteBanId);
+    maybeReopenCustomerHub();
+  } else if (action === 'note') {
+    noteModalMode.value = 'card';
+    notePrefillUsername.value = context.username;
+    noteCustomerId.value = context.customerId || undefined;
+    noteCustomerName.value = context.customerName || '';
+    noteInitialText.value = context.notes;
+    showNoteModal.value = true;
+  } else if (action === 'wholesale') {
+    customerSettingsPrefill.value = { username: context.username };
+    showCustomerSettingsModal.value = true;
+  } else if (action === 'find-inviter') {
+    pendingLookupAction.value = null;
+    lookupActionRevision += 1;
+    findInviterPrefill.value = { username: context.username };
+    showFindInviterModal.value = true;
+  }
+}
+
+async function handleCustomerHubInviterAction(action: HubInviterAction, inviter: CustomerHubInviter) {
+  if (action === 'copy') {
+    // Копирование username не требует модалки — хаб остаётся открытым.
+    await copyInviterUsername(inviter.username || undefined);
+    return;
+  }
+  customerHubReturnAfterAction.value = true;
+  showCustomerHubModal.value = false;
+  await nextTick();
+  if (action === 'message' && inviter.customer_id) {
+    openInviterMessage({ customerId: inviter.customer_id, username: inviter.username || '' });
+  } else if (action === 'block') {
+    openBlockModal(inviter.username || '', inviter.customer_id);
+  } else if (action === 'invite-ban') {
+    openInviteBanModal({ customerId: inviter.customer_id, username: inviter.username || '' });
+  } else if (action === 'remove-ban') {
+    await removeInviterBan(inviter.invite_ban_id);
+    maybeReopenCustomerHub();
   }
 }
 
@@ -1966,8 +2055,7 @@ function openBlockModal(prefill?: string, customerId: string | null = null) {
   showBlockModal.value = true;
 }
 
-async function copyInviter(order: Pick<Order, 'referral'>) {
-  const username = order.referral?.inviter_username;
+async function copyInviterUsername(username?: string | null) {
   if (!username) return;
   const text = `@${username}`;
   let copied = false;
@@ -1996,25 +2084,17 @@ async function copyInviter(order: Pick<Order, 'referral'>) {
   }
 }
 
-function openInviterBlockModal(order: Pick<Order, 'referral'>) {
-  openBlockModal(
-    order.referral?.inviter_username || '',
-    order.referral?.inviter_customer_id || null,
-  );
-}
-
-function openInviteBanModal(order: Pick<Order, 'referral'>) {
-  inviteBanCustomerId.value = order.referral?.inviter_customer_id || null;
-  inviteBanUsername.value = order.referral?.inviter_username || '';
+function openInviteBanModal(target: { customerId: string | null; username: string }) {
+  inviteBanCustomerId.value = target.customerId;
+  inviteBanUsername.value = target.username;
   showInviteBanModal.value = true;
 }
 
-async function removeInviterBan(order: Pick<Order, 'referral'>) {
-  const id = order.referral?.inviter_invite_ban_id;
-  if (!id || removingInviterBanId.value || !window.confirm('Снять запрет приглашать?')) return;
-  removingInviterBanId.value = id;
+async function removeInviterBan(banId: string | null | undefined) {
+  if (!banId || removingInviterBanId.value || !window.confirm('Снять запрет приглашать?')) return;
+  removingInviterBanId.value = banId;
   try {
-    const response = await fetch(`/api/admin/crm/invite-bans/${encodeURIComponent(id)}`, {
+    const response = await fetch(`/api/admin/crm/invite-bans/${encodeURIComponent(banId)}`, {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -2033,11 +2113,12 @@ async function removeInviterBan(order: Pick<Order, 'referral'>) {
 async function handleInviteBanChanged() {
   showInviteBanModal.value = false;
   await refreshOrders({ skipNotify: true });
+  maybeReopenCustomerHub();
 }
 
-function openInviterMessage(order: Pick<Order, 'referral'>) {
-  inviterMessageCustomerId.value = order.referral?.inviter_customer_id || null;
-  inviterMessageUsername.value = order.referral?.inviter_username || '';
+function openInviterMessage(target: { customerId: string | null; username: string }) {
+  inviterMessageCustomerId.value = target.customerId;
+  inviterMessageUsername.value = target.username;
   inviterMessageText.value = '';
   showInviterMessageModal.value = true;
 }
@@ -2045,6 +2126,7 @@ function openInviterMessage(order: Pick<Order, 'referral'>) {
 function closeInviterMessage() {
   if (sendingInviterMessage.value) return;
   showInviterMessageModal.value = false;
+  maybeReopenCustomerHub();
 }
 
 async function sendInviterMessage() {
@@ -2072,6 +2154,30 @@ async function sendInviterMessage() {
 }
 
 const showNoteModal = ref(false);
+const showCustomerSettingsModal = ref(false);
+
+function pluralPositions(value: number) {
+  const mod10 = value % 10;
+  const mod100 = value % 100;
+  if (mod10 === 1 && mod100 !== 11) return 'позиция';
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return 'позиции';
+  return 'позиций';
+}
+
+function handleCustomerSettingsSaved(payload: { username: string; minQuantity: number | null }) {
+  if (payload.minQuantity === null) {
+    showOrderToast({
+      kind: 'success',
+      message: `Персональный минимум @${payload.username} сброшен к уровню.`,
+    });
+    return;
+  }
+  showOrderToast({
+    kind: 'success',
+    message: `Персональный минимум @${payload.username}: ${payload.minQuantity} ${pluralPositions(payload.minQuantity)}.`,
+  });
+}
+
 const noteModalMode = ref<'toolbar' | 'card'>('toolbar');
 const notePrefillUsername = ref('');
 const noteCustomerId = ref<string | undefined>(undefined);
@@ -2084,15 +2190,6 @@ function openNoteModal() {
   noteCustomerId.value = undefined;
   noteCustomerName.value = '';
   noteInitialText.value = null;
-  showNoteModal.value = true;
-}
-
-function openNoteModalForOrder(order: Order) {
-  noteModalMode.value = 'card';
-  notePrefillUsername.value = order.telegram_username || '';
-  noteCustomerId.value = order.customer_id || undefined;
-  noteCustomerName.value = order.customer_name || '';
-  noteInitialText.value = order.customer_notes || null;
   showNoteModal.value = true;
 }
 
@@ -3571,8 +3668,11 @@ async function confirmCancelOrder() {
 .order-card-metadata { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; min-width: 0; margin-top: 6px; color: #66799e; font-size: 9px; line-height: 1.2; font-weight: 400; overflow-wrap: anywhere; }
 .order-card-client-row { display: flex; flex-wrap: wrap; align-items: center; gap: 11px; margin: 1px 0 13px; }
 .order-card-client-name { min-width: 0; color: #081b4b; font-size: 23px; font-weight: 800; letter-spacing: -.03em; line-height: 1.2; overflow-wrap: anywhere; }
-.order-card-client-actions { max-width: 100%; min-height: 34px; padding: 9px 10px; border: 1px solid #dce8fa; border-radius: 9px; background: #f7fbff; color: #152d69; font-size: 11px; line-height: normal; font-weight: 700; cursor: pointer; }
-.order-card-client-actions:hover { background: #edf5ff; border-color: #b8cef5; }
+/* Имя клиента — единственная точка входа в хаб действий с клиентом. */
+.order-card-client-name--action { padding: 0; border: 0; background: none; font-family: inherit; cursor: pointer; transition: color 140ms ease-out; }
+.order-card-client-name--action:hover { color: #1759ed; }
+.order-card-client-name--action:disabled { color: #8999b7; cursor: not-allowed; }
+.order-card-client-name--action:focus-visible { outline: 2px solid #0958ff; outline-offset: 3px; border-radius: 6px; }
 .order-card-customer, .order-card-finance { min-width: 0; overflow-wrap: anywhere; }
 .order-card-customer { color: #081b4b; }
 .order-card-client-flags { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }

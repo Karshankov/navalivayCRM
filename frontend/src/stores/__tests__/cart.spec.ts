@@ -3,6 +3,13 @@ import { createPinia, setActivePinia } from "pinia";
 import { useCartStore } from "@/stores/cart";
 import { useCatalogStore, type Product } from "@/stores/catalog";
 
+function stubCatalogFetch() {
+  vi.stubGlobal("fetch", vi.fn(async () => ({
+    ok: true,
+    json: async () => ({ products: [], total: 0, hasMore: false }),
+  }) as Response));
+}
+
 describe("cart store order edit mode", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
@@ -84,6 +91,172 @@ describe("cart store order edit mode", () => {
 
     cartStore.clearLoyaltySelections();
     expect(cartStore.items[0].loyaltyUnitsApplied).toBe(0);
+  });
+});
+
+describe("cart store wholesale minimum units", () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    localStorage.clear();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function product(overrides: Partial<Product> = {}): Product {
+    return {
+      id: "p-qty",
+      categoryId: "cat-liquids",
+      groupId: "group-1",
+      groupName: "Жидкости",
+      title: "Товар",
+      priceRub: 15,
+      description: "",
+      images: [],
+      createdAt: "2026-08-01T00:00:00.000Z",
+      needsCategoryImage: true,
+      ...overrides,
+    };
+  }
+
+  it("counts only units of items without the exclusion flag", () => {
+    const cartStore = useCartStore();
+
+    cartStore.replaceItemsFromOrder([
+      {
+        productId: "p-1",
+        title: "Liquid Cherry",
+        productTitle: "Liquid Cherry",
+        priceRub: 15,
+        quantity: 20,
+        groupId: "group-1",
+        excludedFromWholesaleMin: false,
+      },
+      {
+        productId: "p-direct",
+        title: "Никобустер",
+        productTitle: "Никобустер",
+        priceRub: 20,
+        quantity: 10,
+        groupId: null,
+        excludedFromWholesaleMin: true,
+      },
+      {
+        productId: "p-excluded",
+        title: "Исключённый",
+        productTitle: "Исключённый",
+        priceRub: 15,
+        quantity: 5,
+        groupId: "group-1",
+        excludedFromWholesaleMin: true,
+      },
+    ]);
+
+    expect(cartStore.countableWholesaleUnits).toBe(20);
+    expect(cartStore.totalItems).toBe(35);
+  });
+
+  it("marks direct and flagged products as excluded when added", () => {
+    const cartStore = useCartStore();
+
+    cartStore.addItem(product({ id: "p-1" }), 10);
+    cartStore.addItem(product({ id: "p-direct", groupId: null, title: "Никобустер" }), 5);
+    cartStore.addItem(product({ id: "p-flag", excludedFromWholesaleMin: true }), 3);
+
+    expect(cartStore.items.find((item) => item.productId === "p-1")?.excludedFromWholesaleMin)
+      .toBe(false);
+    expect(cartStore.items.find((item) => item.productId === "p-direct")?.excludedFromWholesaleMin)
+      .toBe(true);
+    expect(cartStore.items.find((item) => item.productId === "p-flag")?.excludedFromWholesaleMin)
+      .toBe(true);
+    expect(cartStore.countableWholesaleUnits).toBe(10);
+  });
+
+  it("repairs the exclusion flag of saved items from the catalog", async () => {
+    stubCatalogFetch();
+    const catalogStore = useCatalogStore();
+    catalogStore.allProducts = [
+      product({ id: "p-1" }),
+      product({ id: "p-direct", groupId: null }),
+      product({ id: "p-flag", excludedFromWholesaleMin: true }),
+    ];
+    localStorage.setItem("navalivay_cart", JSON.stringify([
+      {
+        productId: "p-1",
+        title: "Товар",
+        productTitle: "Товар",
+        priceRub: 15,
+        quantity: 10,
+        groupId: "group-1",
+        // Старая строка без флага — должен получить false.
+      },
+      {
+        productId: "p-direct",
+        title: "Никобустер",
+        productTitle: "Никобустер",
+        priceRub: 20,
+        quantity: 5,
+        // Прямой товар без флага — должен получить true (groupId null).
+      },
+      {
+        productId: "p-flag",
+        title: "Исключённый",
+        productTitle: "Исключённый",
+        priceRub: 15,
+        quantity: 3,
+        groupId: "group-1",
+        excludedFromWholesaleMin: false,
+        // Флаг из каталога (true) важнее сохранённого false.
+      },
+    ]));
+
+    const cartStore = useCartStore();
+
+    await vi.waitFor(() => {
+      expect(cartStore.items.find((item) => item.productId === "p-1")?.excludedFromWholesaleMin)
+        .toBe(false);
+    });
+    expect(cartStore.items.find((item) => item.productId === "p-direct")?.excludedFromWholesaleMin)
+      .toBe(true);
+    expect(cartStore.items.find((item) => item.productId === "p-flag")?.excludedFromWholesaleMin)
+      .toBe(true);
+    expect(cartStore.countableWholesaleUnits).toBe(10);
+  });
+
+  it("assumes direct items for saved rows when the product is gone from the catalog", async () => {
+    stubCatalogFetch();
+    localStorage.setItem("navalivay_cart", JSON.stringify([
+      {
+        productId: "p-gone-direct",
+        title: "Удалённый прямой",
+        productTitle: "Удалённый прямой",
+        priceRub: 20,
+        quantity: 5,
+        groupId: null,
+      },
+      {
+        productId: "p-gone-group",
+        title: "Удалённый из линейки",
+        productTitle: "Удалённый из линейки",
+        priceRub: 15,
+        quantity: 7,
+        groupId: "group-1",
+      },
+    ]));
+
+    const cartStore = useCartStore();
+
+    await vi.waitFor(() => {
+      expect(cartStore.items).toHaveLength(2);
+    });
+    expect(
+      cartStore.items.find((item) => item.productId === "p-gone-direct")?.excludedFromWholesaleMin,
+    ).toBe(true);
+    expect(
+      cartStore.items.find((item) => item.productId === "p-gone-group")?.excludedFromWholesaleMin,
+    ).toBe(false);
+    expect(cartStore.countableWholesaleUnits).toBe(7);
   });
 });
 

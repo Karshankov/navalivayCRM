@@ -13,6 +13,8 @@ export interface CustomerOrderCartItem {
   groupId?: string | null;
   categoryId?: string | null;
   loyaltyUnitsApplied?: number;
+  /** Товар не считается в оптовом минимуме (прямые товары — всегда). */
+  excludedFromWholesaleMin?: boolean;
 }
 
 export interface CustomerOrderItem {
@@ -57,6 +59,8 @@ export interface CustomerActiveOrder {
   wholesale_secret: string | null;
   wholesale_tier_label: string | null;
   wholesale_min_amount: number | null;
+  /** Снапшот применённого минимума в позициях (null для старых заказов). */
+  wholesale_min_quantity: number | null;
   telegram_username: string | null;
   created_at: string;
   updated_at: string;

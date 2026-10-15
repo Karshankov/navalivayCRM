@@ -179,13 +179,31 @@
           <p class="editing-order-kicker">Оптовый заказ</p>
           <p class="editing-order-title">{{ wholesaleStore.wholesaleLabel }}</p>
           <p class="editing-order-text">
-            Минимальная сумма заказа - {{ wholesaleStore.minOrderAmount.toFixed(0) }} BYN.
-            <template v-if="wholesaleRemainingAmount > 0">
-              Не хватает {{ wholesaleRemainingAmount.toFixed(2) }} BYN.
+            <template v-if="wholesaleMinimumQuantity">
+              Минимальное количество заказа -
+              {{ wholesaleMinimumQuantity }} {{ pluralPositions(wholesaleMinimumQuantity) }}
+              <span v-if="wholesaleStore.minOverride"> · персональный минимум</span>.
+              <template v-if="wholesaleRemaining > 0">
+                Не хватает {{ wholesaleRemaining }} {{ genitivePositions(wholesaleRemaining) }}.
+              </template>
+              <template v-else>
+                Минимум выполнен, можно оформлять заказ.
+              </template>
             </template>
             <template v-else>
-              Минимум выполнен, можно оформлять заказ.
+              Минимальная сумма заказа - {{ wholesaleStore.minOrderAmount.toFixed(0) }} BYN.
+              <template v-if="wholesaleRemaining > 0">
+                Не хватает {{ wholesaleRemaining.toFixed(2) }} BYN.
+              </template>
+              <template v-else>
+                Минимум выполнен, можно оформлять заказ.
+              </template>
             </template>
+          </p>
+          <p v-if="wholesaleMinimumQuantity" class="editing-order-note">
+            В минимальном количестве учитываются только товары линеек. Товары без
+            линейки (например, бустеры) покупаются по розничной цене и не
+            приближают корзину к минимуму.
           </p>
         </div>
 
@@ -326,12 +344,18 @@
 
         <div v-if="wholesaleStore.isWholesale" class="summary-row">
           <span class="summary-label">Минимум для опта</span>
-          <span>{{ wholesaleStore.minOrderAmount.toFixed(0) }} BYN</span>
+          <span v-if="wholesaleMinimumQuantity">
+            {{ wholesaleMinimumQuantity }} {{ pluralPositions(wholesaleMinimumQuantity) }}
+          </span>
+          <span v-else>{{ wholesaleStore.minOrderAmount.toFixed(0) }} BYN</span>
         </div>
 
-        <div v-if="wholesaleStore.isWholesale && wholesaleRemainingAmount > 0" class="summary-row">
+        <div v-if="wholesaleStore.isWholesale && wholesaleRemaining > 0" class="summary-row">
           <span class="summary-label">Осталось добрать</span>
-          <span>{{ wholesaleRemainingAmount.toFixed(2) }} BYN</span>
+          <span v-if="wholesaleMinimumQuantity">
+            {{ wholesaleRemaining }} {{ accusativePositions(wholesaleRemaining) }}
+          </span>
+          <span v-else>{{ wholesaleRemaining.toFixed(2) }} BYN</span>
         </div>
 
         <div v-if="!wholesaleStore.isWholesale && loyaltyDiscountAmount > 0" class="summary-row">
@@ -941,7 +965,9 @@ const submitButtonLabel = computed(() => {
     return "Рассчитываем скидку...";
   }
   if (isWholesaleSubmitBlocked.value) {
-    return `Доберите еще ${wholesaleRemainingAmount.value.toFixed(2)} BYN`;
+    return wholesaleMinimumQuantity.value
+      ? `Доберите еще ${wholesaleRemaining.value} ${accusativePositions(wholesaleRemaining.value)}`
+      : `Доберите еще ${wholesaleRemaining.value.toFixed(2)} BYN`;
   }
   return isEditingOrder.value ? "Сохранить изменения" : "Оформить заказ";
 });
@@ -1073,15 +1099,43 @@ const loyaltyDiscountAmount = computed(() =>
     : (promoResult.value ? 0 : Number(loyaltyStore.totalLoyaltyDiscount || 0)),
 );
 
-const wholesaleRemainingAmount = computed(() =>
-  wholesaleStore.remainingToMinimum(cartStore.totalAmount),
+const wholesaleMinimumQuantity = computed(() =>
+  wholesaleStore.isWholesale ? wholesaleStore.effectiveMinQuantity : null,
+);
+const wholesaleRemaining = computed(() =>
+  wholesaleStore.remainingToMinimum(cartStore.countableWholesaleUnits, cartStore.totalAmount),
 );
 const isWholesaleMinimumReached = computed(() =>
-  wholesaleStore.meetsMinimum(cartStore.totalAmount),
+  wholesaleStore.meetsMinimum(cartStore.countableWholesaleUnits, cartStore.totalAmount),
 );
 const isWholesaleSubmitBlocked = computed(() =>
   wholesaleStore.isWholesale && cartStore.items.length > 0 && !isWholesaleMinimumReached.value,
 );
+
+function pluralPositions(value: number) {
+  const mod10 = value % 10;
+  const mod100 = value % 100;
+  if (mod10 === 1 && mod100 !== 11) return "позиция";
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return "позиции";
+  return "позиций";
+}
+
+// «Не хватает N …» — родительный падеж.
+function genitivePositions(value: number) {
+  const mod10 = value % 10;
+  const mod100 = value % 100;
+  if (mod10 === 1 && mod100 !== 11) return "позиции";
+  return "позиций";
+}
+
+// «Доберите еще N …» — винительный падеж.
+function accusativePositions(value: number) {
+  const mod10 = value % 10;
+  const mod100 = value % 100;
+  if (mod10 === 1 && mod100 !== 11) return "позицию";
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return "позиции";
+  return "позиций";
+}
 
 function checkoutLoyaltyCategoryLabel(category: LoyaltyPreviewCategory) {
   return LOYALTY_CATEGORY_LABELS[category.category_key] || category.title;
@@ -1484,9 +1538,14 @@ onMounted(async () => {
       await catalogStore.fetchCategories();
     }
   }
+  // Персональный минимум мог смениться админом среди сессии — обновляем
+  // после восстановления контекста редактируемого заказа.
   await fetchStockLimits();
   syncTelegramUserData({ trustCurrentUser: true });
   await hydrateEditingOrder();
+  if (wholesaleStore.isWholesale) {
+    await wholesaleStore.refreshEffectiveMinimum();
+  }
   await refreshLoyaltyPreview();
   if (!wholesaleStore.isWholesale) {
     try {
@@ -1548,6 +1607,7 @@ async function hydrateEditingOrder() {
         secret: activeOrder.wholesale_secret,
         label: activeOrder.wholesale_tier_label,
         minOrderAmount: activeOrder.wholesale_min_amount,
+        minQuantity: activeOrder.wholesale_min_quantity,
       });
     } else if (wholesaleStore.isWholesale) {
       wholesaleStore.clearContext();
@@ -1669,7 +1729,9 @@ function validateForm(): boolean {
   errors.address = "";
 
   if (isWholesaleSubmitBlocked.value) {
-    submitError.value = `Для оформления нужно добрать еще ${wholesaleRemainingAmount.value.toFixed(2)} BYN`;
+    submitError.value = wholesaleMinimumQuantity.value
+      ? `Для оформления нужно добрать еще ${wholesaleRemaining.value} ${accusativePositions(wholesaleRemaining.value)}`
+      : `Для оформления нужно добрать еще ${wholesaleRemaining.value.toFixed(2)} BYN`;
     return false;
   }
 
@@ -1975,7 +2037,7 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
       }
       if (result?.error === "wholesale_min_not_met") {
         throw new Error(
-          result.message || "Сумма заказа меньше минимальной для выбранного оптового прайса",
+          result.message || "Количество позиций меньше минимального для выбранного оптового прайса",
         );
       }
       if (isEditingOrder.value && result?.error === "not_found") {
@@ -2405,6 +2467,14 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   font-size: 14px;
   line-height: 19px;
   color: rgba(255, 255, 255, 0.78);
+}
+
+.editing-order-note {
+  margin: 8px 0 0;
+  font-family: -apple-system, "SF Pro Display", sans-serif;
+  font-size: 12px;
+  line-height: 16px;
+  color: rgba(255, 255, 255, 0.55);
 }
 
 .promo-card {

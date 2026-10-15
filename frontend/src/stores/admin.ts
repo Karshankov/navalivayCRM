@@ -76,6 +76,8 @@ export interface Product {
   hasVariants?: boolean | number
   variants?: ProductVariant[]
   useCategoryImage?: boolean | number
+  // Товар не приближает корзину к минимальному количеству опта.
+  excludedFromWholesaleMin?: boolean
   categoryImage?: string | null
   groupImage?: string | null
 }
@@ -85,6 +87,7 @@ export interface WholesaleTier {
   code: string
   label: string
   minOrderAmount: number
+  minQuantity: number | null
   sortOrder: number
 }
 
@@ -93,6 +96,7 @@ export interface WholesaleLink {
   code: string
   label: string
   minOrderAmount: number
+  minQuantity: number | null
   sortOrder: number
   path: string | null
   totalTargetGroups: number
@@ -275,6 +279,7 @@ export const useAdminStore = defineStore('admin', () => {
         code: String(tier?.code || ''),
         label: String(tier?.label || ''),
         minOrderAmount: Number(tier?.minOrderAmount ?? tier?.min_order_amount ?? 0),
+        minQuantity: tier?.minQuantity ?? tier?.min_order_quantity ?? tier?.min_quantity ?? null,
         sortOrder: Number(tier?.sortOrder ?? tier?.sort_order ?? 0),
       }))
       .filter((tier) => tier.id && tier.code)
@@ -318,7 +323,8 @@ export const useAdminStore = defineStore('admin', () => {
       minStock: Number(product?.minStock ?? 0),
       hasVariants,
       discount: product?.discount ?? null,
-      useCategoryImage: Boolean(product?.useCategoryImage ?? 1)
+      useCategoryImage: Boolean(product?.useCategoryImage ?? 1),
+      excludedFromWholesaleMin: Boolean(product?.excludedFromWholesaleMin ?? product?.excluded_from_wholesale_min ?? 0)
     }
     
     if (hasVariants && Array.isArray(product?.variants)) {
@@ -1013,6 +1019,7 @@ async function createCategory(category: { name: string; hideEmpty?: boolean; cov
         code: String(tier.code),
         label: String(tier.label),
         minOrderAmount: Number(tier.minOrderAmount ?? tier.min_order_amount ?? 0),
+        minQuantity: tier.minQuantity ?? tier.min_order_quantity ?? tier.min_quantity ?? null,
         sortOrder: Number(tier.sortOrder ?? tier.sort_order ?? 0),
         path: tier.path ?? null,
         totalTargetGroups: Number(tier.totalTargetGroups ?? tier.total_target_groups ?? 0),
@@ -1609,7 +1616,8 @@ async function createCategory(category: { name: string; hideEmpty?: boolean; cov
         stock: product.stock ?? 0,
         min_stock: product.minStock ?? 0,
         useCategoryImage: product.useCategoryImage ?? false,
-        hasVariants: product.hasVariants ?? false
+        hasVariants: product.hasVariants ?? false,
+        excludedFromWholesaleMin: product.excludedFromWholesaleMin ?? false
       }
       
       // Добавляем варианты если есть
@@ -1675,6 +1683,10 @@ async function createCategory(category: { name: string; hideEmpty?: boolean; cov
       
       if (updates.useCategoryImage !== undefined) {
         payload.useCategoryImage = updates.useCategoryImage
+      }
+
+      if (updates.excludedFromWholesaleMin !== undefined) {
+        payload.excludedFromWholesaleMin = updates.excludedFromWholesaleMin
       }
 
       await $fetch(`/api/admin/products/${id}`, {

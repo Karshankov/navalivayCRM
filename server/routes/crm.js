@@ -2,6 +2,7 @@ import express from 'express';
 import { db } from '../db.js';
 import { findCrmInviter } from '../utils/crm-inviter-lookup.js';
 import { authMiddleware } from '../auth.js';
+import { getActiveWholesaleTiers } from '../wholesale-service.js';
 import {
   isDashboardLockActive,
   isDashboardTokenValid,
@@ -40,6 +41,7 @@ import {
   getActiveBlockForCustomerId,
   getActiveBlockForTelegramId,
   getCustomerBlockById,
+  getPendingBanForUsername,
   serializeBlock,
   unblockCustomerBlock,
 } from '../utils/customer-blocks.js';
@@ -200,6 +202,229 @@ crmRouter.get('/api/admin/crm/card-payments/profile/:username', authMiddleware, 
     return res.status(400).json({ error: error.message || 'card_profile_search_failed' });
   }
 });
+
+// ── Настройки клиента: оптовый минимум ──────────────────────────────────────
+// Персональный минимум опта по Telegram username. Ссылка и цены уровня
+// не меняются — двигается только минимальное количество позиций.
+
+function findCustomerByUsernameForWholesaleSettings(rawUsername) {
+  const username = String(rawUsername || '').trim().replace(/^@/, '');
+  if (!username) {
+    return null;
+  }
+
+  // Username не уникален (уникален telegram_id): при совпадении берём
+  // клиента с самым свежим заказом.
+  return db.prepare(`
+    SELECT c.id, c.telegram_id, c.telegram_username, c.first_name, c.last_name,
+      c.wholesale_min_override, c.total_orders, c.notes
+    FROM customers c
+    WHERE c.telegram_username = ? COLLATE NOCASE AND c.deleted_at IS NULL
+    ORDER BY (SELECT MAX(o.created_at) FROM orders o WHERE o.customer_id = c.id) DESC
+    LIMIT 1
+  `).get(username) || null;
+}
+
+function serializeWholesaleCustomer(customerRow) {
+  if (!customerRow) {
+    return null;
+  }
+
+  return {
+    id: customerRow.id,
+    telegram_id: customerRow.telegram_id === null || customerRow.telegram_id === undefined
+      ? null
+      : String(customerRow.telegram_id),
+    telegram_username: customerRow.telegram_username || null,
+    first_name: customerRow.first_name || null,
+    last_name: customerRow.last_name || null,
+    wholesale_min_override: customerRow.wholesale_min_override === null
+      || customerRow.wholesale_min_override === undefined
+      ? null
+      : Number(customerRow.wholesale_min_override),
+  };
+}
+
+crmRouter.get('/api/admin/crm/wholesale-settings/:username', authMiddleware, (req, res) => {
+  try {
+    const customerRow = findCustomerByUsernameForWholesaleSettings(req.params.username);
+    if (!customerRow) {
+      return res.status(404).json({ error: 'customer_not_found', message: 'Клиент с таким username не найден' });
+    }
+
+    const tiers = getActiveWholesaleTiers().map((tier) => ({
+      id: tier.id,
+      code: tier.code,
+      label: tier.label,
+      min_order_quantity: tier.minOrderQuantity === null || tier.minOrderQuantity === undefined
+        ? null
+        : Number(tier.minOrderQuantity),
+      sort_order: Number(tier.sortOrder ?? 0),
+    }));
+
+    const activeWholesaleOrder = db.prepare(`
+      SELECT id, order_number, wholesale_tier_label, wholesale_min_quantity
+      FROM orders
+      WHERE customer_id = ? AND is_wholesale = 1 AND status IN ('new', 'in_progress')
+      ORDER BY created_at DESC
+      LIMIT 1
+    `).get(customerRow.id) || null;
+
+    return res.json({
+      customer: serializeWholesaleCustomer(customerRow),
+      tiers,
+      active_wholesale_order: activeWholesaleOrder
+        ? {
+          id: activeWholesaleOrder.id,
+          order_number: activeWholesaleOrder.order_number,
+          wholesale_tier_label: activeWholesaleOrder.wholesale_tier_label || null,
+          wholesale_min_quantity: activeWholesaleOrder.wholesale_min_quantity === null
+            || activeWholesaleOrder.wholesale_min_quantity === undefined
+            ? null
+            : Number(activeWholesaleOrder.wholesale_min_quantity),
+        }
+        : null,
+    });
+  } catch (error) {
+    console.error('[crm] Failed to load wholesale settings:', error);
+    return res.status(500).json({ error: 'wholesale_settings_failed', message: error.message });
+  }
+});
+
+crmRouter.put('/api/admin/crm/wholesale-settings/:username', authMiddleware, (req, res) => {
+  try {
+    const customerRow = findCustomerByUsernameForWholesaleSettings(req.params.username);
+    if (!customerRow) {
+      return res.status(404).json({ error: 'customer_not_found', message: 'Клиент с таким username не найден' });
+    }
+
+    const { min_quantity: minQuantity } = req.body || {};
+
+    if (minQuantity !== null && minQuantity !== undefined) {
+      if (typeof minQuantity !== 'number' || !Number.isInteger(minQuantity) || minQuantity < 1 || minQuantity > 10000) {
+        return res.status(400).json({ error: 'invalid_min_quantity', message: 'Минимум — целое число от 1 до 10000 позиций' });
+      }
+    }
+
+    const normalized = minQuantity === null || minQuantity === undefined ? null : Number(minQuantity);
+    db.prepare(`
+      UPDATE customers
+      SET wholesale_min_override = ?, updated_at = DATETIME('now')
+      WHERE id = ?
+    `).run(normalized, customerRow.id);
+
+    const updated = db
+      .prepare('SELECT id, telegram_id, telegram_username, first_name, last_name, wholesale_min_override FROM customers WHERE id = ?')
+      .get(customerRow.id);
+
+    return res.json({ ok: true, customer: serializeWholesaleCustomer(updated) });
+  } catch (error) {
+    console.error('[crm] Failed to save wholesale settings:', error);
+    return res.status(500).json({ error: 'wholesale_settings_save_failed', message: error.message });
+  }
+});
+
+// Единый хаб действий с клиентом: агрегирует всё, что CRM показывает в
+// карточке клиента — блокировку, запрет приглашений, пригласившего,
+// карточный профиль и оптовый минимум. Точка расширения будущих действий.
+crmRouter.get('/api/admin/crm/customer-hub/:username', authMiddleware, (req, res) => {
+  try {
+    const customerRow = findCustomerByUsernameForWholesaleSettings(req.params.username);
+    if (!customerRow) {
+      return res.status(404).json({ error: 'customer_not_found', message: 'Клиент с таким username не найден' });
+    }
+
+    const activeBlock = getActiveBlockForCustomerId(customerRow.id);
+    const pendingBlock = activeBlock
+      ? null
+      : getPendingBanForUsername(customerRow.telegram_username || '');
+
+    const inviteBan = db.prepare(`
+      SELECT id, reason, banned_by, banned_at
+      FROM customer_invite_bans
+      WHERE customer_id = ? AND active = 1
+      LIMIT 1
+    `).get(customerRow.id) || null;
+
+    // Пригласивший — как в crm-order-enrichment (одна запись на клиента).
+    const referralRow = db.prepare(`
+      SELECT
+        cr.inviter_customer_id,
+        COALESCE(NULLIF(TRIM(ic.telegram_username), ''), cr.inviter_username_snapshot) AS inviter_username,
+        ic.first_name AS inviter_first_name,
+        ic.last_name AS inviter_last_name,
+        cib.id AS inviter_invite_ban_id,
+        CASE WHEN cib.id IS NOT NULL THEN 1 ELSE 0 END AS inviter_is_invite_banned
+      FROM customer_referrals cr
+      LEFT JOIN customers ic ON ic.id = cr.inviter_customer_id
+      LEFT JOIN customer_invite_bans cib
+        ON cib.customer_id = cr.inviter_customer_id AND cib.active = 1
+      WHERE cr.invitee_customer_id = ?
+      LIMIT 1
+    `).get(customerRow.id) || null;
+
+    const cardProfile = findCardAccountProfileByUsername(
+      customerRow.telegram_username || req.params.username,
+    );
+
+    const tiers = getActiveWholesaleTiers().map((tier) => ({
+      id: tier.id,
+      code: tier.code,
+      label: tier.label,
+      min_order_quantity: tier.minOrderQuantity === null || tier.minOrderQuantity === undefined
+        ? null
+        : Number(tier.minOrderQuantity),
+      sort_order: Number(tier.sortOrder ?? 0),
+    }));
+
+    const activeWholesaleOrder = db.prepare(`
+      SELECT id, order_number, wholesale_tier_label, wholesale_min_quantity
+      FROM orders
+      WHERE customer_id = ? AND is_wholesale = 1 AND status IN ('new', 'in_progress')
+      ORDER BY created_at DESC
+      LIMIT 1
+    `).get(customerRow.id) || null;
+
+    return res.json({
+      customer: {
+        ...serializeWholesaleCustomer(customerRow),
+        total_orders: Number(customerRow.total_orders || 0),
+        notes: customerRow.notes ?? null,
+      },
+      block: activeBlock
+        ? serializeBlock(activeBlock)
+        : (pendingBlock ? serializeBlock(pendingBlock, 'pending') : null),
+      invite_ban: inviteBan,
+      inviter: referralRow && (referralRow.inviter_customer_id || referralRow.inviter_username)
+        ? {
+          customer_id: referralRow.inviter_customer_id || null,
+          username: referralRow.inviter_username || null,
+          first_name: referralRow.inviter_first_name || null,
+          last_name: referralRow.inviter_last_name || null,
+          invite_ban_id: referralRow.inviter_invite_ban_id || null,
+          is_invite_banned: Number(referralRow.inviter_is_invite_banned || 0) === 1,
+        }
+        : null,
+      card_profile: cardProfile,
+      tiers,
+      active_wholesale_order: activeWholesaleOrder
+        ? {
+          id: activeWholesaleOrder.id,
+          order_number: activeWholesaleOrder.order_number,
+          wholesale_tier_label: activeWholesaleOrder.wholesale_tier_label || null,
+          wholesale_min_quantity: activeWholesaleOrder.wholesale_min_quantity === null
+            || activeWholesaleOrder.wholesale_min_quantity === undefined
+            ? null
+            : Number(activeWholesaleOrder.wholesale_min_quantity),
+        }
+        : null,
+    });
+  } catch (error) {
+    console.error('[crm] Failed to load customer hub:', error);
+    return res.status(500).json({ error: 'customer_hub_failed', message: error.message });
+  }
+});
+
 
 crmRouter.post('/api/admin/crm/card-payments/manual', authMiddleware, (req, res) => {
   try {

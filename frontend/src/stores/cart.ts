@@ -19,6 +19,8 @@ export interface CartItem {
   groupId?: string | null
   categoryId?: string | null
   loyaltyUnitsApplied?: number
+  /** Товар не приближает корзину к оптовому минимуму (прямые товары — всегда). */
+  excludedFromWholesaleMin?: boolean
 }
 
 export const useCartStore = defineStore('cart', () => {
@@ -32,6 +34,14 @@ export const useCartStore = defineStore('cart', () => {
 
   const totalAmount = computed(() => {
     return items.value.reduce((sum, item) => sum + item.priceRub * item.quantity, 0)
+  })
+
+  /** Считаемые в оптовом минимуме единицы: штуки товаров без флага исключения. */
+  const countableWholesaleUnits = computed(() => {
+    return items.value.reduce(
+      (sum, item) => (item.excludedFromWholesaleMin ? sum : sum + item.quantity),
+      0,
+    )
   })
 
   function resolveCartItemImage(
@@ -89,9 +99,15 @@ export const useCartStore = defineStore('cart', () => {
         const pp = Number(catalogProduct.priceRub)
         if (Number.isFinite(pp) && pp > 0) synced = pp
       }
-      if (synced != null && synced !== item.priceRub) {
+      const excluded = catalogProduct.groupId == null
+        || catalogProduct.excludedFromWholesaleMin === true
+      if ((synced != null && synced !== item.priceRub) || excluded !== Boolean(item.excludedFromWholesaleMin)) {
         changed = true
-        return { ...item, priceRub: synced }
+        return {
+          ...item,
+          priceRub: synced != null ? synced : item.priceRub,
+          excludedFromWholesaleMin: excluded,
+        }
       }
       return item
     })
@@ -159,19 +175,28 @@ export const useCartStore = defineStore('cart', () => {
           if (product) {
             migrated.groupId = product.groupId || migrated.groupId || null
             migrated.categoryId = product.categoryId || migrated.categoryId || null
+            migrated.excludedFromWholesaleMin = product.groupId == null
+              || product.excludedFromWholesaleMin === true
             migrated.image = resolveCartItemImage(
               product,
               migrated.variantId,
               migrated.image || null,
             )
-          } else if (!migrated.image) {
-            // Удалённый из каталога товар не теряем: для старой строки используем
-            // доступную обложку, но существующее сохранённое фото не затираем.
-            migrated.image = (migrated.groupId
-              ? catalogStore.getGroupImage(migrated.groupId)
-              : null) || (migrated.categoryId
-              ? catalogStore.getCategoryImage(migrated.categoryId)
-              : null)
+          } else {
+            // Старая строка без каталога: флаг по умолчанию — прямые товары (без
+            // линейки) не считаются в оптовом минимуме.
+            if (migrated.excludedFromWholesaleMin === undefined) {
+              migrated.excludedFromWholesaleMin = migrated.groupId == null
+            }
+            if (!migrated.image) {
+              // Удалённый из каталога товар не теряем: для старой строки используем
+              // доступную обложку, но существующее сохранённое фото не затираем.
+              migrated.image = (migrated.groupId
+                ? catalogStore.getGroupImage(migrated.groupId)
+                : null) || (migrated.categoryId
+                ? catalogStore.getCategoryImage(migrated.categoryId)
+                : null)
+            }
           }
 
           return migrated
@@ -268,6 +293,8 @@ export const useCartStore = defineStore('cart', () => {
           groupId: product.groupId || null,
           categoryId: product.categoryId || null,
           loyaltyUnitsApplied: 0,
+        excludedFromWholesaleMin: product.groupId == null
+          || product.excludedFromWholesaleMin === true,
         })
       }
     
@@ -306,6 +333,9 @@ export const useCartStore = defineStore('cart', () => {
       if ('cart_item' in item) {
         return {
           ...item.cart_item,
+          // Старые payload без флага: прямые товары (без линейки) не считаются.
+          excludedFromWholesaleMin: item.cart_item.excludedFromWholesaleMin
+            ?? (item.cart_item.groupId == null),
           loyaltyUnitsApplied: Math.max(
             0,
             Math.min(
@@ -318,6 +348,8 @@ export const useCartStore = defineStore('cart', () => {
 
       return {
         ...item,
+        excludedFromWholesaleMin: item.excludedFromWholesaleMin
+          ?? (item.groupId == null),
         loyaltyUnitsApplied: Math.max(
           0,
           Math.min(
@@ -388,6 +420,7 @@ export const useCartStore = defineStore('cart', () => {
     editingPromoCode,
     totalItems,
     totalAmount,
+    countableWholesaleUnits,
     addItem,
     updateQuantity,
     removeItem,

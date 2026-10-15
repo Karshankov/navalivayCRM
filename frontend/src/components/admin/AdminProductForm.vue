@@ -129,6 +129,28 @@
       <p class="mt-1 text-xs text-gray-500 break-words">Без копеек, только целые рубли. Пример: 3990</p>
     </div>
 
+    <!-- Опт: товар не считается в минимальном количестве -->
+    <div class="w-full rounded-xl border border-gray-200 bg-white p-4">
+      <label class="flex cursor-pointer items-start gap-3">
+        <input
+          v-model="effectiveExcludedFromWholesaleMin"
+          type="checkbox"
+          class="mt-0.5 h-5 w-5 rounded border-gray-300 text-brand-dark focus:ring-brand-dark/30"
+          :disabled="!form.groupId"
+        />
+        <span>
+          <span class="block text-sm font-semibold text-gray-800">Не считать в минимальном количестве опта</span>
+          <span class="mt-1 block text-xs leading-5 text-gray-600">
+            Товар покупается по оптовой ссылке, но не приближает корзину к
+            минимальному количеству позиций
+            <template v-if="!form.groupId">
+              — у товаров без линейки это правило действует всегда
+            </template>
+          </span>
+        </span>
+      </label>
+    </div>
+
     <div
       class="w-full rounded-xl border p-4 transition"
       :class="form.discountEnabled ? 'border-rose-300 bg-rose-50' : 'border-gray-200 bg-white'"
@@ -761,6 +783,7 @@ interface Product {
   priceRub: number
   description?: string
   useCategoryImage?: boolean
+  excludedFromWholesaleMin?: boolean
   hasVariants?: boolean
   variants?: ProductVariant[]
   images: string[]
@@ -806,6 +829,9 @@ const form = reactive<Omit<Product, 'id'>>({
   stock: props.product?.stock ?? 0,
   minStock: props.product?.minStock ?? 0,
   useCategoryImage: props.product?.useCategoryImage ?? true,
+  excludedFromWholesaleMin: props.product
+    ? Boolean(props.product.excludedFromWholesaleMin ?? (props.product.groupId ? false : true))
+    : false,
   hasVariants: props.product?.hasVariants ?? false,
   variants: props.product?.variants ? props.product.variants.map(v => ({
     ...v,
@@ -824,6 +850,13 @@ const form = reactive<Omit<Product, 'id'>>({
 })
 
 const localCategories = ref<Category[]>([...props.categories])
+
+// Чекбокс отражает фактическое правило: товар без линейки не считается
+// в минимуме опта всегда (сохраним true), поэтому показываем его отмеченным.
+const effectiveExcludedFromWholesaleMin = computed({
+  get: () => (form.groupId ? form.excludedFromWholesaleMin === true : true),
+  set: (value: boolean) => { form.excludedFromWholesaleMin = value },
+})
 const showCreateCategoryModal = ref(false)
 const newCategoryName = ref('')
 const createCategoryError = ref('')
@@ -1342,6 +1375,7 @@ async function onSubmit() {
       description: form.description,
       costPrice: Number(form.costPrice ?? 0),
       minStock: Number(form.minStock ?? 0),
+      excludedFromWholesaleMin: form.groupId ? form.excludedFromWholesaleMin === true : true,
       discount: form.discountEnabled
         ? { price: parseDiscountPrice(form.discountPrice), untilDate: form.discountUntil || null }
         : { price: null, untilDate: null },

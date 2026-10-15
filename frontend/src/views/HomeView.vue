@@ -22,12 +22,28 @@
             {{ wholesaleStore.wholesaleLabel }}
           </p>
           <p class="wholesale-mode-text">
-            Минимальный заказ - {{ wholesaleStore.minOrderAmount.toFixed(0) }} BYN.
-            <template v-if="remainingWholesaleAmount > 0">
-              Сейчас не хватает {{ remainingWholesaleAmount.toFixed(2) }} BYN.
+            <template v-if="wholesaleStore.effectiveMinQuantity">
+              Минимальное количество заказа -
+              {{ wholesaleStore.effectiveMinQuantity }}
+              {{ pluralPositions(wholesaleStore.effectiveMinQuantity) }}<span
+                v-if="wholesaleStore.minOverride"
+              > · персональный минимум</span>.
+              <template v-if="remainingWholesaleMinimum > 0">
+                Сейчас не хватает {{ remainingWholesaleMinimum }}
+                {{ genitivePositions(remainingWholesaleMinimum) }}.
+              </template>
+              <template v-else>
+                Минимум уже выполнен.
+              </template>
             </template>
             <template v-else>
-              Минимум уже выполнен.
+              Минимальная сумма заказа - {{ wholesaleStore.minOrderAmount.toFixed(0) }} BYN.
+              <template v-if="remainingWholesaleMinimum > 0">
+                Сейчас не хватает {{ remainingWholesaleMinimum.toFixed(2) }} BYN.
+              </template>
+              <template v-else>
+                Минимум уже выполнен.
+              </template>
             </template>
           </p>
         </div>
@@ -172,9 +188,25 @@ const categoryCards = computed(() => {
 
 const totalCartItems = computed(() => cartStore.totalItems);
 const totalCartAmount = computed(() => cartStore.totalAmount.toFixed(2));
-const remainingWholesaleAmount = computed(() =>
-  wholesaleStore.remainingToMinimum(cartStore.totalAmount),
+const remainingWholesaleMinimum = computed(() =>
+  wholesaleStore.remainingToMinimum(cartStore.countableWholesaleUnits, cartStore.totalAmount),
 );
+
+function pluralPositions(value: number) {
+  const mod10 = value % 10;
+  const mod100 = value % 100;
+  if (mod10 === 1 && mod100 !== 11) return "позиция";
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return "позиции";
+  return "позиций";
+}
+
+// «Не хватает N …» — родительный падеж.
+function genitivePositions(value: number) {
+  const mod10 = value % 10;
+  const mod100 = value % 100;
+  if (mod10 === 1 && mod100 !== 11) return "позиции";
+  return "позиций";
+}
 
 function openCategory(slug: string) {
   router.push({ name: "category", params: { slug } });
@@ -201,6 +233,11 @@ async function refreshHomeState() {
 
 onMounted(async () => {
   await refreshHomeState();
+
+  // Персональный минимум мог смениться админом среди сессии.
+  if (wholesaleStore.isWholesale) {
+    void wholesaleStore.refreshEffectiveMinimum();
+  }
 
   if (window.Telegram?.WebApp) {
     window.Telegram.WebApp.ready();

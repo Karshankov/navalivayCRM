@@ -1722,6 +1722,7 @@ const resolvedWholesaleTiers = computed(() => {
     code: link.code,
     label: link.label,
     minOrderAmount: link.minOrderAmount,
+    minQuantity: link.minQuantity,
     sortOrder: link.sortOrder,
   }))
 })

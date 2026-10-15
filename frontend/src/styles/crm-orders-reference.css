@@ -141,7 +141,6 @@
 .crm-orders-page .order-card-products .text-gray-400 { color: #a0acc6; }
 /* Reference text uses the browser's normal line metrics. */
 .crm-orders-page .order-card .order-card-client-name,
-.crm-orders-page .order-card .order-card-client-actions,
 .crm-orders-page .order-card .order-card-button { line-height: normal; }
 .crm-orders-page .order-card .order-card-bottom { margin-top: 0; }
 .crm-orders-page .order-card-products > li:has(> button) { margin-bottom: 14px; }

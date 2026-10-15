@@ -124,4 +124,12 @@ describe('FindInviterModal', () => {
     expect(fetch).toHaveBeenCalledTimes(1);
     resolve(response(found())); await flushPromises();
   });
+  it('auto-searches the prefilled username from the customer hub', async () => {
+    wrapper = mount(FindInviterModal, { props: { isOpen: false, busy: false, prefill: { username: 'real_customer' } } });
+    await wrapper.setProps({ isOpen: true });
+    await flushPromises();
+    expect(fetch).toHaveBeenCalledWith('/api/admin/crm/customers/inviter?username=real_customer', expect.objectContaining({ credentials: 'include' }));
+    expect((wrapper.get('[data-test="inviter-lookup-input"]').element as HTMLInputElement).value).toBe('real_customer');
+    expect(wrapper.get('[data-test="inviter-lookup-result"]').exists()).toBe(true);
+  });
 });

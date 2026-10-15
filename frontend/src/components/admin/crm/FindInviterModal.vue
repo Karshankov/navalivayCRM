@@ -51,9 +51,11 @@
 import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from 'vue';
 import { Dialog, DialogPanel, DialogTitle, DialogDescription, TransitionRoot, TransitionChild } from '@headlessui/vue';
 import { UserGroupIcon, XMarkIcon, MagnifyingGlassIcon, ClipboardDocumentIcon, ChatBubbleLeftRightIcon, NoSymbolIcon, UserMinusIcon } from '@heroicons/vue/24/outline';
-import type { InviterAction } from './CustomerActionsModal.vue';
+// Общий тип действий с пригласившим (раньше жил в CustomerActionsModal,
+// теперь единственный источник — здесь, хаб клиента и CrmOrders импортируют его).
+export type InviterAction = 'copy' | 'message' | 'block' | 'invite-ban' | 'remove-ban';
 import { lookupCrmInviter, normalizeInviterLookupUsername, type InviterLookupResult } from '@/utils/crmInviterLookup';
-const props = defineProps<{ isOpen: boolean; busy: boolean }>();
+const props = defineProps<{ isOpen: boolean; busy: boolean; prefill?: { username?: string | null } | null }>();
 const emit = defineEmits<{ close: []; action: [action: InviterAction, result: InviterLookupResult]; 'after-leave': [] }>();
 const inputId = `find-inviter-${useId()}`;
 const inputRef = ref<HTMLInputElement | null>(null);
@@ -81,9 +83,11 @@ function invalidate() {
 watch(() => props.isOpen, (open) => {
   invalidate();
   if (open) {
-    query.value = '';
+    // Из хаба клиента приходит предзаполнение — сразу ищем его пригласившего.
+    query.value = props.prefill?.username?.replace(/^@+/, '') || '';
     searchedUsername.value = '';
     returnFocusTarget = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    if (query.value) void search();
   }
 }, { flush: 'sync', immediate: true });
 onBeforeUnmount(invalidate);

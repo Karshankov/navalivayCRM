@@ -91,6 +91,10 @@ export interface Product {
   isWholesale?: boolean
   wholesaleCode?: string | null
   wholesaleMinAmount?: number | null
+  /** Минимум опта в позициях (ссылка клиента). */
+  wholesaleMinQuantity?: number | null
+  /** Товар не приближает корзину к оптовому минимуму (прямые товары — всегда). */
+  excludedFromWholesaleMin?: boolean
 }
 
 export interface Banner {

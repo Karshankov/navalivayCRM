@@ -1530,6 +1530,69 @@ function normalizeStaffAnalytics(
   };
 }
 
+export interface CustomerWholesaleTier {
+  id: string;
+  code: string;
+  label: string;
+  min_order_quantity: number | null;
+  sort_order: number;
+}
+
+export interface CustomerWholesaleSettings {
+  customer: {
+    id: string;
+    telegram_id: string | null;
+    telegram_username: string | null;
+    first_name: string | null;
+    last_name: string | null;
+    wholesale_min_override: number | null;
+  };
+  tiers: CustomerWholesaleTier[];
+  active_wholesale_order: {
+    id: string;
+    order_number: number;
+    wholesale_tier_label: string | null;
+    wholesale_min_quantity: number | null;
+  } | null;
+}
+
+function stripTelegramAt(value: unknown) {
+  return String(value || "").trim().replace(/^@+/, "");
+}
+
+/** Единый хаб действий с клиентом (карточка + все доступные действия). */
+export interface CustomerHubData {
+  customer: CustomerWholesaleSettings["customer"] & {
+    total_orders: number;
+    notes: string | null;
+  };
+  block: {
+    id: string;
+    kind: "active" | "pending";
+    block_until: string | null;
+    reason: string | null;
+    blocked_at: string | null;
+    blocked_by: string | null;
+  } | null;
+  invite_ban: {
+    id: string;
+    reason: string | null;
+    banned_by: string | null;
+    banned_at: string | null;
+  } | null;
+  inviter: {
+    customer_id: string | null;
+    username: string | null;
+    first_name: string | null;
+    last_name: string | null;
+    invite_ban_id: string | null;
+    is_invite_banned: boolean;
+  } | null;
+  card_profile: CardAccountProfile | null;
+  tiers: CustomerWholesaleTier[];
+  active_wholesale_order: CustomerWholesaleSettings["active_wholesale_order"];
+}
+
 // TODO: при появлении ролевой модели (manager/cashier) — рассмотреть отдельную
 // обработку 403 (Forbidden). Сейчас на бэке используется только 401 для всех
 // auth-сценариев, поэтому отдельная ветка не нужна.
@@ -3774,6 +3837,115 @@ export const useCrmStore = defineStore("crm", () => {
     return result.pending;
   }
 
+  // ===== Настройки клиента: оптовый персональный минимум =====
+
+  async function fetchCustomerWholesaleSettings(username: string) {
+    const normalized = stripTelegramAt(username);
+    if (!normalized) {
+      throw new StaffApiError("Укажите @username клиента.", {
+        code: "invalid_telegram_username",
+      });
+    }
+    return await fetchAPI<CustomerWholesaleSettings>(
+      `${API_BASE}/wholesale-settings/${encodeURIComponent(normalized)}`,
+    );
+  }
+
+  async function saveCustomerWholesaleMinOverride(
+    username: string,
+    minQuantity: number | null,
+  ) {
+    const normalized = stripTelegramAt(username);
+    if (!normalized) {
+      throw new StaffApiError("Укажите @username клиента.", {
+        code: "invalid_telegram_username",
+      });
+    }
+    if (
+      minQuantity !== null &&
+      (!Number.isInteger(minQuantity) || minQuantity < 1 || minQuantity > 10000)
+    ) {
+      throw new StaffApiError("Минимум — целое число от 1 до 10000 позиций.", {
+        code: "invalid_min_quantity",
+      });
+    }
+    return await fetchAPI<{ ok: true; customer: CustomerWholesaleSettings["customer"] }>(
+      `${API_BASE}/wholesale-settings/${encodeURIComponent(normalized)}`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ min_quantity: minQuantity }),
+      },
+    );
+  }
+
+  // ===== Хаб действий с клиентом =====
+
+  async function fetchCustomerHub(username: string) {
+    const normalized = stripTelegramAt(username);
+    if (!normalized) {
+      throw new StaffApiError("Укажите @username клиента.", {
+        code: "invalid_telegram_username",
+      });
+    }
+    return await fetchAPI<CustomerHubData>(
+      `${API_BASE}/customer-hub/${encodeURIComponent(normalized)}`,
+    );
+  }
+
+  /**
+   * Разрешить/запретить оплату картой из хаба. Привязанный аккаунт есть —
+   * переключаем enabled по его telegram_id (лимиты не трогаем). Аккаунта нет —
+   * создаём с дефолтами (250 BYN/мес, 45 BYN/заказ); если ждёт привязки —
+   * переносим его лимиты в новый аккаунт.
+   */
+  async function setCustomerCardPaymentEnabled(
+    username: string,
+    telegramId: string | null,
+    enabled: boolean,
+    cardAccount: {
+      telegram_id: string | null;
+      monthly_limit_minor: number | null;
+      max_order_minor: number | null;
+    } | null,
+  ) {
+    const normalized = stripTelegramAt(username);
+    if (!normalized && !telegramId) {
+      throw new StaffApiError("Нет данных клиента для карточного аккаунта.", {
+        code: "telegram_identity_required",
+      });
+    }
+    if (cardAccount?.telegram_id) {
+      // PATCH по telegram_id самого аккаунта: у клиента из CRM он может
+      // отличаться (перезаписался username) — иначе включим чужой аккаунт.
+      await fetchAPI(
+        `${API_BASE}/card-payments/accounts/${encodeURIComponent(cardAccount.telegram_id)}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ enabled }),
+        },
+      );
+      return;
+    }
+    // POST создаёт аккаунт; лимиты передаём, только если переносим
+    // их из ожидающего привязки профиля (иначе сервер ставит дефолты).
+    await fetchAPI(`${API_BASE}/card-payments/accounts`, {
+      method: "POST",
+      body: JSON.stringify({
+        telegram_id: telegramId ?? undefined,
+        telegram_username: normalized || undefined,
+        enabled,
+        monthly_limit:
+          cardAccount?.monthly_limit_minor != null
+            ? cardAccount.monthly_limit_minor / 100
+            : undefined,
+        max_order:
+          cardAccount?.max_order_minor != null
+            ? cardAccount.max_order_minor / 100
+            : undefined,
+      }),
+    });
+  }
+
   // ===== POS-клиенты (касса): поиск, создание/merge, история покупок =====
 
   async function searchCustomersForPos(
@@ -5620,6 +5792,12 @@ export const useCrmStore = defineStore("crm", () => {
     upsertCustomerNote,
     clearCustomerNote,
     fetchPendingCustomerNotes,
+
+    // Настройки клиента (оптовый персональный минимум)
+    fetchCustomerWholesaleSettings,
+    saveCustomerWholesaleMinOverride,
+    fetchCustomerHub,
+    setCustomerCardPaymentEnabled,
 
     // POS-клиенты (касса)
     searchCustomersForPos,

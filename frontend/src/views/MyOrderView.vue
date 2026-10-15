@@ -53,7 +53,13 @@
         <section v-if="order.is_wholesale" class="order-status-card">
           <div class="order-status-copy">
             <strong>Оптовый заказ</strong>
-            <p>
+            <p v-if="order.wholesale_min_quantity != null">
+              {{ order.wholesale_tier_label || 'Оптовый прайс' }}.
+              Минимальное количество -
+              {{ order.wholesale_min_quantity }}
+              {{ pluralPositions(order.wholesale_min_quantity) }}.
+            </p>
+            <p v-else>
               {{ order.wholesale_tier_label || 'Оптовый прайс' }}.
               Минимальная сумма - {{ formatPrice(order.wholesale_min_amount || 0) }} BYN.
             </p>
@@ -204,6 +210,7 @@ async function handleEditOrder() {
         secret: order.value.wholesale_secret,
         label: order.value.wholesale_tier_label,
         minOrderAmount: order.value.wholesale_min_amount,
+        minQuantity: order.value.wholesale_min_quantity,
       });
     } else if (wholesaleStore.isWholesale) {
       wholesaleStore.clearContext();
@@ -254,6 +261,14 @@ async function handleCancelOrder() {
 
 function formatPrice(value: number) {
   return Number(value || 0).toFixed(0);
+}
+
+function pluralPositions(value: number) {
+  const mod10 = value % 10;
+  const mod100 = value % 100;
+  if (mod10 === 1 && mod100 !== 11) return 'позиция';
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return 'позиции';
+  return 'позиций';
 }
 
 function startPolling() {

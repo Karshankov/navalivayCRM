@@ -39,7 +39,7 @@ function getWholesaleTier(code) {
   return db
     .prepare(
       `
-      SELECT id, code, secret_key, min_order_amount
+      SELECT id, code, secret_key, min_order_amount, min_order_quantity
       FROM wholesale_tiers
       WHERE code = ?
       LIMIT 1
@@ -71,7 +71,7 @@ function seedWholesaleProduct() {
     INSERT OR REPLACE INTO products (
       id, categoryId, groupId, title, priceRub, description, use_category_image,
       createdAt, cost_price, stock, min_stock, has_variants
-    ) VALUES (?, 'cat-wholesale', 'group-wholesale', 'Wholesale liquid', 15, '', 0, DATETIME('now'), 5, 100, 0, 0)
+    ) VALUES (?, 'cat-wholesale', 'group-wholesale', 'Wholesale liquid', 15, '', 0, DATETIME('now'), 5, 1000, 0, 0)
   `,
   ).run("product-wholesale");
 }
@@ -171,7 +171,7 @@ function seedPromo({ id, code, hasGift, ownerCustomerId = null, discountValue = 
 }
 
 async function testWholesaleLinkValidation() {
-  const tier = getWholesaleTier("500");
+  const tier = getWholesaleTier("100");
   assert.ok(tier);
 
   const incomplete = await requestJson(`/api/wholesale/context?wholesale_code=${tier.code}`);
@@ -188,7 +188,7 @@ async function testWholesaleLinkValidation() {
 async function testWholesaleContextAndCatalog() {
   seedWholesaleProduct();
   seedHiddenWholesaleProduct();
-  const tier = getWholesaleTier("500");
+  const tier = getWholesaleTier("100");
   assert.ok(tier);
   setWholesalePrice(tier.id, 9.5);
 
@@ -197,8 +197,10 @@ async function testWholesaleContextAndCatalog() {
   );
   assert.equal(context.response.status, 200);
   assert.equal(context.data.is_wholesale, true);
-  assert.equal(context.data.wholesale_code, "500");
+  assert.equal(context.data.wholesale_code, "100");
   assert.equal(context.data.wholesale_min_amount, 500);
+  assert.equal(context.data.wholesale_min_quantity, 100);
+  assert.equal(context.data.wholesale_effective_min_quantity, 100);
 
   const categories = await requestJson("/api/categories", {
     headers: {
@@ -233,7 +235,7 @@ async function testWholesaleContextAndCatalog() {
 }
 
 async function testWholesaleOrderMinimumAndCreate() {
-  const tier = getWholesaleTier("500");
+  const tier = getWholesaleTier("100");
   const identity = {
     telegram_id: "5001",
     telegram_username: "wholesale_customer",
@@ -244,7 +246,7 @@ async function testWholesaleOrderMinimumAndCreate() {
   assert.equal(belowMinimum.response.status, 400);
   assert.equal(belowMinimum.data.error, "wholesale_min_not_met");
 
-  const created = await createWholesaleOrder(identity, tier, 60);
+  const created = await createWholesaleOrder(identity, tier, 120);
 
   assert.equal(created.response.status, 200);
   assert.equal(created.data.success, true);
@@ -255,20 +257,21 @@ async function testWholesaleOrderMinimumAndCreate() {
   assert.equal(order.is_wholesale, 1);
   assert.equal(order.wholesale_tier_id, tier.id);
   assert.equal(order.wholesale_min_amount, 500);
-  assert.equal(order.total_amount, 570);
-  assert.equal(order.final_amount, 570);
+  assert.equal(order.wholesale_min_quantity, 100);
+  assert.equal(order.total_amount, 1140);
+  assert.equal(order.final_amount, 1140);
   assert.equal(items.length, 1);
   assert.equal(items[0].price_per_unit, 9.5);
 }
 
 async function testModifyWholesaleOrder() {
-  const tier = getWholesaleTier("500");
+  const tier = getWholesaleTier("100");
   const identity = {
     telegram_id: "5002",
     telegram_username: "wholesale_customer_edit",
   };
 
-  const created = await createWholesaleOrder(identity, tier, 60);
+  const created = await createWholesaleOrder(identity, tier, 120);
   assert.equal(created.response.status, 200);
 
   const orderId = created.data.order_id;
@@ -304,7 +307,7 @@ async function testModifyWholesaleOrder() {
         {
           product_id: "product-wholesale",
           variant_id: null,
-          quantity: 70,
+          quantity: 140,
           price_per_unit: 9.5,
           product_title: "Wholesale liquid",
           variant_name: null,
@@ -318,16 +321,16 @@ async function testModifyWholesaleOrder() {
   const order = getOrderById(orderId);
   const items = getOrderItems(orderId);
   assert.equal(order.is_wholesale, 1);
-  assert.equal(order.total_amount, 665);
-  assert.equal(order.final_amount, 665);
+  assert.equal(order.total_amount, 1330);
+  assert.equal(order.final_amount, 1330);
   assert.equal(order.needs_manager_action, 1);
   assert.equal(items.length, 1);
-  assert.equal(items[0].quantity, 70);
+  assert.equal(items[0].quantity, 140);
   assert.equal(items[0].price_per_unit, 9.5);
 }
 
 async function testWholesaleGiftPromoCreateAndAdversarialRules() {
-  const tier = getWholesaleTier("500");
+  const tier = getWholesaleTier("100");
   const owner = {
     id: "customer-wholesale-gift",
     telegramId: "5010",
@@ -348,7 +351,7 @@ async function testWholesaleGiftPromoCreateAndAdversarialRules() {
       telegram_username: owner.username,
     },
     tier,
-    60,
+    120,
     { promo_code: "WHOLESALEGIFT" },
   );
 
@@ -356,7 +359,7 @@ async function testWholesaleGiftPromoCreateAndAdversarialRules() {
   const order = getOrderById(created.data.order_id);
   assert.equal(order.promo_code_text, "WHOLESALEGIFT");
   assert.equal(order.discount_amount, 0, "gift promo must not discount wholesale price");
-  assert.equal(order.final_amount, 570);
+  assert.equal(order.final_amount, 1140);
 
   const usage = db
     .prepare("SELECT * FROM promo_usage WHERE order_id = ?")
@@ -373,7 +376,7 @@ async function testWholesaleGiftPromoCreateAndAdversarialRules() {
     }),
     body: JSON.stringify({
       code: "WHOLESALEGIFT",
-      order_amount: 570,
+      order_amount: 1140,
       editing_order_id: created.data.order_id,
     }),
   });
@@ -393,7 +396,7 @@ async function testWholesaleGiftPromoCreateAndAdversarialRules() {
       telegram_id: "5013",
       telegram_username: "wholesale_gift_foreign",
     }),
-    body: JSON.stringify({ code: "WHOLESALEGIFT", order_amount: 570 }),
+    body: JSON.stringify({ code: "WHOLESALEGIFT", order_amount: 1140 }),
   });
   assert.equal(foreignValidation.response.status, 200);
   assert.equal(foreignValidation.data.valid, false);
@@ -410,7 +413,7 @@ async function testWholesaleGiftPromoCreateAndAdversarialRules() {
       "x-wholesale-secret": tier.secret_key,
       "x-telegram-init-data": forgedInitData,
     },
-    body: JSON.stringify({ code: "WHOLESALEGIFT", order_amount: 570 }),
+    body: JSON.stringify({ code: "WHOLESALEGIFT", order_amount: 1140 }),
   });
   assert.equal(forgedValidation.response.status, 200);
   assert.equal(forgedValidation.data.valid, false);
@@ -432,7 +435,7 @@ async function testWholesaleGiftPromoCreateAndAdversarialRules() {
           {
             product_id: "product-wholesale",
             variant_id: null,
-            quantity: 70,
+            quantity: 140,
             price_per_unit: 9.5,
             product_title: "Wholesale liquid",
             variant_name: null,
@@ -445,7 +448,7 @@ async function testWholesaleGiftPromoCreateAndAdversarialRules() {
   const modifiedOrder = getOrderById(created.data.order_id);
   assert.equal(modifiedOrder.promo_code_text, "WHOLESALEGIFT");
   assert.equal(modifiedOrder.discount_amount, 0);
-  assert.equal(modifiedOrder.final_amount, 665);
+  assert.equal(modifiedOrder.final_amount, 1330);
 
   seedPromo({
     id: "promo-wholesale-discount",
@@ -458,7 +461,7 @@ async function testWholesaleGiftPromoCreateAndAdversarialRules() {
       telegram_id: "5011",
       telegram_username: "wholesale_discount_attack",
     }),
-    body: JSON.stringify({ code: "WHOLESALESAVE", order_amount: 570 }),
+    body: JSON.stringify({ code: "WHOLESALESAVE", order_amount: 1140 }),
   });
   assert.equal(rejectedByValidation.response.status, 200);
   assert.equal(rejectedByValidation.data.valid, false);
@@ -470,7 +473,7 @@ async function testWholesaleGiftPromoCreateAndAdversarialRules() {
       telegram_username: "wholesale_discount_attack",
     },
     tier,
-    60,
+    120,
     { promo_code: "WHOLESALESAVE" },
   );
   assert.equal(forgedDiscount.response.status, 400);
@@ -482,7 +485,7 @@ async function testWholesaleGiftPromoCreateAndAdversarialRules() {
       telegram_username: "wholesale_gift_attacker",
     },
     tier,
-    60,
+    120,
     { promo_code: "WHOLESALEGIFT" },
   );
   assert.equal(stolenGift.response.status, 400);

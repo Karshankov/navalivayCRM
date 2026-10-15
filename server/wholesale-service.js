@@ -31,6 +31,9 @@ function toTierModel(row) {
     code: String(row.code),
     label: row.label,
     minOrderAmount: Number(row.min_order_amount ?? 0),
+    minOrderQuantity: row.min_order_quantity === null || row.min_order_quantity === undefined
+      ? null
+      : Number(row.min_order_quantity),
     secretKey: row.secret_key,
     sortOrder: Number(row.sort_order ?? 0),
     isActive: Number(row.is_active ?? 0) === 1,
@@ -72,10 +75,10 @@ export function getWholesaleRequestCredentials(req) {
 
 export function getActiveWholesaleTiers() {
   const rows = db.prepare(`
-    SELECT id, code, label, min_order_amount, secret_key, sort_order, is_active
+    SELECT id, code, label, min_order_amount, min_order_quantity, secret_key, sort_order, is_active
     FROM wholesale_tiers
     WHERE is_active = 1
-    ORDER BY sort_order ASC, min_order_amount ASC
+    ORDER BY sort_order ASC, COALESCE(min_order_quantity, min_order_amount) ASC
   `).all();
 
   return rows.map(toTierModel);
@@ -87,7 +90,7 @@ export function getWholesaleTierById(tierId) {
   }
 
   const row = db.prepare(`
-    SELECT id, code, label, min_order_amount, secret_key, sort_order, is_active
+    SELECT id, code, label, min_order_amount, min_order_quantity, secret_key, sort_order, is_active
     FROM wholesale_tiers
     WHERE id = ?
     LIMIT 1
@@ -103,7 +106,7 @@ export function getWholesaleTierByCode(code) {
   }
 
   const row = db.prepare(`
-    SELECT id, code, label, min_order_amount, secret_key, sort_order, is_active
+    SELECT id, code, label, min_order_amount, min_order_quantity, secret_key, sort_order, is_active
     FROM wholesale_tiers
     WHERE code = ? AND is_active = 1
     LIMIT 1
@@ -120,7 +123,7 @@ export function getWholesaleTierByCredentials({ code, secret }) {
   }
 
   const row = db.prepare(`
-    SELECT id, code, label, min_order_amount, secret_key, sort_order, is_active
+    SELECT id, code, label, min_order_amount, min_order_quantity, secret_key, sort_order, is_active
     FROM wholesale_tiers
     WHERE code = ? AND secret_key = ? AND is_active = 1
     LIMIT 1
@@ -156,8 +159,89 @@ export function resolveWholesaleContextFromRequest(req) {
     code: tier.code,
     secret: credentials.secret,
     minOrderAmount: tier.minOrderAmount,
+    minOrderQuantity: tier.minOrderQuantity,
     label: tier.label,
   };
+}
+
+// Персональный минимум опта для клиента (NULL = минимум уровня ссылки).
+export function getCustomerWholesaleMinOverride(customerRef) {
+  if (!customerRef) {
+    return null;
+  }
+
+  const customerId = normalizeString(customerRef.customerId);
+  if (customerId) {
+    const row = db.prepare(`
+      SELECT wholesale_min_override
+      FROM customers
+      WHERE id = ?
+      LIMIT 1
+    `).get(customerId);
+    if (row) {
+      const value = Number(row.wholesale_min_override);
+      return Number.isFinite(value) && value > 0 ? Math.floor(value) : null;
+    }
+    return null;
+  }
+
+  const telegramId = customerRef.telegramId;
+  if (telegramId !== undefined && telegramId !== null && String(telegramId) !== '') {
+    const row = db.prepare(`
+      SELECT wholesale_min_override
+      FROM customers
+      WHERE telegram_id = ?
+      LIMIT 1
+    `).get(String(telegramId));
+    if (row) {
+      const value = Number(row.wholesale_min_override);
+      return Number.isFinite(value) && value > 0 ? Math.floor(value) : null;
+    }
+    return null;
+  }
+
+  const telegramUsername = normalizeString(customerRef.telegramUsername);
+  if (telegramUsername) {
+    const row = db.prepare(`
+      SELECT wholesale_min_override
+      FROM customers
+      WHERE telegram_username = ? COLLATE NOCASE
+      ORDER BY (SELECT MAX(o.created_at) FROM orders o WHERE o.customer_id = customers.id) DESC
+      LIMIT 1
+    `).get(telegramUsername.replace(/^@/, ''));
+    if (row) {
+      const value = Number(row.wholesale_min_override);
+      return Number.isFinite(value) && value > 0 ? Math.floor(value) : null;
+    }
+  }
+
+  return null;
+}
+
+// Эффективный минимум: персональный override клиента либо минимум уровня.
+export function resolveEffectiveWholesaleMinQuantity(context, customerRef) {
+  const tierMin = Number(context?.tier?.minOrderQuantity || 0);
+  const override = getCustomerWholesaleMinOverride(customerRef);
+  const effectiveMinQuantity = Number.isFinite(override) && override > 0
+    ? Math.floor(override)
+    : Math.max(Math.floor(tierMin || 0), 0);
+
+  return {
+    effectiveMinQuantity,
+    override: Number.isFinite(override) && override > 0 ? Math.floor(override) : null,
+  };
+}
+
+// Дописывает к контексту опта эффективный минимум с учётом клиента.
+export function attachWholesaleCustomerContext(context, customerRef) {
+  if (!context?.tier) {
+    return context;
+  }
+
+  const { effectiveMinQuantity, override } = resolveEffectiveWholesaleMinQuantity(context, customerRef);
+  context.effectiveMinQuantity = effectiveMinQuantity;
+  context.minOverride = override;
+  return context;
 }
 
 export function buildWholesaleContextPayload(context) {
@@ -165,12 +249,22 @@ export function buildWholesaleContextPayload(context) {
     return null;
   }
 
-  return {
+  const payload = {
     is_wholesale: true,
     wholesale_code: context.tier.code,
     wholesale_label: context.tier.label,
     wholesale_min_amount: Number(context.tier.minOrderAmount || 0),
+    wholesale_min_quantity: Number(context.tier.minOrderQuantity || 0),
   };
+
+  if (context.effectiveMinQuantity !== undefined && context.effectiveMinQuantity !== null) {
+    payload.wholesale_effective_min_quantity = Number(context.effectiveMinQuantity);
+  }
+  if (context.minOverride !== undefined && context.minOverride !== null) {
+    payload.wholesale_min_override = Number(context.minOverride);
+  }
+
+  return payload;
 }
 
 export function buildWholesaleLinkPath(tier) {
@@ -326,7 +420,7 @@ export function getGroupWholesalePrices(groupId) {
     JOIN wholesale_tiers wt ON wt.id = gwp.tier_id
     WHERE gwp.group_id = ?
       AND wt.is_active = 1
-    ORDER BY wt.sort_order ASC, wt.min_order_amount ASC
+    ORDER BY wt.sort_order ASC, COALESCE(wt.min_order_quantity, wt.min_order_amount) ASC
   `).all(normalizedGroupId);
 
   const result = {};
@@ -354,7 +448,7 @@ export function getBulkGroupWholesalePrices(groupIds) {
         JOIN wholesale_tiers wt ON wt.id = gwp.tier_id
         WHERE gwp.group_id IN (${placeholders})
           AND wt.is_active = 1
-        ORDER BY wt.sort_order ASC, wt.min_order_amount ASC
+        ORDER BY wt.sort_order ASC, COALESCE(wt.min_order_quantity, wt.min_order_amount) ASC
       `).all(...chunk),
     );
   }
@@ -507,23 +601,64 @@ export function getWholesaleCoverageSummary() {
   });
 }
 
-export function validateWholesaleMinimum(totalAmount, context) {
+// Минимум опта — по количеству считаемых позиций (штук) в корзине.
+// Товары с excludedFromWholesaleMin покупаются, но не приближают
+// корзину к минимуму. effective = персональный override ?? минимум уровня.
+// Для старых (суммовых) контекстов без минимума в позициях — fallback на
+// минимальную сумму (заказы, созданные до перехода на позиции).
+export function validateWholesaleMinimum(orderBuild, context, customerRef) {
   if (!context?.tier) {
     return null;
   }
 
-  const minAmount = Number(context.tier.minOrderAmount || 0);
-  const currentAmount = Number(totalAmount || 0);
-  if (!Number.isFinite(minAmount) || minAmount <= 0 || currentAmount >= minAmount) {
+  // Legacy: контекст без минимума в позициях (старые суммовые заказы) —
+  // персональный override в позициях к ним не применяется.
+  const tierMinQuantity = Number(context?.tier?.minOrderQuantity || 0);
+  if (tierMinQuantity <= 0) {
+    const amountMinimum = Number(context?.tier?.minOrderAmount || 0);
+    if (!(amountMinimum > 0)) {
+      return null;
+    }
+    const totalAmount = Number(orderBuild?.totalAmount ?? 0);
+    if (Number.isFinite(totalAmount) && totalAmount >= amountMinimum) {
+      return null;
+    }
+
+    return {
+      error: 'wholesale_min_not_met',
+      message: `Минимальная сумма для оптового прайса «${context.tier.label}»: ${amountMinimum} BYN. Сейчас в корзине: ${totalAmount}`,
+      min_amount: amountMinimum,
+      current_amount: totalAmount,
+      remaining_amount: Math.max(0, Number((amountMinimum - totalAmount).toFixed(2))),
+      wholesale_code: context.tier.code,
+      wholesale_label: context.tier.label,
+    };
+  }
+
+  const { effectiveMinQuantity: minQuantity } = resolveEffectiveWholesaleMinQuantity(context, customerRef);
+  if (!Number.isFinite(minQuantity) || minQuantity <= 0) {
+    return null;
+  }
+
+  const items = Array.isArray(orderBuild?.items) ? orderBuild.items : [];
+  const currentQuantity = items.reduce((sum, item) => {
+    if (item?.excludedFromWholesaleMin) {
+      return sum;
+    }
+    const quantity = Number(item?.quantity || 0);
+    return sum + (Number.isFinite(quantity) ? quantity : 0);
+  }, 0);
+
+  if (currentQuantity >= minQuantity) {
     return null;
   }
 
   return {
     error: 'wholesale_min_not_met',
-    message: `Минимальная сумма для выбранного оптового прайса: ${minAmount} BYN. Сейчас в корзине: ${currentAmount.toFixed(2)} BYN`,
-    min_amount: minAmount,
-    current_amount: currentAmount,
-    remaining_amount: Number((minAmount - currentAmount).toFixed(2)),
+    message: `Минимальное количество для оптового прайса «${context.tier.label}»: ${minQuantity} позиций. Сейчас в корзине: ${currentQuantity}`,
+    min_quantity: minQuantity,
+    current_quantity: currentQuantity,
+    remaining_quantity: minQuantity - currentQuantity,
     wholesale_code: context.tier.code,
     wholesale_label: context.tier.label,
   };

@@ -14,15 +14,24 @@ const ModalStub = defineComponent({
   emits: ['close', 'confirm'],
   template: `<section v-if="isOpen" data-test="existing-modal"><h2>{{ title }}</h2><slot /><slot name="footer" /><button data-test="modal-confirm" :disabled="isLoading || isConfirmDisabled" @click="$emit('confirm')">Подтвердить</button></section>`,
 });
-const ActionsStub = defineComponent({
-  name: 'CustomerActionsModal',
-  props: ['isOpen', 'order', 'busy'],
-  emits: ['close', 'action', 'inviter-action', 'after-leave'],
-  template: '<div v-if="isOpen" data-test="customer-actions-modal" />',
+const HubStub = defineComponent({
+  name: 'CustomerHubModal',
+  props: ['isOpen', 'prefill', 'messageGenerating'],
+  emits: ['close', 'action', 'inviter-action', 'customer-found', 'notify'],
+  template: '<div v-if="isOpen" data-test="customer-hub-modal" />',
+});
+
+const hubContext = () => ({
+  username: 'real_customer', customerId: 'customer-1', customerName: 'Дима',
+  notes: 'Важная заметка клиента', orderId: 'order-1', inviteBanId: null,
+});
+
+const hubCustomerFound = () => ({
+  username: 'real_customer', customerId: 'customer-1', customerName: 'Дима',
 });
 
 const LookupStub = defineComponent({
-  name: 'FindInviterModal', props: ['isOpen', 'busy'], emits: ['close', 'action', 'after-leave'],
+  name: 'FindInviterModal', props: ['isOpen', 'busy', 'prefill'], emits: ['close', 'action', 'after-leave'],
   template: '<div v-if="isOpen" data-test="find-inviter-modal" />',
 });
 
@@ -59,7 +68,7 @@ async function setup(order = makeOrder()) {
   vi.spyOn(store, 'unlockAudioContext').mockImplementation(() => {});
   wrapper = mount(CrmOrders, {
     global: { stubs: {
-      AdminModal: ModalStub, CustomerActionsModal: ActionsStub, FindInviterModal: LookupStub,
+      AdminModal: ModalStub, CustomerHubModal: HubStub, FindInviterModal: LookupStub,
       CustomerBlockModal: true, CustomerNoteModal: true, CustomerInviteBanModal: true,
       OrderCreateModal: true, CardPaymentsModal: true,
       StaffShiftBar: { template: '<section data-test="staff-shift-bar"><slot name="financial-close" /></section>' },
@@ -76,14 +85,15 @@ function buttonByText(text: string) {
   return button!;
 }
 async function chooseAction(action: string) {
-  await wrapper!.get('[data-test="order-customer-actions"]').trigger('click');
-  const modal = wrapper!.findComponent(ActionsStub);
+  // Хаб открывается кликом по имени клиента — @username в карточке больше не показываем.
+  await wrapper!.get('[data-test="order-customer-name"]').trigger('click');
+  const modal = wrapper!.findComponent(HubStub);
   expect(modal.props('isOpen')).toBe(true);
-  modal.vm.$emit('action', action);
+  modal.vm.$emit('action', action, hubContext());
   await flushPromises();
-  expect(modal.props('isOpen')).toBe(false);
-  modal.vm.$emit('after-leave');
-  await flushPromises();
+  // Хаб закрывается, пока открыта модалка действия; «Написать клиенту»
+  // не открывает модалку — хаб остаётся открытым.
+  if (action !== 'contact') expect(modal.props('isOpen')).toBe(false);
 }
 
 beforeEach(() => {
@@ -392,22 +402,25 @@ describe('CrmOrders: redesign preserves order-card behavior', () => {
     expect(productToggleStyles).toContain('color: #819bd0');
   });
 
-  it('keeps the approved HTML customer-actions palette', async () => {
+  it('keeps the approved HTML customer-hub palette', async () => {
     const { readFileSync } = await import('node:fs');
-    const source = readFileSync('src/components/admin/crm/CustomerActionsModal.vue', 'utf8');
-    expect(source).toContain('backdrop-filter: blur(11px)');
-    expect(source).toContain('padding: 23px');
-    expect(source).toContain('background: #eaf1ff');
+    const source = readFileSync('src/components/admin/crm/CustomerHubModal.vue', 'utf8');
+    expect(source).toContain('.crm-hub-action');
     expect(source).toContain('background: #fff1f3');
     expect(source).toContain('color: #d92342');
     expect(source).toContain('background: #edf5ff');
+    expect(source).toContain('linear-gradient(100deg, #05b8ff, #185dff)');
   });
-  it('uses the actual pickup cell, keeps notes, products and a non-clickable customer name', async () => {
+  it('uses the actual pickup cell, keeps notes, products and a name that opens the customer hub', async () => {
     const { wrapper } = await setup();
     expect(wrapper.get('[data-test="order-cell"]').text()).toBe('37');
     const name = wrapper.get('[data-test="order-customer-name"]');
-    expect(name.element.tagName).toBe('SPAN');
+    // @username в карточке больше нет — точка входа в хаб всегда имя клиента.
+    expect(name.element.tagName).toBe('BUTTON');
+    expect(name.text()).toBe('Дима');
+    expect(wrapper.find('[data-test="order-customer-nick"]').exists()).toBe(false);
     await name.trigger('click');
+    expect(wrapper.findComponent(HubStub).props('isOpen')).toBe(true);
     expect(wrapper.findComponent({ name: 'CustomerBlockModal' }).props('isOpen')).toBe(false);
     expect(wrapper.find('article').text()).toContain('Важная заметка клиента');
     expect(wrapper.find('article').text()).toContain('Комментарий заказа');
@@ -550,6 +563,38 @@ describe('CrmOrders: redesign preserves order-card behavior', () => {
     await flushPromises();
   });
 
+  it('opens the customer hub from the toolbar without a prefill', async () => {
+    const { wrapper } = await setup();
+    await wrapper.get('[data-test="orders-customer-hub"]').trigger('click');
+    const hub = wrapper.findComponent(HubStub);
+    expect(hub.props('isOpen')).toBe(true);
+    expect(hub.props('prefill')).toBeNull();
+  });
+
+  it('prefills the hub with the order customer, never the inviter', async () => {
+    const { wrapper } = await setup();
+    await wrapper.get('[data-test="order-customer-name"]').trigger('click');
+    const hub = wrapper.findComponent(HubStub);
+    expect(hub.props('prefill')).toEqual({
+      username: 'real_customer', customerId: 'customer-1', customerName: 'Дима', orderId: 'order-1',
+    });
+  });
+
+  it('opens the hub from the customer name when the order has no username', async () => {
+    const { wrapper } = await setup(makeOrder({ telegram_username: undefined }));
+    expect(wrapper.find('[data-test="order-customer-nick"]').exists()).toBe(false);
+    const name = wrapper.get('[data-test="order-customer-name"]');
+    expect(name.element.tagName).toBe('BUTTON');
+    await name.trigger('click');
+    const hub = wrapper.findComponent(HubStub);
+    expect(hub.props('isOpen')).toBe(true);
+    // Без username хаб открывается в режиме поиска, но помнит заказ —
+    // «Написать клиенту» появится после поиска клиента.
+    expect(hub.props('prefill')).toEqual({
+      username: null, customerId: 'customer-1', customerName: 'Дима', orderId: 'order-1',
+    });
+  });
+
   it('blocks the order customer by stable ID, never the inviter', async () => {
     const { wrapper } = await setup();
     await chooseAction('block');
@@ -559,157 +604,167 @@ describe('CrmOrders: redesign preserves order-card behavior', () => {
     expect(modal.props('prefillUsername')).toBe('real_customer');
   });
 
-  it('targets the customer for invitation bans and keeps inviter data in the dialog', async () => {
+  it('targets the customer for invitation bans', async () => {
     const { wrapper } = await setup();
     expect(wrapper.find('article').text()).not.toContain('Пригласивший');
-    expect(wrapper.findComponent(ActionsStub).props('order')).toBeNull();
+    expect(wrapper.findComponent(HubStub).props('isOpen')).toBe(false);
     await chooseAction('invite-ban');
     const modal = wrapper.findComponent({ name: 'CustomerInviteBanModal' });
     expect(modal.props('customerId')).toBe('customer-1');
     expect(modal.props('username')).toBe('real_customer');
   });
 
-  it.each([false, true, undefined])('moves returning status into dialog data and preserves first-order badge (%s)', async (status) => {
-    const { wrapper } = await setup(makeOrder({ is_returning_customer: status }));
-    expect(wrapper.get('article').text()).not.toContain('Постоянный');
-    expect(wrapper.find('.order-card-first').exists()).toBe(status === false);
-    expect(wrapper.get('article').text()).not.toContain('Пригласивший');
-    await wrapper.get('[data-test="order-customer-actions"]').trigger('click');
-    const order = wrapper.findComponent(ActionsStub).props('order');
-    expect(order.is_returning_customer).toBe(status);
-    expect(order.referral.inviter_username).toBe('different_inviter');
+  it('returns to the hub with the same prefill after the action dialog closes', async () => {
+    const { wrapper } = await setup();
+    await chooseAction('note');
+    const note = wrapper.findComponent({ name: 'CustomerNoteModal' });
+    expect(note.props('isOpen')).toBe(true);
+    note.vm.$emit('close');
+    await flushPromises();
+    const hub = wrapper.findComponent(HubStub);
+    expect(hub.props('isOpen')).toBe(true);
+    expect(hub.props('prefill')).toEqual({
+      username: 'real_customer', customerId: 'customer-1', customerName: 'Дима', orderId: 'order-1',
+    });
   });
 
-  it.each(['block', 'invite-ban'])('routes inviter %s to the inviter, after the customer dialog finishes closing', async action => {
+  it('does not reopen the hub after an explicit close', async () => {
     const { wrapper } = await setup();
-    await wrapper.get('[data-test="order-customer-actions"]').trigger('click');
-    const actions = wrapper.findComponent(ActionsStub);
-    actions.vm.$emit('inviter-action', action);
+    await wrapper.get('[data-test="order-customer-name"]').trigger('click');
+    const hub = wrapper.findComponent(HubStub);
+    hub.vm.$emit('close');
     await flushPromises();
-    expect(actions.props('isOpen')).toBe(false);
+    expect(hub.props('isOpen')).toBe(false);
+  });
+
+  it('returns to the manually searched customer after an inviter dialog closes', async () => {
+    const { wrapper } = await setup();
+    // Хаб открыт из тулбара (prefill пуст) — клиента нашли поиском.
+    await wrapper.get('[data-test="orders-customer-hub"]').trigger('click');
+    const hub = wrapper.findComponent(HubStub);
+    expect(hub.props('prefill')).toBeNull();
+    hub.vm.$emit('customer-found', hubCustomerFound());
+    hub.vm.$emit('inviter-action', 'block', {
+      customer_id: 'inviter-9', username: 'different_inviter',
+      first_name: 'Иван', last_name: null, invite_ban_id: null, is_invite_banned: false,
+    });
+    await flushPromises();
+    expect(hub.props('isOpen')).toBe(false);
+    const block = wrapper.findComponent({ name: 'CustomerBlockModal' });
+    expect(block.props('isOpen')).toBe(true);
+    block.vm.$emit('close');
+    await flushPromises();
+    expect(hub.props('isOpen')).toBe(true);
+    // Возврат — к найденному вручную клиенту, а не к пустому поиску.
+    expect(hub.props('prefill')).toEqual({
+      username: 'real_customer', customerId: 'customer-1', customerName: 'Дима', orderId: null,
+    });
+  });
+
+  it('prefills the inviter lookup with the hub customer username', async () => {
+    const { wrapper } = await setup();
+    await chooseAction('find-inviter');
+    const lookup = wrapper.findComponent(LookupStub);
+    expect(lookup.props('isOpen')).toBe(true);
+    expect(lookup.props('prefill')).toEqual({ username: 'real_customer' });
+  });
+
+  it('returns to the hub after closing the inviter lookup without an action', async () => {
+    const { wrapper } = await setup();
+    await chooseAction('find-inviter');
+    const lookup = wrapper.findComponent(LookupStub);
+    lookup.vm.$emit('close');
+    await flushPromises();
+    lookup.vm.$emit('after-leave');
+    await flushPromises();
+    const hub = wrapper.findComponent(HubStub);
+    expect(hub.props('isOpen')).toBe(true);
+    expect(hub.props('prefill')).toEqual({
+      username: 'real_customer', customerId: 'customer-1', customerName: 'Дима', orderId: 'order-1',
+    });
+  });
+
+  it('prefills the customer settings with the hub customer username', async () => {
+    const { wrapper } = await setup();
+    await chooseAction('wholesale');
+    const settings = wrapper.findComponent({ name: 'CustomerSettingsModal' });
+    expect(settings.props('isOpen')).toBe(true);
+    expect(settings.props('prefill')).toEqual({ username: 'real_customer' });
+  });
+
+  it.each(['block', 'invite-ban'])('routes inviter %s from the hub to the inviter, not the customer', async action => {
+    const { wrapper } = await setup();
+    await wrapper.get('[data-test="order-customer-name"]').trigger('click');
+    const hub = wrapper.findComponent(HubStub);
+    hub.vm.$emit('inviter-action', action, {
+      customer_id: 'inviter-9', username: 'different_inviter',
+      first_name: 'Иван', last_name: null, invite_ban_id: null, is_invite_banned: false,
+    });
+    await flushPromises();
+    expect(hub.props('isOpen')).toBe(false);
     const name = action === 'block' ? 'CustomerBlockModal' : 'CustomerInviteBanModal';
-    expect(wrapper.findComponent({ name }).props('isOpen')).toBe(false);
-    actions.vm.$emit('after-leave');
-    await flushPromises();
     const modal = wrapper.findComponent({ name });
     expect(modal.props('isOpen')).toBe(true);
     expect(modal.props('customerId')).toBe('inviter-9');
     expect(modal.props(action === 'block' ? 'prefillUsername' : 'username')).toBe('different_inviter');
   });
 
-  it('rejects stale inviter data during the close transition', async () => {
-    const { store, wrapper } = await setup();
-    await wrapper.get('[data-test="order-customer-actions"]').trigger('click');
-    const actions = wrapper.findComponent(ActionsStub);
-    actions.vm.$emit('inviter-action', 'block');
-    store.orders = [makeOrder({ referral: { ...makeOrder().referral!, inviter_customer_id: 'replacement-inviter', inviter_username: 'replacement' } })];
-    await flushPromises();
-    actions.vm.$emit('after-leave');
-    await flushPromises();
-    expect(wrapper.findComponent({ name: 'CustomerBlockModal' }).props('isOpen')).toBe(false);
-  });
-
-  it('never mixes a queued inviter action with a second customer action', async () => {
-    const { wrapper } = await setup();
-    await wrapper.get('[data-test="order-customer-actions"]').trigger('click');
-    const actions = wrapper.findComponent(ActionsStub);
-    actions.vm.$emit('inviter-action', 'block');
-    actions.vm.$emit('action', 'block');
-    await flushPromises();
-    actions.vm.$emit('after-leave');
-    await flushPromises();
-    expect(wrapper.findComponent({ name: 'CustomerBlockModal' }).props('customerId')).toBe('inviter-9');
-  });
-
-  it('copies the inviter username, not the customer username', async () => {
+  it('copies the inviter username, not the customer username, without closing the hub', async () => {
     const { wrapper } = await setup();
     const writeText = vi.fn().mockResolvedValue(undefined);
     vi.stubGlobal('navigator', { clipboard: { writeText } });
-    await wrapper.get('[data-test="order-customer-actions"]').trigger('click');
-    const actions = wrapper.findComponent(ActionsStub);
-    actions.vm.$emit('inviter-action', 'copy');
+    await wrapper.get('[data-test="order-customer-name"]').trigger('click');
+    const hub = wrapper.findComponent(HubStub);
+    hub.vm.$emit('inviter-action', 'copy', {
+      customer_id: 'inviter-9', username: 'different_inviter',
+      first_name: null, last_name: null, invite_ban_id: null, is_invite_banned: false,
+    });
     await flushPromises();
-    actions.vm.$emit('after-leave');
-    await flushPromises();
+    expect(hub.props('isOpen')).toBe(true);
     expect(writeText).toHaveBeenCalledOnce();
     expect(writeText).toHaveBeenCalledWith('@different_inviter');
   });
 
-  it('retains confirmation for removing an inviter ban and rejects a replacement ban', async () => {
-    const referral = { ...makeOrder().referral!, inviter_is_invite_banned: 1, inviter_invite_ban_id: 'ban-1' };
-    const { store, wrapper } = await setup(makeOrder({ referral }));
+  it('retains confirmation for removing an inviter ban', async () => {
+    const { wrapper } = await setup();
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
     const fetchMock = vi.mocked(fetch);
     fetchMock.mockClear();
-    await wrapper.get('[data-test="order-customer-actions"]').trigger('click');
-    const actions = wrapper.findComponent(ActionsStub);
-    actions.vm.$emit('inviter-action', 'remove-ban');
-    await flushPromises();
-    actions.vm.$emit('after-leave');
-    await flushPromises();
-    expect(confirm).toHaveBeenCalledOnce();
-    expect(fetchMock).not.toHaveBeenCalled();
-    await wrapper.get('[data-test="order-customer-actions"]').trigger('click');
-    actions.vm.$emit('inviter-action', 'remove-ban');
-    store.orders = [makeOrder({ referral: { ...referral, inviter_invite_ban_id: 'replacement-ban' } })];
-    await flushPromises();
-    actions.vm.$emit('after-leave');
+    await wrapper.get('[data-test="order-customer-name"]').trigger('click');
+    const hub = wrapper.findComponent(HubStub);
+    hub.vm.$emit('inviter-action', 'remove-ban', {
+      customer_id: 'inviter-9', username: 'different_inviter',
+      first_name: null, last_name: null, invite_ban_id: 'ban-1', is_invite_banned: true,
+    });
     await flushPromises();
     expect(confirm).toHaveBeenCalledOnce();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('opens existing note editing with the freshest board data after a refresh', async () => {
-    const { store, wrapper } = await setup();
-    await wrapper.get('[data-test="order-customer-actions"]').trigger('click');
-    store.orders = [{ ...makeOrder(), customer_notes: 'Обновлённая заметка' }];
+  it('lifts the customer own invite ban from the hub with confirmation', async () => {
+    const { wrapper } = await setup();
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockClear();
+    const hub = wrapper.findComponent(HubStub);
+    expect(hub.props('isOpen')).toBe(false);
+    hub.vm.$emit('action', 'remove-invite-ban', {
+      ...hubContext(), inviteBanId: 'own-ban-1',
+    });
     await flushPromises();
-    const actions = wrapper.findComponent(ActionsStub);
-    expect(actions.props('order').customer_notes).toBe('Обновлённая заметка');
-    actions.vm.$emit('action', 'note');
-    await flushPromises();
-    actions.vm.$emit('after-leave');
-    await flushPromises();
+    expect(confirm).toHaveBeenCalledOnce();
+    // Отказ от подтверждения — сервер не дёргаем, но хаб возвращается открытым.
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(hub.props('isOpen')).toBe(true);
+  });
+
+  it('opens existing note editing with the hub context data', async () => {
+    const { wrapper } = await setup();
+    await chooseAction('note');
     const modal = wrapper.findComponent({ name: 'CustomerNoteModal' });
     expect(modal.props('customerId')).toBe('customer-1');
-    expect(modal.props('initialNotes')).toBe('Обновлённая заметка');
-  });
-
-  it('does not run a queued action when the selected order leaves the board', async () => {
-    const { store, wrapper } = await setup();
-    await wrapper.get('[data-test="order-customer-actions"]').trigger('click');
-    const actions = wrapper.findComponent(ActionsStub);
-    actions.vm.$emit('action', 'block');
-    store.orders = [];
-    await flushPromises();
-    actions.vm.$emit('after-leave');
-    await flushPromises();
-    expect(wrapper.findComponent({ name: 'CustomerBlockModal' }).props('isOpen')).toBe(false);
-  });
-
-  it('rejects a queued action when the order customer changes during the close transition', async () => {
-    const { store, wrapper } = await setup();
-    await wrapper.get('[data-test="order-customer-actions"]').trigger('click');
-    const actions = wrapper.findComponent(ActionsStub);
-    actions.vm.$emit('action', 'block');
-    store.orders = [makeOrder({ customer_id: 'replacement-customer', telegram_username: 'replacement_username' })];
-    await flushPromises();
-    actions.vm.$emit('after-leave');
-    await flushPromises();
-    expect(wrapper.findComponent({ name: 'CustomerBlockModal' }).props('isOpen')).toBe(false);
-  });
-
-  it('queues only the first customer action during the close transition', async () => {
-    const { wrapper } = await setup();
-    await wrapper.get('[data-test="order-customer-actions"]').trigger('click');
-    const actions = wrapper.findComponent(ActionsStub);
-    actions.vm.$emit('action', 'block');
-    actions.vm.$emit('action', 'note');
-    await flushPromises();
-    actions.vm.$emit('after-leave');
-    await flushPromises();
-    expect(wrapper.findComponent({ name: 'CustomerBlockModal' }).props('isOpen')).toBe(true);
-    expect(wrapper.findComponent({ name: 'CustomerNoteModal' }).props('isOpen')).toBe(false);
+    expect(modal.props('initialNotes')).toBe('Важная заметка клиента');
+    expect(modal.props('customerName')).toBe('Дима');
   });
 
   it('reuses generated Telegram messages for customers without a username', async () => {

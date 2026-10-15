@@ -208,7 +208,7 @@
         >
           <div class="min-w-0">
             <p class="text-sm font-semibold text-gray-900">{{ tier.code }}+</p>
-            <p class="text-[11px] text-gray-500">{{ formatTierMinAmount(tier.minOrderAmount) }} минимум</p>
+            <p class="text-[11px] text-gray-500">{{ tier.minQuantity ?? formatTierMinAmount(tier.minOrderAmount) }} {{ pluralPositions(tier.minQuantity) }} минимум</p>
           </div>
           <div class="flex items-center gap-2">
             <input
@@ -472,6 +472,7 @@ interface WholesaleTier {
   code: string
   label: string
   minOrderAmount: number
+  minQuantity?: number | null
   sortOrder?: number
 }
 
@@ -522,10 +523,10 @@ const uploadedFileName = ref('')
 const wholesalePriceInputs = reactive<Record<string, string>>({})
 
 const defaultWholesaleTiers: WholesaleTier[] = [
-  { id: 'wt_100', code: '100', label: 'Опт от 100 BYN', minOrderAmount: 100, sortOrder: 100 },
-  { id: 'wt_250', code: '250', label: 'Опт от 250 BYN', minOrderAmount: 250, sortOrder: 250 },
-  { id: 'wt_500', code: '500', label: 'Опт от 500 BYN', minOrderAmount: 500, sortOrder: 500 },
-  { id: 'wt_1000', code: '1000', label: 'Опт от 1000 BYN', minOrderAmount: 1000, sortOrder: 1000 }
+  { id: 'wt_100', code: '25', label: 'Опт от 25 позиций', minOrderAmount: 100, minQuantity: 25, sortOrder: 25 },
+  { id: 'wt_250', code: '50', label: 'Опт от 50 позиций', minOrderAmount: 250, minQuantity: 50, sortOrder: 50 },
+  { id: 'wt_500', code: '100', label: 'Опт от 100 позиций', minOrderAmount: 500, minQuantity: 100, sortOrder: 100 },
+  { id: 'wt_1000', code: '150', label: 'Опт от 150 позиций', minOrderAmount: 1000, minQuantity: 150, sortOrder: 150 }
 ]
 
 const resolvedWholesaleTiers = computed(() => {
@@ -826,6 +827,21 @@ function clearCover() {
 
 function formatTierMinAmount(value: number) {
   return Number(value || 0).toFixed(0)
+}
+
+function pluralPositions(value: number | null | undefined): string {
+  if (value === null || value === undefined) {
+    return 'BYN'
+  }
+  const mod10 = value % 10
+  const mod100 = value % 100
+  if (mod10 === 1 && mod100 !== 11) {
+    return 'позиция'
+  }
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) {
+    return 'позиции'
+  }
+  return 'позиций'
 }
 
 const blockedParentIds = computed(() => {

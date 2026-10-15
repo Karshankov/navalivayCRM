@@ -18,7 +18,8 @@
           <div class="min-w-0">
             <h3 class="text-base font-semibold text-gray-900">{{ link.label }}</h3>
             <p class="mt-1 text-sm text-gray-500">
-              Минимальный заказ: {{ formatAmount(link.minOrderAmount) }} BYN
+              Минимальный заказ:
+              {{ link.minQuantity != null ? `${link.minQuantity} ${pluralPositions(link.minQuantity)}` : 'не задан' }}
             </p>
           </div>
           <div
@@ -64,6 +65,7 @@ interface WholesaleLink {
   code: string
   label: string
   minOrderAmount: number
+  minQuantity: number | null
   sortOrder: number
   path: string | null
   totalTargetGroups: number
@@ -133,7 +135,18 @@ async function copyTelegramLink(link: WholesaleLink) {
   }
 }
 
-function formatAmount(value: number) {
-  return Number(value || 0).toFixed(0)
+function pluralPositions(value: number | null): string {
+  if (value === null || value === undefined) {
+    return 'позиций'
+  }
+  const mod10 = value % 10
+  const mod100 = value % 100
+  if (mod10 === 1 && mod100 !== 11) {
+    return 'позиция'
+  }
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) {
+    return 'позиции'
+  }
+  return 'позиций'
 }
 </script>

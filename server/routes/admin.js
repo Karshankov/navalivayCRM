@@ -218,6 +218,9 @@ function buildWholesaleTiersPayload() {
     code: tier.code,
     label: tier.label,
     min_order_amount: Number(tier.minOrderAmount ?? 0),
+    min_order_quantity: tier.minOrderQuantity === null || tier.minOrderQuantity === undefined
+      ? null
+      : Number(tier.minOrderQuantity),
     sort_order: Number(tier.sortOrder ?? 0),
   }));
 }
@@ -525,7 +528,9 @@ adminRouter.post('/api/admin/products', authMiddleware, (req, res) => {
     minStock,
     useCategoryImage,
     hasVariants,
-    variants
+    variants,
+    excludedFromWholesaleMin,
+    excluded_from_wholesale_min
   } = req.body || {};
   if (!categoryId) return res.status(400).json({ error: 'missing_fields' });
   
@@ -570,6 +575,10 @@ adminRouter.post('/api/admin/products', authMiddleware, (req, res) => {
     }
     normalizedGroupId = groupRow.id;
   }
+
+  // Товары вне линейки не считаются в минимум опта всегда.
+  const normalizedExcludedFromWholesaleMin =
+    (excludedFromWholesaleMin ?? excluded_from_wholesale_min) === true || !normalizedGroupId ? 1 : 0;
   
   const id = 'p_' + Math.random().toString(36).slice(2, 8);
   const createdAt = new Date().toISOString();
@@ -579,7 +588,7 @@ adminRouter.post('/api/admin/products', authMiddleware, (req, res) => {
     
     // First create the product without transaction to ensure it works
     try {
-      db.prepare('INSERT INTO products (id, categoryId, groupId, title, priceRub, description, strength, cost_price, stock, min_stock, use_category_image, has_variants, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      db.prepare('INSERT INTO products (id, categoryId, groupId, title, priceRub, description, strength, cost_price, stock, min_stock, use_category_image, has_variants, excluded_from_wholesale_min, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
         .run(
           id,
           categoryId,
@@ -593,6 +602,7 @@ adminRouter.post('/api/admin/products', authMiddleware, (req, res) => {
           Number(normalizedMinStock) || 0,
           normalizedUseCategoryImage,
           hasVariants ? 1 : 0,
+          normalizedExcludedFromWholesaleMin,
           createdAt
         );
       console.log(`[admin] Product ${id} created in database`);
@@ -1008,7 +1018,16 @@ adminRouter.patch('/api/admin/products/:id', authMiddleware, async (req, res) =>
     }
   }
 
-  db.prepare('UPDATE products SET categoryId = ?, groupId = ?, title = ?, priceRub = ?, description = ?, strength = ?, cost_price = ?, stock = ?, min_stock = ?, use_category_image = ?, has_variants = ? WHERE id = ?')
+  // Товары вне линейки не считаются в минимум опта всегда.
+  const excludedFlagProvided = 'excludedFromWholesaleMin' in (req.body || {})
+    || 'excluded_from_wholesale_min' in (req.body || {});
+  const nextExcludedFromWholesaleMin = !nextGroupId
+    ? 1
+    : excludedFlagProvided
+      ? ((req.body.excludedFromWholesaleMin ?? req.body.excluded_from_wholesale_min) === true ? 1 : 0)
+      : (Number(cur.excluded_from_wholesale_min || 0) === 1 ? 1 : 0);
+
+  db.prepare('UPDATE products SET categoryId = ?, groupId = ?, title = ?, priceRub = ?, description = ?, strength = ?, cost_price = ?, stock = ?, min_stock = ?, use_category_image = ?, has_variants = ?, excluded_from_wholesale_min = ? WHERE id = ?')
     .run(
       nextCategoryId,
       nextGroupId,
@@ -1021,6 +1040,7 @@ adminRouter.patch('/api/admin/products/:id', authMiddleware, async (req, res) =>
       (normalizedMinStock !== undefined ? Number(normalizedMinStock) : (cur.min_stock ?? 0)),
       normalizedUseCategoryImage,
       normalizedHasVariants,
+      nextExcludedFromWholesaleMin,
       id
     );
 
@@ -2105,6 +2125,7 @@ adminRouter.get('/api/admin/products/:id', authMiddleware, (req, res) => {
       p.min_stock AS minStock,
       p.use_category_image AS useCategoryImage,
       p.has_variants AS hasVariants,
+      p.excluded_from_wholesale_min AS excludedFromWholesaleMin,
       p.createdAt,
       g.name as groupName,
       g.slug as groupSlug
@@ -2622,6 +2643,9 @@ adminRouter.get('/api/admin/wholesale-links', authMiddleware, (req, res) => {
       code: tier.code,
       label: tier.label,
       min_order_amount: Number(tier.minOrderAmount ?? 0),
+      min_order_quantity: tier.minOrderQuantity === null || tier.minOrderQuantity === undefined
+        ? null
+        : Number(tier.minOrderQuantity),
       sort_order: Number(tier.sortOrder ?? 0),
       path: buildWholesaleLinkPath(tier),
       total_target_groups: Number(tier.totalTargetGroups ?? 0),
