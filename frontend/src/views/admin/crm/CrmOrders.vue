@@ -1067,80 +1067,74 @@
           ? `Выдача заказа #${paymentOrder.order_number}`
           : 'Выдача заказа'
       "
-      description="Выберите тип оплаты"
-      size="md"
+      :description="paymentOrder ? paymentModalDescription : undefined"
+      size="lg"
+      reference-design
       :showActions="false"
+      :isLoading="isIssuing"
+      :persistent="isIssuing"
+      :initialFocus="cashReceivedInput"
       @close="closePaymentModal"
       @cancel="closePaymentModal"
     >
-      <div class="grid gap-4">
-        <StaffCurrentActorBadge />
-
-        <div>
-          <label class="text-sm font-medium text-gray-700"
-            >Сумма к оплате</label
-          >
-          <input
-            v-model.number="paymentAmount"
-            type="number"
-            min="0"
-            step="0.01"
-            class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-          />
-        </div>
-
-        <div>
-          <label class="text-sm font-medium text-gray-700">Тип оплаты</label>
-          <div class="mt-2 grid grid-cols-2 gap-2">
+      <form class="issue-payment" data-test="issue-payment-form" novalidate @submit.prevent="submitIssuePayment">
+        <fieldset class="issue-payment-method" :disabled="isIssuing">
+          <legend>Тип оплаты</legend>
+          <div class="issue-payment-method-buttons">
             <button
               type="button"
-              class="rounded-lg border px-3 py-2 text-sm font-semibold transition"
-              :class="paymentMethod === 'cash' ? 'border-emerald-500 bg-emerald-50 text-emerald-800' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'"
-              @click="paymentMethod = 'cash'"
+              data-test="issue-payment-cash"
+              :class="paymentMethod === 'cash' ? 'issue-payment-method-button issue-payment-method-button--active' : 'issue-payment-method-button'"
+              @click="setPaymentMethod('cash')"
             >
-              Наличными
+              <BanknotesIcon class="h-5 w-5 shrink-0" aria-hidden="true" />
+              <span>Наличными</span>
             </button>
             <button
               type="button"
-              class="rounded-lg border px-3 py-2 text-sm font-semibold transition"
-              :class="paymentMethod === 'card' ? 'border-blue-500 bg-blue-50 text-blue-800' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'"
-              @click="paymentMethod = 'card'"
+              data-test="issue-payment-card"
+              :class="paymentMethod === 'card' ? 'issue-payment-method-button issue-payment-method-button--active' : 'issue-payment-method-button'"
+              @click="setPaymentMethod('card')"
             >
-              По карте
+              <CreditCardIcon class="h-5 w-5 shrink-0" aria-hidden="true" />
+              <span>По карте</span>
             </button>
           </div>
-        </div>
+        </fieldset>
 
-        <!-- Мини-окно подсчёта сдачи: вводим, сколько дал клиент,
-             видим сдачу и подсказку «удобной сдачи». -->
+        <!-- Подсчёт сдачи: вводим, сколько дал клиент, сразу после
+             открытия окна — курсор уже в поле, кликать не нужно. -->
         <div
           v-if="paymentMethod === 'cash'"
-          class="rounded-xl border border-gray-200 bg-gray-50 p-3"
+          class="issue-payment-cash"
           data-test="change-calculator"
         >
-          <label class="text-sm font-medium text-gray-700">Клиент дал</label>
+          <label for="issue-payment-received">Клиент дал, BYN</label>
           <input
+            id="issue-payment-received"
+            ref="cashReceivedInput"
             v-model.number="cashReceived"
             type="number"
             min="0"
             step="0.01"
-            placeholder="0.00"
-            class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+            inputmode="decimal"
+            placeholder="0"
+            :disabled="isIssuing"
           />
-          <div v-if="cashReceived > 0" class="mt-2 text-sm">
-            <div
+          <div v-if="cashReceived > 0" class="issue-payment-change">
+            <p
               v-if="changeDue >= 0"
-              class="font-semibold text-emerald-700"
+              class="issue-payment-change-due"
               data-test="change-due"
             >
               Сдача: {{ formatCurrency(changeDue) }}
-            </div>
-            <div v-else class="font-semibold text-red-600" data-test="change-shortfall">
+            </p>
+            <p v-else class="issue-payment-change-shortfall" role="alert" data-test="change-shortfall">
               Не хватает {{ formatCurrency(-changeDue) }}
-            </div>
+            </p>
             <p
               v-if="convenientChangeHint"
-              class="mt-1 text-xs text-gray-500"
+              class="issue-payment-change-hint"
               data-test="convenient-change-hint"
             >
               {{ convenientChangeHint }}
@@ -1148,47 +1142,57 @@
           </div>
         </div>
 
+        <!-- Смешанная оплата: карта + наличная доплата. -->
         <div
           v-if="paymentMethod === 'card' && paymentOrder?.card_amount_minor"
-          class="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-900"
+          class="issue-payment-split"
         >
-          По карте: {{ formatCurrency(paymentOrder.card_amount_minor / 100) }}
-          <span v-if="paymentOrder.cash_due_minor">
-            · наличными: {{ formatCurrency(paymentOrder.cash_due_minor / 100) }}
-          </span>
+          <div><span>По карте</span><strong>{{ formatCurrency(paymentOrder.card_amount_minor / 100) }}</strong></div>
+          <div v-if="paymentOrder.cash_due_minor">
+            <span>Наличными</span>
+            <strong>{{ formatCurrency(paymentOrder.cash_due_minor / 100) }}</strong>
+          </div>
         </div>
-      </div>
 
-      <footer class="mt-6 flex justify-end gap-3">
-        <button
-          @click="closePaymentModal"
-          class="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 transition hover:bg-gray-100"
-          :disabled="isIssuing"
-        >
-          Отмена
-        </button>
-        <button
-          @click="deferClick(() => { void submitPayment() })"
-          class="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-400"
-          :disabled="isIssuing || paymentAmount <= 0"
-        >
-          <svg
-            v-if="isIssuing"
-            class="h-4 w-4 animate-spin"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
+        <div class="issue-payment-total" aria-live="polite">
+          <span>К оплате</span>
+          <strong data-test="issue-payment-amount">{{ formatCurrency(paymentAmount) }}</strong>
+        </div>
+
+        <div class="issue-payment-actions">
+          <button
+            type="button"
+            @click="closePaymentModal"
+            class="issue-payment-cancel"
+            :disabled="isIssuing"
           >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-            />
-          </svg>
-          Подтвердить и выдать
-        </button>
-      </footer>
+            Отмена
+          </button>
+          <button
+            type="submit"
+            class="issue-payment-submit"
+            :disabled="isIssuing || paymentAmount <= 0"
+            @click.prevent="submitIssuePayment"
+          >
+            <svg
+              v-if="isIssuing"
+              class="h-4 w-4 animate-spin"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              />
+            </svg>
+            {{ isIssuing ? 'Выдаём…' : 'Подтвердить и выдать' }}
+          </button>
+        </div>
+      </form>
     </AdminModal>
 
     <CardPaymentsModal
@@ -1740,10 +1744,9 @@ import CustomerHubModal, { type CustomerHubAction, type CustomerHubActionContext
 import FindInviterModal, { type InviterAction } from "@/components/admin/crm/FindInviterModal.vue";
 import FinancialDayCloseModal from "@/components/admin/crm/FinancialDayCloseModal.vue";
 import { lookupCrmInviter, type InviterLookupResult } from "@/utils/crmInviterLookup";
-import { LockClosedIcon, NoSymbolIcon, UserCircleIcon } from "@heroicons/vue/24/outline";
+import { LockClosedIcon, NoSymbolIcon, UserCircleIcon, BanknotesIcon, CreditCardIcon } from "@heroicons/vue/24/outline";
 import { buildAutoNotifyToast } from "@/utils/auto-notify-message";
 import CrmProfitPasswordField from "@/components/crm/CrmProfitPasswordField.vue";
-import StaffCurrentActorBadge from "@/components/admin/staff/StaffCurrentActorBadge.vue";
 import StaffShiftBar from "@/components/admin/staff/StaffShiftBar.vue";
 import CardPaymentsModal from "@/components/admin/crm/CardPaymentsModal.vue";
 import { getBusinessDateParts } from "@/utils/businessTime";
@@ -2257,6 +2260,8 @@ const paymentAmount = ref(0);
 const paymentNotes = ref("");
 // Подсчёт сдачи: сколько наличных дал клиент.
 const cashReceived = ref(0);
+// Поле «Клиент дал» — курсор встаёт сюда сразу при открытии окна.
+const cashReceivedInput = ref<HTMLInputElement | null>(null);
 const isIssuing = ref(false);
 const dragOrder = ref<Order | null>(null);
 const activeDropColumn = ref<string | null>(null);
@@ -3103,6 +3108,33 @@ function onDrop(columnKey: string) {
   });
 }
 
+// Описание под заголовком окна: кто получает заказ и откуда.
+const paymentModalDescription = computed(() => {
+  const order = paymentOrder.value;
+  if (!order) return undefined;
+  const parts = [order.customer_name || "клиент без имени"];
+  if (order.pickup_cell_number) parts.push(`ячейка ${order.pickup_cell_number}`);
+  else parts.push("самовывоз");
+  return parts.join(" · ");
+});
+
+// Переключение типа оплаты: при возврате к наличным курсор снова
+// в поле «Клиент дал» — кассир продолжает ввод без клика по полю.
+function setPaymentMethod(method: "cash" | "card") {
+  paymentMethod.value = method;
+  if (method === "cash") {
+    void nextTick(() => cashReceivedInput.value?.focus());
+  }
+}
+
+// Enter в поле «Клиент дал» отправляет форму и выдаёт заказ —
+// тот же путь, что и кнопка «Подтвердить и выдать».
+function submitIssuePayment() {
+  deferClick(() => {
+    void submitPayment();
+  });
+}
+
 async function openPaymentModal(order: Order) {
   paymentOrder.value = order;
   paymentAmount.value = order.final_amount;
@@ -3870,4 +3902,50 @@ async function confirmCancelOrder() {
 .crm-order-price button:not(:disabled):hover { filter: brightness(1.04); }
 .crm-order-price :disabled { opacity: .6; cursor: not-allowed; }
 @media (max-width: 480px) { .crm-order-price-fields { grid-template-columns: minmax(0, 1fr); } .crm-order-price-base { flex-wrap: wrap; gap: 6px; } .crm-order-price-main-actions { width: 100%; } .crm-order-price-main-actions button { flex: 1; } }
+</style>
+
+<style scoped>
+/* Окно «Оплата и выдача» — эталонный стиль страницы «Заказы»:
+   Inter, ink #081b4b, крупная табличная типографика, панели на белом. */
+.issue-payment { min-width: 0; color: #081b4b; font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; }
+.issue-payment *, .issue-payment *::before, .issue-payment *::after { box-sizing: border-box; }
+.issue-payment-method { min-width: 0; margin: 0 0 22px; padding: 0; border: 0; }
+.issue-payment-method legend { margin-bottom: 10px; color: #081b4b; font-size: 12px; font-weight: 800; letter-spacing: .02em; }
+.issue-payment-method-buttons { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.issue-payment-method-button { display: inline-flex; align-items: center; justify-content: center; gap: 9px; min-height: 48px; padding: 13px 14px; border: 1px solid #dce8fa; border-radius: 13px; background: linear-gradient(#f7faff, #e9f0fa); color: #233e70; font: inherit; font-size: 14px; font-weight: 750; cursor: pointer; box-shadow: none; transition: filter 160ms ease-out, background-color 160ms ease-out; }
+.issue-payment-method-button svg { width: 20px; height: 20px; }
+.issue-payment-method-button:hover:not(:disabled) { filter: brightness(1.04); }
+.issue-payment-method-button--active { border-color: #0958ff; background: #eaf3ff; color: #0a3dbd; box-shadow: 0 8px 18px #148cff26; }
+.issue-payment-cash { min-width: 0; padding: 16px; border: 1px solid #e3ecf9; border-radius: 14px; background: #fff; }
+.issue-payment-cash label { display: block; margin-bottom: 10px; color: #081b4b; font-size: 12px; font-weight: 800; letter-spacing: .02em; }
+.issue-payment-cash input { display: block; width: 100%; min-width: 0; padding: 13px 15px; border: 1px solid #dce8fa; border-radius: 11px; background: #f7fbff; color: #081b4b; font: inherit; font-size: 22px; font-weight: 750; font-variant-numeric: tabular-nums; caret-color: #0958ff; }
+.issue-payment-cash input::placeholder { color: #9ba8c0; opacity: 1; }
+.issue-payment-cash input:disabled { opacity: .6; cursor: not-allowed; }
+.issue-payment-change { margin-top: 12px; }
+.issue-payment-change-due { margin: 0; color: #0d9663; font-size: 25px; font-weight: 850; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+.issue-payment-change-shortfall { display: inline-block; margin: 0; padding: 9px 13px; border: 1px solid #ffd4dc; border-radius: 10px; background: #fff4f6; color: #c92b4f; font-size: 14px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.issue-payment-change-hint { margin: 8px 0 0; color: #66799e; font-size: 11px; line-height: 1.5; }
+.issue-payment-split { display: grid; gap: 10px; margin: 0 0 22px; padding: 16px; border: 1px solid #e3ecf9; border-radius: 14px; background: #fff; }
+.issue-payment-split > div { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+.issue-payment-split span { color: #66799e; font-size: 12px; font-weight: 600; }
+.issue-payment-split strong { font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.issue-payment-total { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 20px; margin-top: 22px; padding: 22px; border: 1px solid #dce8fa; border-radius: 16px; background: linear-gradient(140deg, #fff, #edf6ff); }
+.issue-payment-total span { color: #425778; font-size: 13px; font-weight: 700; }
+.issue-payment-total strong { color: #081b4b; font-size: 34px; font-weight: 900; letter-spacing: -.04em; line-height: 1; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.issue-payment-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 22px; }
+.issue-payment-actions button { min-height: 48px; padding: 13px 22px; border: 0; border-radius: 12px; font: inherit; font-size: 14px; font-weight: 750; cursor: pointer; }
+.issue-payment-cancel { border: 1px solid #dce8fa; background: linear-gradient(#f7faff, #e9f0fa); color: #233e70; }
+.issue-payment-submit { display: inline-flex; align-items: center; justify-content: center; gap: 9px; background: linear-gradient(100deg, #05b8ff, #185dff); color: #fff; box-shadow: 0 8px 16px #148cff30; }
+.issue-payment-submit svg { width: 17px; height: 17px; }
+.issue-payment :is(input, button):focus-visible { outline: 2px solid #0958ff; outline-offset: 3px; }
+.issue-payment button:not(:disabled):hover { filter: brightness(1.05); }
+.issue-payment :disabled { opacity: .6; cursor: not-allowed; }
+@media (max-width: 640px) {
+  .issue-payment-method-button { font-size: 13px; }
+  .issue-payment-cash input { font-size: 16px; }
+  .issue-payment-change-due { font-size: 21px; }
+  .issue-payment-total strong { font-size: 27px; }
+  .issue-payment-actions { flex-direction: column-reverse; align-items: stretch; }
+  .issue-payment-actions button { width: 100%; }
+}
 </style>

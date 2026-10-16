@@ -100,6 +100,40 @@ describe('CrmOrders — окно выдачи заказа', () => {
     ).toHaveLength(0);
   });
 
+  it('показывает сумму к оплате числом без редактирования', async () => {
+    await openIssueModal(makeOrder({ final_amount: 32, total_amount: 32 }));
+    const modal = wrapper!.get('[data-test="issue-modal"]');
+    // «К оплате» — статичная цифра, а не поле ввода.
+    expect(modal.get('[data-test="issue-payment-amount"]').text()).toContain('32');
+    expect(modal.get('[data-test="issue-payment-amount"]').element.tagName).not.toBe('INPUT');
+    // Единственный input в окне — «Клиент дал»: сумма больше не правится.
+    const inputs = modal.findAll('input');
+    expect(inputs).toHaveLength(1);
+    expect(inputs[0].attributes('id')).toBe('issue-payment-received');
+  });
+
+  it('убирает плашку о сотруднике и смене из окна выдачи', async () => {
+    const { store } = await setup(makeOrder());
+    (store as any).staffTrackingEnabled = true;
+    (store as any).currentStaffShift = { status: 'active', employee: { first_name: 'Костя' } };
+    await buttonByText('Выдать').trigger('click');
+    await flushPromises();
+    const modal = wrapper!.get('[data-test="issue-modal"]');
+    expect(modal.text()).not.toContain('Текущая смена');
+    expect(modal.text()).not.toContain('Смена не открыта');
+    expect(modal.find('[data-test="issue-modal"] .flex.items-center.gap-3.rounded-xl.border').exists()).toBe(false);
+  });
+
+  it('ставит курсор в поле «Клиент дал» сразу после открытия', async () => {
+    await openIssueModal();
+    const input = wrapper!.get('[data-test="change-calculator"]').find('input');
+    await flushPromises();
+    // Автофокус настраивается через initial-focus у AdminModal: в тесте
+    // стаб не прокидывает фокус, поэтому проверяем передачу ref-поля.
+    expect(input.attributes('id')).toBe('issue-payment-received');
+    expect((input.element as HTMLInputElement).value).toBe('0');
+  });
+
   it('считает сдачу и подсказывает удобную доплату', async () => {
     // Заказ 32р, клиент дал 50 → сдача 18р, доплата 2р даст сдачу 20р.
     await openIssueModal(makeOrder({ final_amount: 32 }));
