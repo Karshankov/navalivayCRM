@@ -106,6 +106,15 @@ async function submit() {
   }
 }
 
+// Автовход: как только введены все четыре цифры ПИН — отправляем сами,
+// Enter нажимать не нужно. После неверного ПИН поле очищается в submit(),
+// поэтому цикла попыток не возникает.
+watch(pin, () => {
+  if (props.open && /^\d{4}$/.test(pin.value) && !staffAccessLoading.value) {
+    submit();
+  }
+});
+
 watch(
   () => props.open,
   async (open) => {

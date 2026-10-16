@@ -37,75 +37,6 @@
         </div>
       </section>
 
-      <section
-        v-if="userStore.cardPaymentStatus?.enabled"
-        class="card-limit-card"
-        aria-labelledby="card-limit-title"
-      >
-        <div class="card-limit-heading">
-          <div>
-            <p class="card-limit-eyebrow">СПОСОБ ОПЛАТЫ</p>
-            <h2 id="card-limit-title">Лимит по карте</h2>
-          </div>
-          <span class="card-limit-status" :class="{ 'card-limit-status--blocked': isCardPaused }">
-            {{ isCardPaused ? 'На паузе' : 'Разрешена' }}
-          </span>
-        </div>
-        <div class="card-limit-total">
-          {{ formatCardAmount(userStore.cardPaymentStatus.monthly_remaining_minor) }}
-          <span>BYN осталось в этом месяце</span>
-        </div>
-        <div class="card-limit-breakdown">
-          <div>
-            <span>Потрачено по карте</span>
-            <strong>{{ formatCardAmount(userStore.cardPaymentStatus.monthly_used_minor) }} BYN</strong>
-          </div>
-          <div>
-            <span>Лимит на месяц</span>
-            <strong>{{ formatCardAmount(userStore.cardPaymentStatus.monthly_limit_minor) }} BYN</strong>
-          </div>
-        </div>
-        <div class="card-limit-progress" aria-label="Использование месячного лимита">
-          <span :style="{ width: cardMonthlyProgress(userStore.cardPaymentStatus) }" />
-        </div>
-        <p class="card-limit-personal">
-          Лимит одного заказа:
-          <strong>{{ formatCardAmount(userStore.cardPaymentStatus.max_order_minor) }} BYN</strong>
-        </p>
-        <div v-if="userStore.cardPaymentStatus.cooldown_until" class="card-limit-pause" role="status">
-          <div class="card-limit-pause__row">
-            <strong>Оплата по карте станет доступна {{ formatCardDate(userStore.cardPaymentStatus.cooldown_until) }}</strong>
-          </div>
-          <span class="card-limit-pause__days">({{ cardCooldownDaysLeft(userStore.cardPaymentStatus.cooldown_until) }} до снятия паузы)</span>
-        </div>
-        <p v-else-if="userStore.cardPaymentStatus.monthly_remaining_minor <= 0" class="card-limit-cooldown">
-          Месячный лимит исчерпан. Он обновится в следующем месяце.
-        </p>
-        <button type="button" class="card-limit-increase-button" @click="openCardLimitRequest">
-          Увеличить лимиты
-        </button>
-      </section>
-
-      <div v-if="showCardLimitRequest" class="profile-card-modal" role="dialog" aria-modal="true" aria-labelledby="card-request-title">
-        <button class="profile-card-modal__backdrop" aria-label="Закрыть" @click="closeCardLimitRequest" />
-        <div class="profile-card-modal__card">
-          <div class="profile-card-modal__header">
-            <h2 id="card-request-title">Увеличить лимиты</h2>
-            <button type="button" class="profile-card-modal__close" @click="closeCardLimitRequest">×</button>
-          </div>
-          <p class="profile-card-modal__text">Выберите тариф — заявка поступит продавцу на обработку.</p>
-          <label v-for="tariff in cardRequestTariffs" :key="tariff.id" class="profile-card-tariff">
-            <input v-model="selectedCardTariff" type="radio" :value="tariff.id">
-            <span><strong>{{ tariff.title }}</strong><small>{{ formatCardAmount(tariff.limit_minor) }} BYN · {{ tariff.transition_cost_text }}</small></span>
-          </label>
-          <p v-if="cardRequestSuccess" class="profile-card-request-success">Ваша заявка принята, с вами свяжутся.</p>
-          <p v-if="cardRequestError" class="profile-card-request-error">{{ cardRequestError }}</p>
-          <button type="button" class="card-limit-increase-button" :disabled="cardRequestSending || !selectedCardTariff || Boolean(userStore.cardPaymentStatus?.request_cooldown_until)" @click="submitCardLimitRequest">
-            {{ cardRequestSending ? 'Отправляем…' : cardRequestSuccess ? 'Готово' : 'Отправить заявку' }}
-          </button>
-        </div>
-      </div>
-
       <section class="loyalty-section">
         <article
           v-if="wholesaleStore.isWholesale"
@@ -208,6 +139,9 @@
             </p>
           </template>
         </article>
+
+        <!-- Кнопка «Оплата картой» удалена по запросу: все настройки карты
+             теперь живут в корзине при оформлении заказа. -->
 
         <router-link to="/profile/orders" class="orders-link-card">
           <div class="orders-link-card__icon" aria-hidden="true">
@@ -369,7 +303,6 @@ import { useLoyaltyStore, type LoyaltySnapshotCategory } from "@/stores/loyalty"
 import { useWholesaleStore } from "@/stores/wholesale";
 import { useWheelStore } from "@/stores/wheel";
 import { getTelegramIdentity } from "@/utils/customerOrders";
-import { withTelegramAuthHeaders } from "@/utils/telegramAuth";
 import LoyaltyBonusPopup from "@/components/LoyaltyBonusPopup.vue";
 import {
   LOYALTY_RULES_MODAL_PARAGRAPHS,
@@ -392,12 +325,6 @@ watch(
 const activeLoyaltyKey = ref<string | null>(null);
 const showRulesModal = ref(false);
 const showLoyaltyPopup = ref(false);
-const showCardLimitRequest = ref(false);
-const cardRequestTariffs = ref<Array<{ id: string; title: string; limit_minor: number; transition_cost_text?: string }>>([]);
-const selectedCardTariff = ref("");
-const cardRequestSending = ref(false);
-const cardRequestSuccess = ref(false);
-const cardRequestError = ref("");
 const isUpdatingReviewPrefs = ref(false);
 const {
   reviewPreferences,
@@ -489,9 +416,10 @@ onMounted(async () => {
   // в профиль убран по просьбе заказчика — попап «У вас уже есть доступные
   // бонусы» дублировал ту же информацию, которая и так видна на странице
   // профиля сразу под карточкой бонусов.
+  // fetchCardPaymentStatus больше не нужен: кнопка «Оплата картой» удалена,
+  // статус карты запрашивается в корзине при оформлении заказа.
   await Promise.allSettled([
     userStore.fetchProfile(),
-    userStore.fetchCardPaymentStatus(),
     loyaltyStore.fetchSnapshot(identity),
     fetchReviewPrompt().catch(() => undefined),
     // Q6: load the consent flag so the toggle reflects the server
@@ -505,88 +433,6 @@ onMounted(async () => {
     wheelStore.fetchState().catch(() => undefined),
   ]);
 });
-
-const isCardPaused = computed(() => {
-  const until = userStore.cardPaymentStatus?.cooldown_until
-  return Boolean(until) && new Date(String(until)).getTime() > Date.now()
-})
-
-function formatCardAmount(minor: number) {
-  return (Number(minor || 0) / 100).toLocaleString('ru-BY', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  })
-}
-
-function cardMonthlyProgress(status: { monthly_used_minor?: number; monthly_limit_minor?: number } | null | undefined) {
-  const used = Number(status?.monthly_used_minor || 0);
-  const limit = Math.max(1, Number(status?.monthly_limit_minor || 1));
-  return `${Math.min(100, (used / limit) * 100)}%`;
-}
-
-function formatCardDate(value: string) {
-  return new Intl.DateTimeFormat('ru-BY', {
-    day: 'numeric',
-    month: 'long',
-    timeZone: 'Europe/Minsk',
-  }).format(new Date(value))
-}
-
-function cardCooldownDaysLeft(value: string) {
-  const days = Math.ceil(Math.max(0, new Date(value).getTime() - Date.now()) / 86400000);
-  const mod10 = days % 10;
-  const mod100 = days % 100;
-  let word = "дней";
-  if (mod10 === 1 && mod100 !== 11) word = "день";
-  else if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) word = "дня";
-  return `${days} ${word}`;
-}
-
-async function openCardLimitRequest() {
-  cardRequestError.value = "";
-  cardRequestSuccess.value = false;
-  try {
-    const response = await fetch("/api/card-payment/tariffs", {
-      headers: withTelegramAuthHeaders(),
-    });
-    const result = await response.json();
-    if (!response.ok) throw new Error("Не удалось загрузить тарифы");
-    cardRequestTariffs.value = result.tariffs || [];
-    selectedCardTariff.value = cardRequestTariffs.value[0]?.id || "";
-    showCardLimitRequest.value = true;
-  } catch (error: any) {
-    cardRequestError.value = error?.message || "Не удалось загрузить тарифы";
-  }
-}
-
-function closeCardLimitRequest() {
-  if (!cardRequestSending.value) showCardLimitRequest.value = false;
-}
-
-async function submitCardLimitRequest() {
-  if (!selectedCardTariff.value || cardRequestSending.value) return;
-  cardRequestSending.value = true;
-  cardRequestError.value = "";
-  try {
-    const response = await fetch("/api/card-payment/requests", {
-      method: "POST",
-      headers: withTelegramAuthHeaders({ "Content-Type": "application/json" }),
-      body: JSON.stringify({ tariff_id: selectedCardTariff.value }),
-    });
-    const result = await response.json();
-    if (!response.ok) throw new Error(result?.error === "card_request_cooldown"
-      ? "Повторно отправить заявку можно через час."
-      : result?.message || "Не удалось отправить заявку");
-    cardRequestSuccess.value = true;
-    if (userStore.cardPaymentStatus) {
-      userStore.cardPaymentStatus.request_cooldown_until = new Date(Date.now() + 3600000).toISOString();
-    }
-  } catch (error: any) {
-    cardRequestError.value = error?.message || "Не удалось отправить заявку";
-  } finally {
-    cardRequestSending.value = false;
-  }
-}
 
 async function onToggleReviewPrompts() {
   const previous = reviewPreferences.value.reviews_opt_out;
@@ -721,258 +567,6 @@ async function goShopping() {
 .user-card {
   background: #ffffff;
   border-radius: 24px;
-}
-
-.card-limit-card {
-  border: 1px solid #d9e7fb;
-  border-radius: 20px;
-  padding: 18px;
-  background: linear-gradient(135deg, #ffffff 0%, #f0f6ff 100%);
-  box-shadow: 0 4px 18px rgba(47, 104, 179, 0.08);
-}
-
-.card-limit-progress {
-  height: 8px;
-  margin: 14px 0 12px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: #dbeafe;
-}
-
-.card-limit-progress span {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, #2f80ed, #60a5fa);
-  transition: width 0.25s ease;
-}
-
-.card-limit-increase-button {
-  width: 100%;
-  min-height: 44px;
-  margin-top: 14px;
-  border: 0;
-  border-radius: 12px;
-  background: linear-gradient(90deg, #f50302, #a90f0e);
-  color: #fff;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.card-limit-increase-button:disabled {
-  opacity: .55;
-  cursor: not-allowed;
-}
-
-.profile-card-modal {
-  position: fixed;
-  inset: 0;
-  z-index: 70;
-  display: grid;
-  place-items: center;
-  padding: 20px;
-}
-
-.profile-card-modal__backdrop {
-  position: absolute;
-  inset: 0;
-  border: 0;
-  background: rgba(25, 25, 25, .55);
-}
-
-.profile-card-modal__card {
-  position: relative;
-  width: min(393px, 100%);
-  padding: 20px;
-  border-radius: 22px;
-  background: #fff;
-  box-shadow: 0 24px 60px rgba(25, 25, 25, .2);
-}
-
-.profile-card-modal__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.profile-card-modal__header h2 {
-  margin: 0;
-  font-size: 20px;
-}
-
-.profile-card-modal__close {
-  width: 34px;
-  height: 34px;
-  border: 0;
-  border-radius: 50%;
-  background: #f1f3f5;
-  font-size: 22px;
-  cursor: pointer;
-}
-
-.profile-card-modal__text {
-  margin: 10px 0 16px;
-  color: #5c6470;
-  font-size: 14px;
-}
-
-.profile-card-tariff {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  margin-top: 10px;
-  padding: 13px;
-  border: 1px solid #e2e8f0;
-  border-radius: 13px;
-  cursor: pointer;
-}
-
-.profile-card-tariff span {
-  display: grid;
-  gap: 3px;
-}
-
-.profile-card-tariff small {
-  color: #7b8794;
-}
-
-.profile-card-request-success {
-  color: #16824c;
-  font-size: 14px;
-}
-
-.profile-card-request-error {
-  color: #b42318;
-  font-size: 14px;
-}
-
-.card-limit-card--disabled {
-  border-color: #e2e8f0;
-  background: #ffffff;
-  box-shadow: none;
-}
-
-.card-limit-heading {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.card-limit-eyebrow {
-  margin: 0 0 4px;
-  color: #7b8794;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-}
-
-.card-limit-heading h2 {
-  margin: 0;
-  color: #1f2933;
-  font-size: 18px;
-  font-weight: 750;
-}
-
-.card-limit-status {
-  flex-shrink: 0;
-  border-radius: 999px;
-  padding: 6px 9px;
-  background: #e5f6ee;
-  color: #16824c;
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.card-limit-status--blocked {
-  background: #fff0e5;
-  color: #ad5a15;
-}
-
-.card-limit-total {
-  margin-top: 18px;
-  color: #1f2933;
-  font-size: 30px;
-  font-weight: 800;
-  line-height: 1.1;
-}
-
-.card-limit-total span {
-  color: #687582;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.card-limit-personal {
-  margin: 8px 0 0;
-  color: #687582;
-  font-size: 12px;
-}
-
-.card-limit-personal strong {
-  color: #263746;
-}
-
-.card-limit-breakdown {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  margin-top: 16px;
-}
-
-.card-limit-breakdown > div {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  border-radius: 13px;
-  padding: 11px 12px;
-  background: rgba(255, 255, 255, 0.86);
-}
-
-.card-limit-breakdown span {
-  color: #687582;
-  font-size: 11px;
-}
-
-.card-limit-breakdown strong {
-  color: #263746;
-  font-size: 14px;
-}
-
-.card-limit-breakdown > div:last-child strong {
-  color: #16824c;
-}
-
-.card-limit-pause {
-  margin-top: 12px;
-  border: 1px solid #f6c991;
-  border-radius: 12px;
-  padding: 10px 12px;
-  background: #fff4e3;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.card-limit-pause__row strong {
-  color: #9b4a10;
-  font-size: 13px;
-  font-weight: 750;
-  line-height: 1.35;
-}
-
-.card-limit-pause__days {
-  color: #b06a24;
-  font-size: 11.5px;
-  font-weight: 600;
-}
-
-.card-limit-cooldown {
-  margin: 12px 0 0;
-  color: #9b551b;
-  font-size: 12px;
-  line-height: 1.45;
 }
 
 .user-card {

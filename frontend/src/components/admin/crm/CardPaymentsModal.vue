@@ -2,7 +2,6 @@
   <AdminModal
     :isOpen="isOpen"
     title="Оплата картой и лимиты"
-    :description="tabDescription"
     size="wide"
     reference-design
     :showActions="false"
@@ -68,41 +67,41 @@
           <!-- Сегодня -->
           <div class="crm-card-stat crm-card-stat--day rounded-xl border border-blue-100 bg-blue-50/60 p-4">
             <div class="flex items-baseline justify-between gap-2">
-              <div class="text-xs font-medium text-blue-700">Занято сегодня</div>
-              <div class="text-xs font-semibold text-blue-700">{{ money(limits.remaining_today_minor) }} свободно</div>
+              <div class="text-xs font-semibold uppercase tracking-wide text-blue-700/80">Сегодня</div>
+              <div class="text-xs font-bold text-blue-700">{{ money(limits.remaining_today_minor) }} свободно</div>
             </div>
-            <div class="mt-1.5 text-xl font-bold text-blue-950">
-              {{ money(limits.committed_today_minor) }} <span class="text-sm font-medium text-blue-700">из {{ money(limits.daily_limit_minor) }}</span>
+            <div class="mt-2 text-2xl font-bold text-blue-950">
+              {{ money(limits.committed_today_minor) }} <span class="text-sm font-medium text-blue-700/80">из {{ money(limits.daily_limit_minor) }}</span>
             </div>
-            <div class="mt-2.5 h-2 overflow-hidden rounded-full bg-blue-100" role="progressbar"
+            <div class="mt-2.5 h-1.5 overflow-hidden rounded-full bg-blue-100" role="progressbar"
               :aria-valuenow="percent(limits.committed_today_minor, limits.daily_limit_minor)" aria-valuemin="0" aria-valuemax="100" aria-label="Заполнение дневного лимита">
               <div class="h-full rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 transition-all duration-300"
                 :style="{ width: `${percent(limits.committed_today_minor, limits.daily_limit_minor)}%` }" />
             </div>
-            <div class="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-blue-800/80">
-              <span>Выдано: {{ money(limits.spent_today_minor) }}</span>
-              <span>Резервы: {{ money(limits.reserved_minor) }}</span>
-              <span v-if="limits.daily_increase_minor > 0">Добавлено сегодня: +{{ money(limits.daily_increase_minor) }}</span>
-              <span v-else-if="limits.daily_increase_minor < 0">Уменьшено сегодня: {{ money(limits.daily_increase_minor) }}</span>
+            <div class="mt-2.5 flex flex-wrap gap-x-3 gap-y-1 text-[11px] font-medium text-blue-800/70">
+              <span>Выдано: <strong class="font-bold">{{ money(limits.spent_today_minor) }}</strong></span>
+              <span>Резервы: <strong class="font-bold">{{ money(limits.reserved_minor) }}</strong></span>
+              <span v-if="limits.daily_increase_minor > 0">Корректировка: <strong class="font-bold">+{{ money(limits.daily_increase_minor) }}</strong></span>
+              <span v-else-if="limits.daily_increase_minor < 0">Корректировка: <strong class="font-bold">{{ money(limits.daily_increase_minor) }}</strong></span>
             </div>
           </div>
 
           <!-- Месяц -->
           <div class="crm-card-stat crm-card-stat--month rounded-xl border border-violet-100 bg-violet-50/60 p-4">
             <div class="flex items-baseline justify-between gap-2">
-              <div class="text-xs font-medium text-violet-700">Месяц {{ limits.month_key }}</div>
-              <div class="text-xs font-semibold text-violet-700">{{ money(limits.remaining_month_minor) }} остаток</div>
+              <div class="text-xs font-semibold uppercase tracking-wide text-violet-700/80">Месяц {{ limits.month_key }}</div>
+              <div class="text-xs font-bold text-violet-700">{{ money(limits.remaining_month_minor) }} остаток</div>
             </div>
-            <div class="mt-1.5 text-xl font-bold text-violet-950">
-              {{ money(limits.spent_month_minor) }} <span class="text-sm font-medium text-violet-700">из {{ money(limits.monthly_limit_minor) }}</span>
+            <div class="mt-2 text-2xl font-bold text-violet-950">
+              {{ money(limits.spent_month_minor) }} <span class="text-sm font-medium text-violet-700/80">из {{ money(limits.monthly_limit_minor) }}</span>
             </div>
-            <div class="mt-2.5 h-2 overflow-hidden rounded-full bg-violet-100" role="progressbar"
+            <div class="mt-2.5 h-1.5 overflow-hidden rounded-full bg-violet-100" role="progressbar"
               :aria-valuenow="percent(limits.spent_month_minor, limits.monthly_limit_minor)" aria-valuemin="0" aria-valuemax="100" aria-label="Заполнение месячного лимита">
               <div class="h-full rounded-full bg-gradient-to-r from-violet-500 to-purple-500 transition-all duration-300"
                 :style="{ width: `${percent(limits.spent_month_minor, limits.monthly_limit_minor)}%` }" />
             </div>
-            <div class="mt-2 text-[11px] text-violet-800/80">
-              Дневной план = остаток месяца ÷ оставшиеся дни. Сегодня он равен базе {{ money(limits.base_daily_limit_minor) }}.
+            <div class="mt-2.5 text-[11px] font-medium text-violet-800/70">
+              План на день: <strong class="font-bold">{{ money(limits.base_daily_limit_minor) }}</strong>
             </div>
           </div>
         </div>
@@ -115,8 +114,7 @@
         >
           <ExclamationTriangleIcon class="h-5 w-5 shrink-0 text-rose-600" aria-hidden="true" />
           <div class="min-w-0 flex-1 text-sm font-semibold text-rose-800">
-            Лимит на сегодня превышен на {{ money(limits.exceeded_today_minor) }}.
-            Новые карточные заказы отклоняются до конца дня; новые карточные лимиты клиенту не выдаются.
+            Дневной лимит превышен на {{ money(limits.exceeded_today_minor) }}
           </div>
         </div>
 
@@ -124,8 +122,7 @@
         <div class="grid gap-3 lg:grid-cols-3">
           <!-- Месяцы списком -->
           <section class="crm-card-section rounded-xl border border-gray-200 bg-white p-4">
-            <label class="block text-sm font-semibold text-gray-800">Месячные лимиты</label>
-            <p class="mt-0.5 text-xs text-gray-500">Текущий и следующий месяц; план дня пересчитывается сразу.</p>
+            <label class="block text-sm font-bold text-gray-900">Месячные лимиты</label>
             <div class="mt-3 space-y-2">
               <div
                 v-for="month in snapshot.months || []"
@@ -162,31 +159,26 @@
 
           <!-- День: ± -->
           <form class="crm-card-section rounded-xl border border-gray-200 bg-white p-4" @submit.prevent="adjustDaily">
-            <label class="block text-sm font-semibold text-gray-800" for="card-daily-input">Лимит на сегодня · {{ money(limits.daily_limit_minor) }}</label>
+            <label class="block text-sm font-bold text-gray-900" for="card-daily-input">Лимит на сегодня · {{ money(limits.daily_limit_minor) }}</label>
             <div class="mt-2 flex gap-2">
               <input id="card-daily-input" v-model.number="dailyDelta" type="number" step="0.01" inputmode="decimal" placeholder="± Сумма"
                 class="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
                 aria-label="Изменение дневного лимита BYN, минус для уменьшения">
               <CrmButton class="crm-card-button crm-card-button--soft" type="submit" variant="soft" size="sm" :loading="busyForm === 'daily'">Применить</CrmButton>
             </div>
-            <p class="mt-2 text-xs text-gray-500">
-              Увеличьте или уменьшите (минус) лимит сегодняшнего дня. Месяц не меняется: план будущих дней
-              пересчитается из остатка месяца — пробили больше, завтра план ниже; не выбили — выше.
-            </p>
           </form>
 
           <form class="crm-card-section rounded-xl border border-gray-200 bg-white p-4" @submit.prevent="addManual">
-            <label class="block text-sm font-semibold text-gray-800" for="card-manual-input">Ручное пробитие · проходящий клиент</label>
+            <label class="block text-sm font-bold text-gray-900" for="card-manual-input">Ручное пробитие</label>
             <div class="mt-2 flex flex-wrap gap-2">
               <input id="card-manual-input" v-model.number="manualAmount" type="number" min="0.01" step="0.01" inputmode="decimal" placeholder="Сумма"
                 class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 sm:w-28 sm:min-w-0"
                 aria-label="Сумма ручного пробития BYN">
-              <input v-model="manualNote" type="text" placeholder="Комментарий (необязательно)"
+              <input v-model="manualNote" type="text" placeholder="Комментарий"
                 class="w-full min-w-0 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 sm:flex-1"
                 aria-label="Комментарий к пробитию">
               <CrmButton type="submit" variant="success" size="sm" class="crm-card-button crm-card-button--success w-full sm:!w-auto" :loading="busyForm === 'manual'">Внести</CrmButton>
             </div>
-            <p class="mt-2 text-xs text-gray-500">Разрешено сверх дневного плана; уменьшает остаток месяца.</p>
           </form>
         </div>
 
@@ -220,14 +212,8 @@
       <!-- ======================= ВКЛАДКА: АККАУНТЫ ======================= -->
       <div v-else-if="activeTab === 'accounts'" class="space-y-4">
         <form class="crm-card-section rounded-xl border border-gray-200 bg-white p-4" @submit.prevent="searchProfile">
-          <h3 class="mb-1 text-sm font-bold text-gray-900">Проверить и настроить клиента</h3>
-          <p class="mb-3 text-xs text-gray-500">
-            Введите @username — увидите статус оплаты картой, лимиты, тариф и паузу.
-            Разрешение и запрет — в одно нажатие. Новому клиенту выйдут стандартные
-            лимиты (250 BYN/мес, 45 BYN/заказ, пауза 10 дней).
-          </p>
           <div class="flex gap-2">
-            <input v-model="accountUsername" type="text" placeholder="@username, например @ppofic" autocomplete="off"
+            <input v-model="accountUsername" type="text" placeholder="@username" autocomplete="off"
               class="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
               :class="{ 'border-rose-400': accountError }"
               aria-label="Telegram username без собаки">
@@ -255,10 +241,7 @@
                 </span>
               </div>
               <div class="mt-0.5 text-[11px] text-gray-500">
-                <template v-if="foundProfile.source === 'new'">
-                  Новый клиент: карта ещё не разрешена — выдадутся стандартные лимиты
-                </template>
-                <template v-else-if="foundProfile.source === 'pending'">
+                <template v-if="foundProfile.source === 'pending'">
                   Ждёт первого входа: привяжется к Telegram ID при визите
                 </template>
                 <template v-else>
@@ -280,11 +263,7 @@
           </div>
 
           <!-- Показатели клиента -->
-          <div class="mt-3 grid gap-2 sm:grid-cols-3">
-            <div class="flex items-baseline justify-between gap-2 rounded-lg bg-white px-3 py-2 sm:flex-col sm:items-center sm:justify-start sm:p-2.5 sm:text-center">
-              <span class="text-[11px] font-medium text-gray-500 sm:mt-0">Лимит / месяц</span>
-              <span class="text-sm font-bold text-gray-900">{{ money(foundProfile.monthly_limit_minor) }}</span>
-            </div>
+          <div class="mt-3 grid gap-2 sm:grid-cols-2">
             <div class="flex items-baseline justify-between gap-2 rounded-lg bg-white px-3 py-2 sm:flex-col sm:items-center sm:justify-start sm:p-2.5 sm:text-center">
               <span class="text-[11px] font-medium text-gray-500">Лимит / заказ</span>
               <span class="text-sm font-bold text-gray-900">{{ money(foundProfile.max_order_minor) }}</span>
@@ -338,9 +317,6 @@
                 {{ foundProfile.cooldown_days === 0 ? 'Пауза отключена' : `Сейчас ${pluralDays(foundProfile.cooldown_days)} после каждой выдачи` }}
               </div>
             </div>
-            <p class="mt-1.5 text-[11px] text-gray-400">
-              Начнёт действовать со следующей выдачи заказа по карте.
-            </p>
           </div>
 
           <!-- Быстрое редактирование -->
@@ -359,9 +335,9 @@
                 :aria-label="`Тариф для ${foundProfile.telegram_username}`"
                 @change="applyProfileTariff"
               >
-                <option value="">Стандарт (250/45 BYN)</option>
+                <option value="">Стандарт (45 BYN на заказ)</option>
                 <option v-for="tariff in activeTariffs" :key="tariff.id" :value="tariff.id">
-                  {{ tariff.title }} · {{ minorToMoney(tariff.monthly_limit_minor ?? tariff.limit_minor) }}/{{ minorToMoney(tariff.per_order_limit_minor ?? 4500) }} BYN
+                  {{ tariff.title }} · {{ minorToMoney(tariff.per_order_limit_minor ?? tariff.limit_minor) }} BYN на заказ
                 </option>
               </select>
             </label>
@@ -430,9 +406,7 @@
                   Тариф «{{ request.tariff_title || '—' }}»<span v-if="request.tariff_transition_cost_text"> · стоимость: {{ request.tariff_transition_cost_text }}</span>
                 </div>
                 <div class="mt-0.5 text-[11px] text-gray-500">
-                  Лимиты тарифа:
-                  {{ money(request.tariff_monthly_limit_minor ?? request.requested_limit_minor) }}/мес ·
-                  {{ money(request.tariff_per_order_limit_minor ?? 4500) }}/заказ
+                  Тариф: до {{ money(request.tariff_per_order_limit_minor ?? request.requested_limit_minor) }} на заказ
                 </div>
                 <div class="mt-0.5 text-[11px] text-gray-400">{{ dateLabel(request.created_at) }}</div>
               </div>
@@ -467,10 +441,7 @@
       <!-- ======================= ВКЛАДКА: ТАРИФЫ ======================= -->
       <div v-else class="crm-card-section rounded-xl border border-gray-200 bg-white p-4">
         <div class="mb-3 flex items-center justify-between">
-          <div>
-            <h3 class="text-sm font-bold text-gray-900">Тарифы для заявок</h3>
-            <p class="mt-0.5 text-xs text-gray-500">Варианты, которые клиент видит при запросе увеличения лимита.</p>
-          </div>
+          <h3 class="text-sm font-bold text-gray-900">Тарифы</h3>
           <CrmButton class="crm-card-button crm-card-button--soft" variant="soft" size="sm" @click="newTariff">+ Добавить</CrmButton>
         </div>
 
@@ -481,15 +452,15 @@
             aria-label="Стоимость перехода, текст"
             class="rounded-lg border border-gray-300 px-2.5 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100">
           <label class="block">
-            <span class="text-[11px] font-medium text-gray-500">Лимит в месяц, BYN</span>
-            <input v-model.number="editingTariff.monthly_limit" required type="number" min="0.01" step="0.01"
-              aria-label="Месячный лимит тарифа BYN"
-              class="mt-0.5 w-full rounded-lg border border-gray-300 px-2.5 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100">
-          </label>
-          <label class="block">
             <span class="text-[11px] font-medium text-gray-500">Лимит на заказ, BYN</span>
             <input v-model.number="editingTariff.per_order_limit" required type="number" min="0.01" step="0.01"
               aria-label="Лимит заказа тарифа BYN"
+              class="mt-0.5 w-full rounded-lg border border-gray-300 px-2.5 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100">
+          </label>
+          <label class="block">
+            <span class="text-[11px] font-medium text-gray-500">Пауза после выдачи, дней (пусто — не менять)</span>
+            <input v-model.number="editingTariff.cooldown_days" type="number" min="0" max="365" step="1" inputmode="numeric"
+              aria-label="Длительность паузы тарифа в днях, пусто — не менять"
               class="mt-0.5 w-full rounded-lg border border-gray-300 px-2.5 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100">
           </label>
           <div class="flex gap-2 sm:col-span-2">
@@ -501,8 +472,10 @@
         <div class="space-y-2">
           <div v-for="tariff in snapshot.tariffs" :key="tariff.id" class="flex flex-wrap items-center gap-2 rounded-xl bg-gray-50 p-3">
             <div class="min-w-0 flex-1">
-              <div class="text-sm font-semibold text-gray-800">{{ tariff.title }} · {{ money(tariff.monthly_limit_minor ?? tariff.limit_minor) }}/мес · {{ money(tariff.per_order_limit_minor ?? 4500) }}/заказ</div>
-              <div class="text-xs text-gray-500">{{ tariff.transition_cost_text || 'Без текста о стоимости' }}</div>
+              <div class="text-sm font-semibold text-gray-800">
+                {{ tariff.title }} · до {{ money(tariff.per_order_limit_minor ?? tariff.limit_minor) }} на заказ<template v-if="tariff.cooldown_days != null"> · пауза {{ tariff.cooldown_days }} дн.</template>
+              </div>
+              <div class="text-xs text-gray-500">{{ tariff.transition_cost_text }}</div>
             </div>
             <div class="flex w-full gap-2 sm:w-auto">
               <CrmButton variant="soft" size="sm" class="crm-card-button crm-card-button--soft flex-1 sm:!w-auto" @click="editTariff(tariff)">Изменить</CrmButton>
@@ -644,16 +617,9 @@ const manualAmount = ref<number | null>(null);
 const manualNote = ref("");
 const accountUsername = ref("");
 const accountError = ref("");
-const editingTariff = ref<{ id?: string; title: string; limit: number; monthly_limit: number; per_order_limit: number; transition_cost_text: string } | null>(null);
+const editingTariff = ref<{ id?: string; title: string; per_order_limit: number; cooldown_days: number | null; transition_cost_text: string } | null>(null);
 const confirmRejectRequest = ref<Snapshot["requests"][number] | null>(null);
 const confirmTariffRemoval = ref<Snapshot["tariffs"][number] | null>(null);
-
-const tabDescription = computed(() => {
-  if (activeTab.value === "limits") return "Дневной и месячный контроль и операции.";
-  if (activeTab.value === "accounts") return "Разрешения аккаунтов и персональные лимиты.";
-  if (activeTab.value === "requests") return "Заявки клиентов на увеличение лимита.";
-  return "Тарифы для заявок клиентов.";
-});
 
 const newRequestCount = computed(
   () => snapshot.value?.requests.filter((request) => request.status === "new").length || 0,
@@ -1035,15 +1001,14 @@ async function rejectRequest(request: Snapshot["requests"][number]) {
 }
 
 function newTariff() {
-  editingTariff.value = { title: "", limit: 250, monthly_limit: 250, per_order_limit: 45, transition_cost_text: "" };
+  editingTariff.value = { title: "", per_order_limit: 45, cooldown_days: null, transition_cost_text: "" };
 }
 function editTariff(tariff: Snapshot["tariffs"][number]) {
   editingTariff.value = {
     id: tariff.id,
     title: tariff.title,
-    limit: Number(tariff.limit_minor) / 100,
-    monthly_limit: Number(tariff.monthly_limit_minor ?? tariff.limit_minor) / 100,
-    per_order_limit: Number(tariff.per_order_limit_minor ?? 4500) / 100,
+    per_order_limit: Number(tariff.per_order_limit_minor ?? tariff.limit_minor) / 100,
+    cooldown_days: tariff.cooldown_days == null ? null : Number(tariff.cooldown_days),
     transition_cost_text: tariff.transition_cost_text || "",
   };
 }

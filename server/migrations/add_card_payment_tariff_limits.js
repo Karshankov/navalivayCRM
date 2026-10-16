@@ -43,6 +43,12 @@ export function migrateCardPaymentTariffLimits() {
     `);
   }
 
+  // Тариф может задавать длительность паузы после выдачи (дней).
+  // NULL = пауза аккаунта не меняется при применении тарифа.
+  if (!tariffColumns.some((c) => c.name === "cooldown_days")) {
+    db.exec("ALTER TABLE card_payment_tariffs ADD COLUMN cooldown_days INTEGER;");
+  }
+
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_card_payment_accounts_tariff
       ON card_payment_accounts(tariff_id);

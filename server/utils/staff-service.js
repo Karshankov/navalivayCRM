@@ -157,8 +157,9 @@ function getShiftWindow(now = new Date()) {
 function getAnyTimeShiftWindow(now = new Date()) {
   const window = getShiftWindow(now);
   const start = now < window.start ? window.start : new Date(now);
-  // 12-часовая смена для тестировочных сценариев: переживает полночь
-  // и не закрывается автозакрытием в 21:15.
+  // 12-часовая смена: применяется для тестировочных должностей и для ночных
+  // смен, открытых после 21:15. Переживает полночь и не закрывается
+  // автозакрытием в 21:15.
   const end = new Date(start.getTime() + 12 * 60 * 60 * 1000);
   return { ...window, start, end, minute: 12 * 60 + 60 };
 }
@@ -810,15 +811,18 @@ export function createStaffService(database, {
       .get(String(employeeId || ''));
     const position = String(requestedEmployee?.position || '').trim().toLowerCase();
     const anyTimeAllowed = SHIFT_ANY_TIME_POSITIONS.has(position);
-    // Для тестировочных должностей окно = любые 12 часов с момента открытия;
-    // для остальных — обычное окно 10:00–21:15 по Минску.
-    const window = anyTimeAllowed
+    // Для тестировочных должностей окно = любые 12 часов с момента открытия.
+    const dayWindow = getShiftWindow(openedAt);
+    // После 21:15 смена открывается как ночная: те же 12 часов с момента
+    // открытия, переживает полночь и не закрывается автозакрытием в 21:15
+    // (владелец, 2026-10-15: ограничение на открытие смены после 21:15 снято).
+    const afterHours = dayWindow.minute >= SHIFT_END_MINUTE;
+    const window = anyTimeAllowed || afterHours
       ? getAnyTimeShiftWindow(openedAt)
-      : getShiftWindow(openedAt);
+      : dayWindow;
     if (
       !anyTimeAllowed &&
-      (window.minute < SHIFT_START_MINUTE ||
-        window.minute >= SHIFT_END_MINUTE)
+      window.minute < SHIFT_START_MINUTE
     ) {
       throw new StaffServiceError('shift_open_outside_hours', 409, {
         opens_at: window.start.toISOString(),
@@ -1059,13 +1063,24 @@ export function createStaffService(database, {
     }
     const startWindow = getShiftWindow(start);
     const endWindow = getShiftWindow(end);
-    if (
+    // Ночная смена исправляется по тем же правилам, что и открывается:
+    // старт после 21:15, окончание не позже 12 часов от старта.
+    const nightWindow = startWindow.minute >= SHIFT_END_MINUTE;
+    if (nightWindow) {
+      if (end.getTime() - start.getTime() > 12 * 60 * 60 * 1000) {
+        throw new StaffServiceError('invalid_shift_period', 400);
+      }
+    } else if (
       startWindow.businessDate !== endWindow.businessDate
       || start < startWindow.start
       || end > startWindow.end
     ) {
       throw new StaffServiceError('invalid_shift_period', 400);
     }
+    const plannedStart = nightWindow ? start : startWindow.start;
+    const plannedEnd = nightWindow
+      ? new Date(start.getTime() + 12 * 60 * 60 * 1000)
+      : startWindow.end;
     return database.transaction(() => {
       const before = database
         .prepare('SELECT * FROM staff_shifts WHERE id = ?')
@@ -1100,8 +1115,8 @@ export function createStaffService(database, {
         WHERE id = ? AND version = ?
       `).run(
         startWindow.businessDate,
-        startWindow.start.toISOString(),
-        startWindow.end.toISOString(),
+        plannedStart.toISOString(),
+        plannedEnd.toISOString(),
         start.toISOString(),
         end.toISOString(),
         correctedAt.toISOString(),

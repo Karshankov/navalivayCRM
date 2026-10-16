@@ -72,8 +72,10 @@ import {
 } from "../utils/internal-notifications.js";
 import { roundMoney } from "../utils/money.js";
 import {
+  checkCardOrder,
   forceIssueCardPayment,
   issueCardOrder,
+  reserveCardOrder,
   reverseCardOrder,
   toMinorUnits,
 } from "../utils/card-payment-service.js";
@@ -2816,6 +2818,211 @@ crmOperationsRouter.delete(
     }
   },
 );
+
+// =========================
+// ИЗМЕНЕНИЕ СПОСОБА ОПЛАТЫ (карта ↔ наличные) до выдачи
+// =========================
+// Менеджер в подробностях заказа меняет способ оплаты:
+// - на наличные — карточный резерв снимается, лимиты освобождаются;
+// - на карту — проверяется аккаунт клиента (включён, нет паузы) и лимиты
+//   (личный лимит одного заказа + общий дневной лимит магазина), после
+//   чего на всю сумму заказа ставится карточный резерв. Смешанной оплаты
+//   нет: заказ либо целиком картой, либо целиком наличными.
+crmOperationsRouter.patch(
+  "/api/admin/crm/orders/:id/payment-method",
+  authMiddleware,
+  requireOrderShift,
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { payment_type: paymentType } = req.body || {};
+      if (!paymentType || !["cash", "card"].includes(paymentType)) {
+        return res.status(400).json({ error: "invalid_payment_type" });
+      }
+
+      const order = db.prepare("SELECT * FROM orders WHERE id = ?").get(id);
+      if (!order) {
+        return res.status(404).json({ error: "not_found" });
+      }
+      if (Number(order.paid_amount || 0) > 0) {
+        return res.status(409).json({
+          error: "already_paid",
+          message: "Заказ уже оплачен. Сначала отмените оплату, затем меняйте способ.",
+        });
+      }
+      if (["delivered", "cancelled"].includes(order.status)) {
+        return res.status(409).json({
+          error: "invalid_status_state",
+          message: "Способ оплаты можно менять только у заказа в работе.",
+        });
+      }
+      if ((order.payment_type || null) === paymentType) {
+        // Способ не меняется — возвращаем текущее состояние без записи аудита.
+        const current = db
+          .prepare(
+            `SELECT o.*, COALESCE(o.telegram_username, c.telegram_username) as telegram_username
+             FROM orders o LEFT JOIN customers c ON c.id = o.customer_id WHERE o.id = ?`,
+          )
+          .get(id);
+        return res.json({ ...current, unchanged: true });
+      }
+
+      const tx = db.transaction(() => {
+        const shiftActor = recheckOrderShift(req);
+        const auditBefore = snapshotOrder(db, id);
+        const freshOrder = db.prepare("SELECT * FROM orders WHERE id = ?").get(id);
+        if (!freshOrder) {
+          throw new StaffServiceError("not_found", 404);
+        }
+        if (Number(freshOrder.paid_amount || 0) > 0) {
+          throw new StaffServiceError("already_paid", 409);
+        }
+        if (["delivered", "cancelled"].includes(freshOrder.status)) {
+          throw new StaffServiceError("invalid_status_state", 409);
+        }
+        const finalMinor = toMinorUnits(
+          freshOrder.final_amount || freshOrder.total_amount || 0,
+        );
+
+        if (paymentType === "cash") {
+          // Снимаем карточный резерв, если он есть: лимиты освобождаются
+          // сразу, заказ целиком переходит на наличные.
+          const hasReserved = db.prepare(`
+            SELECT 1 FROM card_payment_operations
+            WHERE order_id = ? AND operation_type = 'order' AND operation_status = 'reserved'
+          `).get(id);
+          if (hasReserved) reverseCardOrder(id);
+          db.prepare(`
+            UPDATE orders
+            SET payment_type = 'cash',
+                payment_account_id = NULL,
+                card_amount_minor = 0,
+                cash_due_minor = ?,
+                updated_at = DATETIME('now')
+            WHERE id = ?
+          `).run(finalMinor, id);
+        } else {
+          // Картой: проверяем аккаунт и лимиты, ставим резерв на всю сумму.
+          const hasReserved = db.prepare(`
+            SELECT amount_minor FROM card_payment_operations
+            WHERE order_id = ? AND operation_type = 'order' AND operation_status = 'reserved'
+          `).get(id);
+          if (!hasReserved) {
+            const customerRow = freshOrder.customer_id
+              ? db.prepare(
+                "SELECT telegram_id, telegram_username FROM customers WHERE id = ?",
+              ).get(freshOrder.customer_id)
+              : null;
+            const customerTelegramId = String(customerRow?.telegram_id || "").trim();
+            const customerTelegramUsername = String(
+              customerRow?.telegram_username || "",
+            ).trim();
+            if (!customerTelegramId) {
+              throw new StaffServiceError("customer_telegram_id_required", 400, {
+                message: "У клиента нет Telegram ID — оплату картой привязать нельзя.",
+              });
+            }
+            const decision = checkCardOrder({
+              orderId: id,
+              telegramId: customerTelegramId,
+              telegramUsername: customerTelegramUsername,
+              amountMinor: finalMinor,
+            });
+            if (!decision.ok) {
+              const message = cardChangeDenialMessage(decision);
+              throw new StaffServiceError("card_payment_change_rejected", 409, {
+                reason: decision.reason,
+                message,
+              });
+            }
+            reserveCardOrder({
+              orderId: id,
+              telegramId: customerTelegramId,
+              amountMinor: decision.cardAmountMinor,
+            });
+          }
+          db.prepare(`
+            UPDATE orders
+            SET payment_type = 'card',
+                card_amount_minor = ?,
+                cash_due_minor = 0,
+                updated_at = DATETIME('now')
+            WHERE id = ?
+          `).run(hasReserved ? Number(hasReserved.amount_minor) : finalMinor, id);
+        }
+
+        recordOrderAudit(db, {
+          orderId: id,
+          before: auditBefore,
+          actor: verifiedRequestAuditActor(req, shiftActor),
+          source: "crm.update",
+        });
+      });
+
+      tx.immediate();
+
+      const updatedOrder = db
+        .prepare(
+          `SELECT o.*, COALESCE(o.telegram_username, c.telegram_username) as telegram_username
+           FROM orders o LEFT JOIN customers c ON c.id = o.customer_id WHERE o.id = ?`,
+        )
+        .get(id);
+      const updatedItems = db
+        .prepare(`
+          SELECT oi.*, p.description as product_description,
+             COALESCE(
+               (SELECT url FROM product_images WHERE productId = oi.product_id AND variant_id = oi.variant_id ORDER BY position LIMIT 1),
+               (SELECT url FROM product_images WHERE productId = oi.product_id AND variant_id IS NULL ORDER BY position LIMIT 1),
+               (SELECT url FROM product_images WHERE productId = oi.product_id ORDER BY position LIMIT 1)
+             ) AS product_image_url
+          FROM order_items oi
+          LEFT JOIN products p ON p.id = oi.product_id
+          WHERE oi.order_id = ?
+        `)
+        .all(id);
+      const activePickupCell = getActivePickupCellAssignment(id);
+      res.json({
+        ...updatedOrder,
+        pickup_cell_number: activePickupCell?.cell_number ?? null,
+        pickup_cell_assignment_id: activePickupCell?.id ?? null,
+        items: updatedItems,
+      });
+    } catch (error) {
+      console.error("[crm] Change payment method error:", error);
+      if (isStaffServiceError(error)) {
+        return sendStaffServiceError(res, error);
+      }
+      res.status(500).json({ error: "failed", message: error.message });
+    }
+  },
+);
+
+// Человекочитаемая причина отказа при переводе заказа на карту.
+function cardChangeDenialMessage(decision) {
+  const minorToByn = (minor) => (Number(minor || 0) / 100).toFixed(2);
+  switch (decision.reason) {
+    case "card_payment_not_allowed":
+      return "Оплата картой не разрешена для этого клиента.";
+    case "personal_cooldown":
+      return `У клиента пауза на оплату картой (до ${
+        new Date(decision.cooldownUntil).toLocaleString("ru-RU")
+      }).`;
+    case "personal_limit_exceeded":
+      return `Заказ больше личного лимита клиента на оплату картой (${
+        minorToByn(decision.personalLimitMinor)
+      } BYN).`;
+    case "personal_monthly_limit_exceeded":
+      return "Месячный лимит оплаты картой клиента исчерпан.";
+    case "daily_limit_exhausted":
+      return "Дневной лимит оплаты картой магазина исчерпан.";
+    case "daily_limit_exceeded_by_order":
+      return `Заказ больше остатка дневного лимита карты на ${
+        minorToByn(decision.exceededByMinor)
+      } BYN.`;
+    default:
+      return "Оплата картой сейчас недоступна для этого заказа.";
+  }
+}
 
 // =========================
 // PROCUREMENTS (Закупки)

@@ -90,6 +90,7 @@ import {
   reserveCheckedCardOrder,
   reverseCardOrder,
   resolveCardAccount,
+  fromMinorUnits,
   toMinorUnits,
 } from "../utils/card-payment-service.js";
 import {
@@ -1969,7 +1970,7 @@ publicRouter.get(
         return res.status(403).json({ error: "card_payment_not_allowed" });
       }
       const tariffs = db.prepare(`
-        SELECT id, title, limit_minor, monthly_limit_minor, per_order_limit_minor,
+        SELECT id, title, limit_minor, per_order_limit_minor, cooldown_days,
           transition_cost_text, position
         FROM card_payment_tariffs
         WHERE active = 1
@@ -2016,7 +2017,7 @@ publicRouter.post(
           }
         }
         const tariff = db.prepare(`
-          SELECT id, title, limit_minor, monthly_limit_minor, per_order_limit_minor
+          SELECT id, title, limit_minor, per_order_limit_minor, cooldown_days
           FROM card_payment_tariffs
           WHERE id = ? AND active = 1
         `).get(tariffId);
@@ -2034,7 +2035,7 @@ publicRouter.post(
           tariff.id,
           tariff.title,
           account.max_order_minor,
-          tariff.limit_minor,
+          tariff.per_order_limit_minor ?? tariff.limit_minor,
         );
         return { request_id: requestId };
       }).immediate();
@@ -3093,13 +3094,53 @@ publicRouter.put(
         nextCardAmountMinor = 0;
         if (reservedCardOperation) {
           const previousCardAmountMinor = Number(reservedCardOperation.amount_minor || 0);
-          // Editing an already-created card order must not spend another
-          // portion of either limit. Keep its existing card reservation and
-          // put any newly added amount into the cash due at pickup.
-          nextCardAmountMinor = Math.min(
-            previousCardAmountMinor,
-            toMinorUnits(nextFinalAmount),
+          const nextOrderMinor = toMinorUnits(nextFinalAmount);
+          // Смешанной оплаты (часть картой, часть наличными) больше нет:
+          // изменение карточного заказа всегда сверяется с живыми
+          // лимитами — личным лимитом клиента и общим дневным остатком
+          // магазина — и не может вылезти за старый карточный резерв.
+          // Проверки лимитов действуют только на РОСТ суммы: уменьшение
+          // заказа свободно проходит всегда (резерв уменьшается тоже).
+          const isOrderGrowing = nextOrderMinor > previousCardAmountMinor;
+          const editAccount = resolveCardAccount(
+            telegramId,
+            normalizeCardTelegramUsername(authTelegramUsername),
           );
+          const personalLimitMinor = Number(editAccount?.max_order_minor || 0);
+          const editLimits = getCardLimitSnapshot();
+          const shopRemainingMinor = Math.max(
+            0,
+            Number(editLimits.daily_limit_minor || 0)
+              - Number(editLimits.spent_today_minor || 0)
+              - Number(editLimits.reserved_minor || 0)
+              + previousCardAmountMinor,
+          );
+          let failureMessage = null;
+          if (isOrderGrowing && nextOrderMinor > personalLimitMinor) {
+            failureMessage =
+              `Заказ больше вашего лимита на оплату картой (${fromMinorUnits(personalLimitMinor).toFixed(2)} BYN). Уберите лишние товары или оплатите наличными.`;
+          } else if (isOrderGrowing && nextOrderMinor > shopRemainingMinor) {
+            failureMessage =
+              "Дневной лимит оплаты картой исчерпан. Уберите лишние товары или оплатите наличными.";
+          } else if (isOrderGrowing) {
+            failureMessage =
+              "Заказ больше суммы, зарезервированной картой. Оплатите заказ наличными или оформите новый в пределах лимита.";
+          }
+          if (failureMessage) {
+            const error = new Error(failureMessage);
+            error.code = "card_limit_exceeded_on_edit";
+            error.payload = {
+              error: "card_limit_exceeded_on_edit",
+              message: failureMessage,
+              personal_limit_minor: personalLimitMinor,
+              order_minor: nextOrderMinor,
+              reserved_minor: previousCardAmountMinor,
+            };
+            throw error;
+          }
+          nextCardAmountMinor = nextOrderMinor > 0
+            ? Math.min(previousCardAmountMinor, nextOrderMinor)
+            : 0;
         }
         nextCashDueMinor = Math.max(0, toMinorUnits(nextFinalAmount) - nextCardAmountMinor);
         const nextManagerActionNote = buildManagerActionNote({
@@ -3301,8 +3342,12 @@ publicRouter.put(
         errorCode === "loyalty_category_not_available" ||
         errorCode === "loyalty_balance_not_enough" ||
         errorCode === "loyalty_category_limit_exceeded" ||
-        errorCode === "wholesale_price_unavailable"
+        errorCode === "wholesale_price_unavailable" ||
+        errorCode === "card_limit_exceeded_on_edit"
       ) {
+        if (error.payload?.error === "card_limit_exceeded_on_edit") {
+          return res.status(400).json(error.payload);
+        }
         return res.status(400).json({
           error: errorCode,
           message: error.userMessage || error.message || errorCode,
@@ -3906,14 +3951,6 @@ publicRouter.post(
             message: `Лимит оплаты картой для вашего аккаунта — ${(denied.personalLimitMinor / 100).toFixed(2)} BYN. Сумма заказа — ${(denied.orderAmountMinor / 100).toFixed(2)} BYN.`,
             personal_limit_minor: denied.personalLimitMinor,
             order_amount_minor: denied.orderAmountMinor,
-          });
-        }
-        if (denied.reason === "personal_monthly_limit_exceeded") {
-          return res.status(409).json({
-            error: denied.reason,
-            message: `Месячный лимит оплаты картой для вашего аккаунта — ${(denied.personalMonthlyLimitMinor / 100).toFixed(2)} BYN. Доступно сейчас — ${(denied.personalMonthlyRemainingMinor / 100).toFixed(2)} BYN.`,
-            personal_monthly_limit_minor: denied.personalMonthlyLimitMinor,
-            personal_monthly_remaining_minor: denied.personalMonthlyRemainingMinor,
           });
         }
         if (denied.reason === "personal_cooldown") {

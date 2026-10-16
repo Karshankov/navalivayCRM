@@ -240,7 +240,7 @@ describe("CardPaymentsModal — вкладки и сводка", () => {
     Object.assign(snapshot.limits, { exceeded_today_minor: 1500 });
     crmStoreMock.cardPaymentAdminSnapshot = snapshot;
     const wrapper = mountModal();
-    expect(wrapper.find('[role="alert"]').text()).toContain('Лимит на сегодня превышен на 15.00 BYN');
+    expect(wrapper.find('[role="alert"]').text()).toContain('Дневной лимит превышен на 15.00 BYN');
     expect(wrapper.find('[role="alert"] svg').exists()).toBe(true);
   });
 
@@ -260,7 +260,7 @@ describe("CardPaymentsModal — вкладки и сводка", () => {
     expect(content.classes()).toContain("overflow-y-auto");
     const tabButtons = wrapper.findAll("nav button");
     expect(tabButtons.map((b) => b.text())).toEqual(["Лимиты", "Аккаунты", "Заявки 1", "Тарифы"]);
-    expect(wrapper.text()).toContain("Занято сегодня");
+    expect(wrapper.text()).toContain("Сегодня");
     expect(wrapper.text()).toContain("55.00");
     expect(wrapper.text()).toContain("из 110.00");
     expect(wrapper.text()).toContain("55.00 BYN свободно");
@@ -274,7 +274,7 @@ describe("CardPaymentsModal — вкладки и сводка", () => {
     const wrapper = mountModal();
     expect(wrapper.text()).toContain("Выдано: 40.00 BYN");
     expect(wrapper.text()).toContain("Резервы: 15.00 BYN");
-    expect(wrapper.text()).toContain("Добавлено сегодня: +20.00 BYN");
+    expect(wrapper.text()).toContain("Корректировка: +20.00 BYN");
   });
 
   it("в операциях за сегодня видны и заказы, и ручные пробития", () => {
@@ -325,7 +325,7 @@ describe("CardPaymentsModal — аккаунты", () => {
     await openAccounts(wrapper);
     await wrapper.find('input[aria-label="Telegram username без собаки"]').setValue("@newbie");
     await wrapper.find("form").trigger("submit");
-    expect(wrapper.text()).toContain("Новый клиент");
+    expect(wrapper.text()).toContain("новый клиент");
     const allow = wrapper.findAll("button").find((b) => b.text() === "Разрешить оплату картой");
     expect(allow).toBeTruthy();
     await allow!.trigger("click");
@@ -372,7 +372,6 @@ describe("CardPaymentsModal — аккаунты", () => {
     await openAccounts(wrapper);
     expect(wrapper.find('input[aria-label="Месячный лимит аккаунта BYN"]').exists()).toBe(false);
     expect(wrapper.find('input[aria-label="Лимит одного заказа BYN"]').exists()).toBe(false);
-    expect(wrapper.text()).toContain("250 BYN/мес");
   });
 });
 
@@ -389,8 +388,8 @@ describe("CardPaymentsModal — тарифы и заявки", () => {
     expect(select.element.value).toBe("t1");
     const options = select.findAll("option");
     expect(options.map((o) => o.text())).toEqual([
-      "Стандарт (250/45 BYN)",
-      "Максимум · 350/60 BYN",
+      "Стандарт (45 BYN на заказ)",
+      "Максимум · 60 BYN на заказ",
     ]);
     // Неактивный тариф не показывается в селекторе
     expect(options.some((o) => o.text().includes("Архивный"))).toBe(false);
@@ -416,8 +415,8 @@ describe("CardPaymentsModal — тарифы и заявки", () => {
     await tab.trigger("click");
     expect(wrapper.text()).toContain("Тариф «Максимум»");
     expect(wrapper.text()).toContain("стоимость: 35 BYN");
-    expect(wrapper.text()).toContain("350.00 BYN/мес");
-    expect(wrapper.text()).toContain("60.00 BYN/заказ");
+    expect(wrapper.text()).toContain("Тариф: до 60.00 BYN на заказ");
+    expect(wrapper.text()).not.toContain("/мес");
   });
 
   it("кнопка «Одобрить» вызывает approveCardRequest", async () => {
@@ -434,15 +433,16 @@ describe("CardPaymentsModal — тарифы и заявки", () => {
     expect(wrapper.findAll("button").some((b) => b.text() === "Обработана")).toBe(false);
   });
 
-  it("форма тарифа содержит оба лимита", async () => {
+  it("форма тарифа содержит лимит заказа и паузу", async () => {
     const wrapper = mountModal();
     const tab = wrapper.findAll("nav button").find((b) => b.text().includes("Тарифы"))!;
     await tab.trigger("click");
-    expect(wrapper.text()).toContain("Максимум · 350.00 BYN/мес · 60.00 BYN/заказ");
+    expect(wrapper.text()).toContain("Максимум · до 60.00 BYN на заказ");
     const addButton = wrapper.findAll("button").find((b) => b.text().includes("Добавить"));
     await addButton!.trigger("click");
-    expect(wrapper.find('input[aria-label="Месячный лимит тарифа BYN"]').exists()).toBe(true);
+    expect(wrapper.find('input[aria-label="Месячный лимит тарифа BYN"]').exists()).toBe(false);
     expect(wrapper.find('input[aria-label="Лимит заказа тарифа BYN"]').exists()).toBe(true);
+    expect(wrapper.find('input[aria-label="Длительность паузы тарифа в днях, пусто — не менять"]').exists()).toBe(true);
   });
 });
 

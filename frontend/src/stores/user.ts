@@ -16,13 +16,12 @@ export interface UserProfile {
 
 export interface CustomerCardPaymentStatus {
   enabled: boolean
-  monthly_limit_minor: number
-  monthly_used_minor: number
-  monthly_remaining_minor: number
   max_order_minor: number
+  cooldown_days: number
   cooldown_until: string | null
   request_cooldown_until: string | null
   card_available: boolean
+  // Общие (магазинные) лимиты оплаты картой — внутренняя механика.
   limits: {
     monthly_limit_minor: number
     spent_month_minor: number
@@ -31,6 +30,8 @@ export interface CustomerCardPaymentStatus {
     spent_today_minor: number
     reserved_minor: number
     remaining_today_minor: number
+    // false — общий дневной лимит по карте исчерпан.
+    can_start_order?: boolean
   }
 }
 

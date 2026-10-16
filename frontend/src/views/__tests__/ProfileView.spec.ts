@@ -72,27 +72,6 @@ describe("ProfileView loyalty section", () => {
           ],
         });
       }
-      if (url === "/api/card-payment/status") {
-        return createJsonResponse({
-          enabled: true,
-          monthly_limit_minor: 100000,
-          monthly_used_minor: 35000,
-          monthly_remaining_minor: 65000,
-          max_order_minor: 4500,
-          cooldown_until: "2098-12-31T22:30:00.000Z",
-          request_cooldown_until: null,
-          card_available: false,
-          limits: {
-            monthly_limit_minor: 100000,
-            spent_month_minor: 35000,
-            remaining_month_minor: 65000,
-            daily_limit_minor: 5000,
-            spent_today_minor: 1200,
-            reserved_minor: 800,
-            remaining_today_minor: 3000,
-          },
-        });
-      }
       throw new Error(`Unexpected fetch: ${url}`);
     });
 
@@ -115,13 +94,10 @@ describe("ProfileView loyalty section", () => {
     expect(wrapper.text()).toContain("Бонусная система");
     expect(wrapper.find(".loyalty-tab--active").text()).toContain("Жидкости");
     expect(wrapper.find(".loyalty-progress-value").text()).toContain("2 / 10");
-    expect(wrapper.find(".card-limit-card").text()).toContain("1 000 BYN");
-    expect(wrapper.find(".card-limit-card").text()).toContain("350 BYN");
-    expect(wrapper.find(".card-limit-card").text()).toContain("650 BYN");
-    expect(wrapper.find(".card-limit-card").text()).toContain("Лимит одного заказа:");
-    // The Minsk date crosses into January; only day and month are shown.
-    expect(wrapper.get(".card-limit-pause__row").text()).toBe("Оплата по карте станет доступна 1 января");
-    expect(wrapper.get(".card-limit-pause__row").text()).not.toMatch(/2098|2099/);
+    // Кнопка «Оплата картой» удалена из профиля полностью: карта
+    // настраивается в корзине при оформлении заказа.
+    expect(wrapper.find(".card-pay-link").exists()).toBe(false);
+    expect(wrapper.find(".card-limit-card").exists()).toBe(false);
     expect(wrapper.find(".bonus-popup-stub").exists()).toBe(false);
 
     await wrapper.find(".loyalty-rules-link").trigger("click");

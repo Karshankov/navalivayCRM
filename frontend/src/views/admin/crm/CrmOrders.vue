@@ -1067,7 +1067,7 @@
           ? `Выдача заказа #${paymentOrder.order_number}`
           : 'Выдача заказа'
       "
-      description="Выберите тип оплаты и кассу"
+      description="Выберите тип оплаты"
       size="md"
       :showActions="false"
       @close="closePaymentModal"
@@ -1111,21 +1111,41 @@
           </div>
         </div>
 
-        <div v-if="paymentMethod === 'cash' || paymentOrder?.cash_due_minor">
-          <label class="text-sm font-medium text-gray-700">Касса</label>
-          <select
-            v-model="selectedAccountId"
+        <!-- Мини-окно подсчёта сдачи: вводим, сколько дал клиент,
+             видим сдачу и подсказку «удобной сдачи». -->
+        <div
+          v-if="paymentMethod === 'cash'"
+          class="rounded-xl border border-gray-200 bg-gray-50 p-3"
+          data-test="change-calculator"
+        >
+          <label class="text-sm font-medium text-gray-700">Клиент дал</label>
+          <input
+            v-model.number="cashReceived"
+            type="number"
+            min="0"
+            step="0.01"
+            placeholder="0.00"
             class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-          >
-            <option value="" disabled>Выберите счёт</option>
-            <option
-              v-for="account in cashAccounts"
-              :key="account.id"
-              :value="account.id"
+          />
+          <div v-if="cashReceived > 0" class="mt-2 text-sm">
+            <div
+              v-if="changeDue >= 0"
+              class="font-semibold text-emerald-700"
+              data-test="change-due"
             >
-              {{ account.name }} · {{ formatCurrency(account.balance) }}
-            </option>
-          </select>
+              Сдача: {{ formatCurrency(changeDue) }}
+            </div>
+            <div v-else class="font-semibold text-red-600" data-test="change-shortfall">
+              Не хватает {{ formatCurrency(-changeDue) }}
+            </div>
+            <p
+              v-if="convenientChangeHint"
+              class="mt-1 text-xs text-gray-500"
+              data-test="convenient-change-hint"
+            >
+              {{ convenientChangeHint }}
+            </p>
+          </div>
         </div>
 
         <div
@@ -1136,16 +1156,6 @@
           <span v-if="paymentOrder.cash_due_minor">
             · наличными: {{ formatCurrency(paymentOrder.cash_due_minor / 100) }}
           </span>
-        </div>
-
-        <div>
-          <label class="text-sm font-medium text-gray-700">Комментарий</label>
-          <textarea
-            v-model="paymentNotes"
-            rows="3"
-            class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-            placeholder="Например, имя кассира или примечания к оплате"
-          ></textarea>
         </div>
       </div>
 
@@ -1160,7 +1170,7 @@
         <button
           @click="deferClick(() => { void submitPayment() })"
           class="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-400"
-          :disabled="isIssuing || paymentAmount <= 0 || (paymentMethod === 'cash' && !selectedAccountId) || (paymentMethod === 'card' && Number(paymentOrder?.cash_due_minor || 0) > 0 && !selectedAccountId)"
+          :disabled="isIssuing || paymentAmount <= 0"
         >
           <svg
             v-if="isIssuing"
@@ -2245,6 +2255,8 @@ const paymentMethod = ref<"cash" | "card">("cash");
 const selectedAccountId = ref("");
 const paymentAmount = ref(0);
 const paymentNotes = ref("");
+// Подсчёт сдачи: сколько наличных дал клиент.
+const cashReceived = ref(0);
 const isIssuing = ref(false);
 const dragOrder = ref<Order | null>(null);
 const activeDropColumn = ref<string | null>(null);
@@ -3096,16 +3108,24 @@ async function openPaymentModal(order: Order) {
   paymentAmount.value = order.final_amount;
   paymentMethod.value = order.payment_type === "card" ? "card" : "cash";
   paymentNotes.value = order.payment_notes || "";
+  cashReceived.value = 0;
 
-  if (cashAccounts.value.length === 0) {
-    await crmStore.fetchCashAccounts();
+  // Счёт кассы больше не выбирается вручную: всегда используем счёт
+  // по умолчанию (у магазина это «Касса»). Подгружаем список тихо,
+  // чтобы дефолт был актуален, но окно выбора в UI не показываем.
+  try {
+    if (cashAccounts.value.length === 0) {
+      await crmStore.fetchCashAccounts();
+    }
+    const defaultAccount =
+      cashAccounts.value.find((account) => account.is_default === 1) ||
+      cashAccounts.value[0] ||
+      null;
+    selectedAccountId.value = defaultAccount ? defaultAccount.id : "";
+  } catch (error) {
+    console.error("[CRM] Failed to preload default cash account:", error);
+    selectedAccountId.value = "";
   }
-
-  const defaultAccount =
-    cashAccounts.value.find((account) => account.is_default === 1) ||
-    cashAccounts.value[0] ||
-    null;
-  selectedAccountId.value = defaultAccount ? defaultAccount.id : "";
 
   paymentModalOpen.value = true;
 }
@@ -3115,17 +3135,69 @@ function closePaymentModal() {
   paymentModalOpen.value = false;
   paymentOrder.value = null;
   paymentNotes.value = "";
+  cashReceived.value = 0;
 }
 
+// Сдача = сколько дал клиент − сумма к оплате.
+const changeDue = computed(() => {
+  const received = Number(cashReceived.value) || 0;
+  if (received <= 0) return 0;
+  return roundMoneyTo2(received - (Number(paymentAmount.value) || 0));
+});
+
+function roundMoneyTo2(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+// Подсказка «удобной сдачи»: если клиент доплатит немного, сдача
+// станет круглой. Например, заказ 32р, клиент дал 50 — доплата 2р
+// даст сдачу ровно 20р. Ищем ближайшую круглую сдачу (кратно 5/10).
+const convenientChangeHint = computed(() => {
+  const received = Number(cashReceived.value) || 0;
+  const total = Number(paymentAmount.value) || 0;
+  if (received <= 0 || total <= 0 || changeDue.value < 0) return "";
+  // Кандидаты круглой сдачи: 1, 2, 5, 10, 20, 50, 100 …
+  const roundSteps = [5, 10, 20, 50, 100, 200, 500];
+  let bestHint = "";
+  let bestExtra = Infinity;
+  for (const step of roundSteps) {
+    // Клиенту нужно доплатить extra, чтобы сдача стала ровно step.
+    const extra = roundMoneyTo2(total + step - received);
+    if (extra > 0 && extra < bestExtra && extra <= 10) {
+      bestExtra = extra;
+      bestHint = `Если клиент даст ещё ${formatCurrency(extra)} — сдача будет ровно ${formatCurrency(step)}`;
+    }
+  }
+  return bestHint;
+});
+
 async function submitPayment() {
+  if (!paymentOrder.value || paymentAmount.value <= 0) return false;
+  // Счёт кассы не выбирается: всегда дефолтный. Если его не удалось
+  // подгрузить — пробуем ещё раз перед выдачей.
+  if (!selectedAccountId.value) {
+    try {
+      await crmStore.fetchCashAccounts();
+      const defaultAccount =
+        cashAccounts.value.find((account) => account.is_default === 1) ||
+        cashAccounts.value[0] ||
+        null;
+      selectedAccountId.value = defaultAccount ? defaultAccount.id : "";
+    } catch (error) {
+      console.error("[CRM] Failed to load cash account on submit:", error);
+    }
+  }
   if (
-    !paymentOrder.value ||
-    ((paymentMethod.value === "cash" ||
+    (paymentMethod.value === "cash" ||
       (paymentOrder.value.cash_due_minor || 0) > 0) &&
-      !selectedAccountId.value) ||
-    paymentAmount.value <= 0
-  )
+    !selectedAccountId.value
+  ) {
+    showOrderToast({
+      kind: "error",
+      message: "Счёт кассы по умолчанию не найден. Проверьте раздел «Финансы».",
+    });
     return false;
+  }
   isIssuing.value = true;
   // Сохраняем номер и тип доставки заранее: после issueOrder чистим
   // paymentOrder, а тост строим уже после.

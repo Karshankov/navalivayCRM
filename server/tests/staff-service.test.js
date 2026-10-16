@@ -338,7 +338,7 @@ try {
     rateKey: 'shift-b-after-reenable',
   });
 
-  console.log('staff service: exact 21:15 auto closes and blocks action');
+  console.log('staff service: exact 21:15 auto closes and night shift opens');
   now = new Date('2026-07-21T18:14:59.000Z');
   const lastSecondProof = service.prepareShiftProof();
   assert.equal(
@@ -356,14 +356,24 @@ try {
       .get(shiftB.shift.id).status,
     'auto_closed',
   );
-  await assert.rejects(
-    () => service.openShift({
-      employeeId: employeeA.id,
-      pin: '2000',
-      rateKey: 'too-late',
-    }),
-    (error) => error.code === 'shift_open_outside_hours',
+  // После 21:15 смена открывается как ночная: 12 часов с момента открытия,
+  // плановое окончание в будущем, автозакрытием в 21:15 не снимается.
+  const nightShift = await service.openShift({
+    employeeId: employeeA.id,
+    pin: '2000',
+    rateKey: 'after-hours',
+  });
+  assert.equal(nightShift.shift.employee_id, employeeA.id);
+  assert.equal(nightShift.shift.business_date, '2026-07-21');
+  assert.equal(nightShift.shift.planned_start_at, '2026-07-21T18:15:00.000Z');
+  assert.equal(nightShift.shift.planned_end_at, '2026-07-22T06:15:00.000Z');
+  assert.equal(
+    database.prepare(`
+      SELECT COUNT(*) AS count FROM staff_shifts WHERE status = 'active'
+    `).get().count,
+    1,
   );
+  assert.equal(service.getActiveShift().id, nightShift.shift.id);
 
   console.log('staff service: manager correction is reasoned and non-overlapping');
   const correctionManager = await service.accessByPin({
@@ -436,6 +446,40 @@ try {
     `).run(shiftB.shift.id),
     /immutable_staff_shift_audit/,
   );
+
+  console.log('staff service: night shift correction uses 12h window');
+  now = new Date('2026-07-22T07:00:00.000Z');
+  service.expireShifts();
+  const nightManager = await service.accessByPin({
+    pin: '1000',
+    rateKey: 'manager-night-correction',
+  });
+  const nightVersion = Number(
+    database.prepare('SELECT version FROM staff_shifts WHERE id = ?')
+      .get(nightShift.shift.id).version,
+  );
+  assert.throws(
+    () => service.correctShift({
+      shiftId: nightShift.shift.id,
+      staffToken: nightManager.staff_token,
+      startedAt: '2026-07-21T18:30:00.000Z',
+      endedAt: '2026-07-22T07:00:00.000Z',
+      reason: 'Слишком длинная смена',
+      expectedVersion: nightVersion,
+    }),
+    (error) => error.code === 'invalid_shift_period',
+  );
+  const correctedNight = service.correctShift({
+    shiftId: nightShift.shift.id,
+    staffToken: nightManager.staff_token,
+    startedAt: '2026-07-21T18:30:00.000Z',
+    endedAt: '2026-07-21T23:40:00.000Z',
+    reason: 'Ночная смена по журналу',
+    expectedVersion: nightVersion,
+  });
+  assert.equal(correctedNight.business_date, '2026-07-21');
+  assert.equal(correctedNight.planned_start_at, '2026-07-21T18:30:00.000Z');
+  assert.equal(correctedNight.planned_end_at, '2026-07-22T06:30:00.000Z');
 
   console.log('staff service: actor proof fails after deactivation');
   now = new Date('2026-07-22T09:00:00.000Z');

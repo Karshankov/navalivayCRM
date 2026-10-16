@@ -93,10 +93,6 @@
 
             <div v-if="hub.card_profile" class="crm-hub-card-details">
               <div class="crm-hub-card-row">
-                <span>Лимит в месяц</span>
-                <strong>{{ formatByn(hub.card_profile.monthly_limit_minor) }}</strong>
-              </div>
-              <div class="crm-hub-card-row">
                 <span>Максимум на заказ</span>
                 <strong>{{ formatByn(hub.card_profile.max_order_minor) }}</strong>
               </div>
@@ -541,7 +537,6 @@ async function toggleCardPayment() {
       profile
         ? {
             telegram_id: profile.telegram_id ?? null,
-            monthly_limit_minor: profile.monthly_limit_minor,
             max_order_minor: profile.max_order_minor,
           }
         : null,

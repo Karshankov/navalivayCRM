@@ -5,7 +5,7 @@
  * отблеском, чернила #081b4b, кнопка на фирменном градиенте. Ставится по
  * центру страницы, пока допуск не открыт.
  */
-import { ref, watch } from 'vue'
+import { ref, watch, onBeforeUnmount } from 'vue'
 import { LockClosedIcon } from '@heroicons/vue/24/outline'
 
 const props = withDefaults(defineProps<{
@@ -33,6 +33,13 @@ const emit = defineEmits<{
 
 const password = ref('')
 
+// Автовход: после паузы в вводе проверяем ключ сами — Enter нажимать не нужно.
+// Короткие обрывки ввода не отправляем; при неверном ключе пользователь
+// продолжает печатать и проверка повторится сама.
+let autoSubmitTimer: ReturnType<typeof setTimeout> | null = null
+const AUTO_SUBMIT_DELAY_MS = 700
+const AUTO_SUBMIT_MIN_LENGTH = 4
+
 watch(() => props.verifying, (checking) => {
   // После неудачной проверки возвращаем фокус в поле и выделяем ввод.
   if (!checking && password.value) {
@@ -40,7 +47,25 @@ watch(() => props.verifying, (checking) => {
   }
 })
 
+watch(password, (value) => {
+  if (autoSubmitTimer) clearTimeout(autoSubmitTimer)
+  const key = value.trim()
+  if (!key || key.length < AUTO_SUBMIT_MIN_LENGTH || props.verifying) return
+  autoSubmitTimer = setTimeout(() => {
+    autoSubmitTimer = null
+    submit()
+  }, AUTO_SUBMIT_DELAY_MS)
+})
+
+onBeforeUnmount(() => {
+  if (autoSubmitTimer) clearTimeout(autoSubmitTimer)
+})
+
 function submit() {
+  if (autoSubmitTimer) {
+    clearTimeout(autoSubmitTimer)
+    autoSubmitTimer = null
+  }
   if (!password.value.trim() || props.verifying) return
   emit('submit', password.value.trim())
 }

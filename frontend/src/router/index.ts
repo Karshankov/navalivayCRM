@@ -87,6 +87,18 @@ const router = createRouter({
       component: () => import("../views/ProfileView.vue"),
     },
     {
+      // Страница оплаты картой удалена: правила оплаты картой открываются
+      // из корзины при оформлении заказа. Старый путь /profile/card
+      // перенаправляем на правила, чтобы не ломать сохранённые ссылки.
+      path: "/profile/card",
+      redirect: "/profile/card/rules",
+    },
+    {
+      path: "/profile/card/rules",
+      name: "card-payment-rules",
+      component: () => import("../views/CardRulesView.vue"),
+    },
+    {
       path: "/profile/orders",
       name: "order-history",
       component: () => import("../views/OrderHistoryView.vue"),

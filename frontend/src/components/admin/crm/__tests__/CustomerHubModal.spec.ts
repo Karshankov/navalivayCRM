@@ -247,8 +247,8 @@ describe('CustomerHubModal: card payment widget', () => {
     const w = await setup()
     const card = await findCardWidget(w)
     expect(card.get('[data-test="customer-hub-card-status"]').text()).toBe('Разрешена')
-    expect(card.get('.crm-hub-card-details').text()).toContain('250,00 BYN')
     expect(card.get('.crm-hub-card-details').text()).toContain('45,00 BYN')
+    expect(card.get('.crm-hub-card-details').text()).not.toContain('250,00 BYN')
     expect(card.get('.crm-hub-card-details').text()).toContain('Стандарт')
     expect(card.get('[data-test="customer-hub-card-cooldown"]').text()).toContain('осталось 3 дн.')
     expect(card.get('[data-test="customer-hub-card-toggle"]').text()).toBe('Запретить оплату картой')
@@ -277,7 +277,7 @@ describe('CustomerHubModal: card payment widget', () => {
     await card.get('[data-test="customer-hub-card-toggle"]').trigger('click')
     await flushPromises()
     expect(crm.setCustomerCardPaymentEnabled).toHaveBeenCalledWith('alice', '7011', false, {
-      telegram_id: '7011', monthly_limit_minor: 25000, max_order_minor: 4500,
+      telegram_id: '7011', max_order_minor: 4500,
     })
     expect(card.get('[data-test="customer-hub-card-status"]').text()).toBe('Запрещена')
     expect(w.emitted('notify')?.at(-1)).toEqual([{ ok: true, message: 'Оплата картой запрещена для @alice' }])
@@ -293,7 +293,7 @@ describe('CustomerHubModal: card payment widget', () => {
     await card.get('[data-test="customer-hub-card-toggle"]').trigger('click')
     await flushPromises()
     expect(crm.setCustomerCardPaymentEnabled).toHaveBeenCalledWith('alice', '7011', false, {
-      telegram_id: '9999', monthly_limit_minor: 25000, max_order_minor: 4500,
+      telegram_id: '9999', max_order_minor: 4500,
     })
   })
 
@@ -308,7 +308,7 @@ describe('CustomerHubModal: card payment widget', () => {
     await card.get('[data-test="customer-hub-card-toggle"]').trigger('click')
     await flushPromises()
     expect(crm.setCustomerCardPaymentEnabled).toHaveBeenCalledWith('alice', '7011', true, {
-      telegram_id: null, monthly_limit_minor: 25000, max_order_minor: 4500,
+      telegram_id: null, max_order_minor: 4500,
     })
     expect(card.get('[data-test="customer-hub-card-status"]').text()).toBe('Разрешена')
   })

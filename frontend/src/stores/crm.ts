@@ -776,8 +776,9 @@ export interface CardPaymentAdminSnapshot {
     id: string;
     title: string;
     limit_minor: number;
-    monthly_limit_minor: number | null;
+    monthly_limit_minor?: number | null;
     per_order_limit_minor: number | null;
+    cooldown_days?: number | null;
     transition_cost_text: string | null;
     position: number;
     active: number;
@@ -3904,7 +3905,6 @@ export const useCrmStore = defineStore("crm", () => {
     enabled: boolean,
     cardAccount: {
       telegram_id: string | null;
-      monthly_limit_minor: number | null;
       max_order_minor: number | null;
     } | null,
   ) {
@@ -3926,18 +3926,15 @@ export const useCrmStore = defineStore("crm", () => {
       );
       return;
     }
-    // POST создаёт аккаунт; лимиты передаём, только если переносим
-    // их из ожидающего привязки профиля (иначе сервер ставит дефолты).
+    // POST создаёт аккаунт; лимит заказа передаём, только если переносим
+    // его из ожидающего привязки профиля (иначе сервер ставит дефолты).
+    // Персонального месячного лимита больше нет.
     await fetchAPI(`${API_BASE}/card-payments/accounts`, {
       method: "POST",
       body: JSON.stringify({
         telegram_id: telegramId ?? undefined,
         telegram_username: normalized || undefined,
         enabled,
-        monthly_limit:
-          cardAccount?.monthly_limit_minor != null
-            ? cardAccount.monthly_limit_minor / 100
-            : undefined,
         max_order:
           cardAccount?.max_order_minor != null
             ? cardAccount.max_order_minor / 100
@@ -4397,6 +4394,28 @@ export const useCrmStore = defineStore("crm", () => {
     return order;
   }
 
+  // Изменение способа оплаты (карта ↔ наличные) до выдачи заказа.
+  // Сервер проверяет карточные лимиты при переводе на карту и снимает
+  // резерв при переводе на наличные. После смены обновляем карточный
+  // снапшот в фоне, чтобы окно «Оплата картой и лимиты» и счётчик
+  // тулбара сразу видели новую резерва.
+  async function changeOrderPaymentMethod(
+    id: string,
+    data: { payment_type: "cash" | "card" },
+  ) {
+    const order = await fetchAPI<Order>(
+      `${API_BASE}/orders/${id}/payment-method`,
+      { method: "PATCH", body: JSON.stringify(data) },
+    );
+
+    upsertOrderInList(order);
+    if (currentOrder.value?.id === id) {
+      currentOrder.value = order;
+    }
+    void fetchCardPaymentAdmin({ background: true });
+    return order;
+  }
+
   // Procurements
   const procurements = ref<Procurement[]>([]);
   const currentProcurement = ref<Procurement | null>(null);
@@ -4851,9 +4870,8 @@ export const useCrmStore = defineStore("crm", () => {
     data: {
       id?: string;
       title: string;
-      limit: number;
-      monthly_limit?: number;
-      per_order_limit?: number;
+      per_order_limit: number;
+      cooldown_days?: number | null;
       transition_cost_text?: string;
       position?: number;
       active?: boolean;
@@ -5966,6 +5984,7 @@ export const useCrmStore = defineStore("crm", () => {
 
     // Payments management
     deleteOrderPayment,
+    changeOrderPaymentMethod,
     updateProcurement,
     deleteProcurement,
     removeProcurementPayment,

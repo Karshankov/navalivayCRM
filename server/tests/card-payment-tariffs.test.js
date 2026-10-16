@@ -63,9 +63,9 @@ function ensureAccount(telegramId, username) {
 
 // --- Подготовка: тарифы с двумя лимитами ---
 db.prepare(`
-  INSERT INTO card_payment_tariffs (id, title, limit_minor, monthly_limit_minor, per_order_limit_minor, transition_cost_text, position, active)
-  VALUES ('tariff_test', 'Тест-тариф', 35000, 35000, 6000, '50 BYN единоразово', 10, 1)
-  ON CONFLICT(id) DO UPDATE SET monthly_limit_minor = 35000, per_order_limit_minor = 6000
+  INSERT INTO card_payment_tariffs (id, title, limit_minor, monthly_limit_minor, per_order_limit_minor, cooldown_days, transition_cost_text, position, active)
+  VALUES ('tariff_test', 'Тест-тариф', 35000, 35000, 6000, 12, '50 BYN единоразово', 10, 1)
+  ON CONFLICT(id) DO UPDATE SET monthly_limit_minor = 35000, per_order_limit_minor = 6000, cooldown_days = 12
 `).run();
 
 console.log("card tariffs: admin snapshot includes both tariff limits and account tariff");
@@ -79,18 +79,20 @@ console.log("card tariffs: admin snapshot includes both tariff limits and accoun
   assert.equal(tariff.per_order_limit_minor, 6000);
 }
 
-console.log("card tariffs: apply tariff updates both account limits");
+console.log("card tariffs: apply tariff updates max order and cooldown, not monthly");
 {
   applyCardTariffToAccount("9001", "tariff_test");
   const account = db
     .prepare("SELECT * FROM card_payment_accounts WHERE telegram_id = '9001'")
     .get();
-  assert.equal(account.monthly_limit_minor, 35000);
+  // Персонального месячного лимита больше нет: столбец не трогаем.
+  assert.equal(account.monthly_limit_minor, 25000);
   assert.equal(account.max_order_minor, 6000);
+  assert.equal(account.cooldown_days, 12);
   assert.equal(account.tariff_id, "tariff_test");
 }
 
-console.log("card tariffs: apply null tariff resets to standard limits");
+console.log("card tariffs: apply null tariff resets max order, keeps cooldown");
 {
   applyCardTariffToAccount("9001", null);
   const account = db
@@ -98,6 +100,7 @@ console.log("card tariffs: apply null tariff resets to standard limits");
     .get();
   assert.equal(account.monthly_limit_minor, 25000);
   assert.equal(account.max_order_minor, 4500);
+  assert.equal(account.cooldown_days, 12, "pause must survive tariff reset");
   assert.equal(account.tariff_id, null);
 }
 
@@ -123,10 +126,11 @@ console.log("card tariffs: PUT account tariff route applies via API");
   assert.equal(account.tariff_monthly_limit_minor, 35000);
   assert.equal(account.tariff_per_order_limit_minor, 6000);
   const row = db
-    .prepare("SELECT monthly_limit_minor, max_order_minor FROM card_payment_accounts WHERE telegram_id = '9001'")
+    .prepare("SELECT monthly_limit_minor, max_order_minor, cooldown_days FROM card_payment_accounts WHERE telegram_id = '9001'")
     .get();
-  assert.equal(row.monthly_limit_minor, 35000);
+  assert.equal(row.monthly_limit_minor, 25000);
   assert.equal(row.max_order_minor, 6000);
+  assert.equal(row.cooldown_days, 12);
 }
 
 console.log("card tariffs: approve request applies tariff limits automatically");
@@ -147,8 +151,9 @@ console.log("card tariffs: approve request applies tariff limits automatically")
   const account = db
     .prepare("SELECT * FROM card_payment_accounts WHERE telegram_id = '9002'")
     .get();
-  assert.equal(account.monthly_limit_minor, 35000);
+  assert.equal(account.monthly_limit_minor, 25000);
   assert.equal(account.max_order_minor, 6000);
+  assert.equal(account.cooldown_days, 12);
   assert.equal(account.tariff_id, "tariff_test");
   assert.equal(account.enabled, 1);
 }
@@ -188,7 +193,7 @@ console.log("card tariffs: approve route via API");
   assert.equal(request.tariff_transition_cost_text, "50 BYN единоразово");
   const account = payload.accounts.find((a) => a.telegram_id === "9003");
   assert.equal(account.tariff_id, "tariff_test");
-  assert.equal(account.monthly_limit_minor, 35000);
+  assert.equal(account.max_order_minor, 6000);
 }
 
 console.log("card tariffs: force card payment records operation and cooldown");
@@ -247,20 +252,51 @@ console.log("card tariffs: force card payment requires telegram id");
   );
 }
 
-console.log("card tariffs: tariff create route persists both limits");
+console.log("card tariffs: tariff create route persists per-order limit and cooldown");
 {
   const { status, payload } = await apiCall("POST", "/api/admin/crm/card-payments/tariffs", {
     title: "Тариф API",
-    limit: 10000,
-    monthly_limit: 10000,
     per_order_limit: 55,
+    cooldown_days: 8,
     transition_cost_text: "20 BYN",
     position: 99,
   });
   assert.equal(status, 201);
   const created = payload.tariffs.find((t) => t.title === "Тариф API");
-  assert.equal(created.monthly_limit_minor, 1000000);
   assert.equal(created.per_order_limit_minor, 5500);
+  assert.equal(created.cooldown_days, 8);
+  // Легаси-столбцы зеркалят лимит заказа для старых клиентов.
+  assert.equal(created.monthly_limit_minor, 5500);
+  assert.equal(created.limit_minor, 5500);
+
+  // PATCH: null cooldown_days сбрасывает паузу тарифа
+  const patch = await apiCall(
+    "PATCH",
+    `/api/admin/crm/card-payments/tariffs/${created.id}`,
+    { cooldown_days: null },
+  );
+  assert.equal(patch.status, 200);
+  const patched = patch.payload.tariffs.find((t) => t.id === created.id);
+  assert.equal(patched.cooldown_days, null);
+  assert.equal(patched.per_order_limit_minor, 5500);
+
+  // PATCH без cooldown_days сохраняет текущее значение
+  await apiCall("PATCH", `/api/admin/crm/card-payments/tariffs/${created.id}`, { cooldown_days: 10 });
+  const patch2 = await apiCall(
+    "PATCH",
+    `/api/admin/crm/card-payments/tariffs/${created.id}`,
+    { title: "Тариф API" },
+  );
+  const patched2 = patch2.payload.tariffs.find((t) => t.id === created.id);
+  assert.equal(patched2.cooldown_days, 10);
+
+  // Некорректная пауза отклоняется
+  const invalid = await apiCall(
+    "PATCH",
+    `/api/admin/crm/card-payments/tariffs/${created.id}`,
+    { cooldown_days: 400 },
+  );
+  assert.equal(invalid.status, 400);
 }
 
 // --- Лимиты: месяцы, уменьшение дня, поиск профиля ---

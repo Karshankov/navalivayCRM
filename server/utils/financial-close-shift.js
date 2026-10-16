@@ -11,6 +11,10 @@ export function captureFinancialCloseShift(database, actor, businessDate) {
     SELECT * FROM staff_shifts WHERE status = 'active' AND business_date = ?
   `).get(businessDate);
   if (!shift || (shift.employee_id !== actor.employeeId && actor.role !== 'manager')) return null;
+  // Ночная смена (окончание позже 21:15 своего бизнес-дня) продолжает работать
+  // после закрытия финансового дня и не захватывается (Минск = UTC+3, без DST).
+  const dayWindowEnd = `${businessDate}T18:15:00.000Z`;
+  if (String(shift.planned_end_at) > dayWindowEnd) return null;
   return {
     id: shift.id, employee_id: shift.employee_id, business_date: shift.business_date,
     started_at: shift.started_at, version: shift.version,

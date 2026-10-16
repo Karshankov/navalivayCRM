@@ -47,6 +47,21 @@
             <span v-if="deletingPayment">Удаляем…</span>
           </button>
           <button
+            v-if="canChangePaymentMethod"
+            @click="openPaymentMethodModal"
+            class="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700 transition hover:bg-blue-100"
+            :disabled="isSaving || changingPaymentMethod"
+            data-test="change-payment-method"
+          >
+            <svg v-if="changingPaymentMethod" class="h-4 w-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            <svg v-else class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h4M6 6h12a2 2 0 012 2v8a2 2 0 01-2 2H6a2 2 0 01-2-2V8a2 2 0 012-2z" />
+            </svg>
+            <span>{{ changingPaymentMethod ? 'Меняем…' : 'Изменить способ оплаты' }}</span>
+          </button>
+          <button
             v-if="canReactivate"
             @click="reactivateOrder()"
             class="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100"
@@ -504,12 +519,96 @@
             <span :class="hasPayment ? 'text-emerald-700' : 'text-gray-600'">Статус оплаты: {{ hasPayment ? 'Оплачен' : 'Не оплачен' }}</span>
             <span v-if="hasPayment">{{ paymentDescription }}</span>
             <span v-if="currentOrder.completed_at">Выдан: {{ formatFullDate(currentOrder.completed_at) }}</span>
+            <span
+              v-if="currentOrder.payment_type"
+              data-test="order-payment-type"
+              :class="currentOrder.payment_type === 'card' ? 'text-blue-700' : 'text-gray-600'"
+            >Способ: {{ currentOrder.payment_type === 'card' ? 'Картой' : 'Наличными' }}</span>
           </div>
         </section>
 
-
       </div>
     </div>
+
+    <AdminModal
+      :isOpen="paymentMethodModalOpen"
+      :title="paymentMethodModalTitle"
+      description="Заказ можно оплатить картой или наличными целиком"
+      size="md"
+      :showActions="false"
+      @close="closePaymentMethodModal"
+      @cancel="closePaymentMethodModal"
+    >
+      <div class="grid gap-4">
+        <div
+          v-if="paymentMethodError"
+          class="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800"
+          data-test="payment-method-error"
+          role="alert"
+        >
+          {{ paymentMethodError }}
+        </div>
+
+        <div class="text-sm text-gray-600">
+          Текущий способ: <strong class="text-gray-800">{{ paymentMethodCurrentLabel }}</strong>
+        </div>
+
+        <div>
+          <label class="text-sm font-medium text-gray-700">Новый способ оплаты</label>
+          <div class="mt-2 grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              data-test="payment-method-option-cash"
+              class="rounded-lg border px-3 py-2 text-sm font-semibold transition"
+              :class="nextPaymentMethod === 'cash' ? 'border-emerald-500 bg-emerald-50 text-emerald-800' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'"
+              @click="nextPaymentMethod = 'cash'"
+            >
+              Наличными
+            </button>
+            <button
+              type="button"
+              data-test="payment-method-option-card"
+              class="rounded-lg border px-3 py-2 text-sm font-semibold transition"
+              :class="nextPaymentMethod === 'card' ? 'border-blue-500 bg-blue-50 text-blue-800' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'"
+              @click="nextPaymentMethod = 'card'"
+            >
+              Картой
+            </button>
+          </div>
+        </div>
+
+        <p class="text-xs text-gray-500">{{ paymentMethodSwitchHint }}</p>
+      </div>
+
+      <footer class="mt-6 flex justify-end gap-3">
+        <button
+          type="button"
+          class="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 transition hover:bg-gray-100"
+          :disabled="changingPaymentMethod"
+          @click="closePaymentMethodModal"
+        >
+          Отмена
+        </button>
+        <button
+          type="button"
+          data-test="payment-method-submit"
+          class="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+          :disabled="changingPaymentMethod || (currentOrder?.payment_type || null) === nextPaymentMethod"
+          @click="submitPaymentMethodChange"
+        >
+          <svg
+            v-if="changingPaymentMethod"
+            class="h-4 w-4 animate-spin"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+          {{ changingPaymentMethod ? 'Меняем…' : 'Изменить на: ' + paymentMethodChangeLabel }}
+        </button>
+      </footer>
+    </AdminModal>
   </div>
 </template>
 
@@ -519,6 +618,7 @@ import { storeToRefs } from 'pinia'
 import { useCrmStore, type CrmProductSummary, type Order, type AutoNotificationResult, type OrderAuditEvent } from '@/stores/crm'
 import ManagerActionSummary from '@/components/crm/ManagerActionSummary.vue'
 import OrderAuditTimeline from '@/components/crm/OrderAuditTimeline.vue'
+import AdminModal from '@/components/AdminModal.vue'
 import StaffShiftBar from '@/components/admin/staff/StaffShiftBar.vue'
 import { formatBynCurrency as formatCurrency } from '@/utils/currency'
 import { calculateExpectedProfit } from '@/utils/orderProfit'
@@ -821,6 +921,22 @@ const canSave = computed(() => {
 
 const canReactivate = computed(() => currentOrder.value?.status === 'cancelled')
 const canRemovePayment = computed(() => hasPayment.value && !isSaving.value)
+
+// Изменение способа оплаты доступно только до выдачи/отмены и пока
+// заказ не оплачен: после оплаты сначала снимается оплата.
+const canChangePaymentMethod = computed(() => {
+  const order = currentOrder.value
+  if (!order || isSaving.value) return false
+  if (hasPayment.value) return false
+  if (['delivered', 'cancelled'].includes(order.status)) return false
+  return true
+})
+
+const paymentMethodModalOpen = ref(false)
+const changingPaymentMethod = ref(false)
+const paymentMethodError = ref('')
+// «card» → наличные, «cash» → карта. Начинаем с противоположного текущему.
+const nextPaymentMethod = ref<'cash' | 'card'>('cash')
 
 let searchTimer: ReturnType<typeof setTimeout> | null = null
 let successTimer: ReturnType<typeof setTimeout> | null = null
@@ -1224,6 +1340,83 @@ async function removePayment(confirmed = false) {
     return false
   } finally {
     deletingPayment.value = false
+  }
+}
+
+function openPaymentMethodModal() {
+  if (!currentOrder.value || !canChangePaymentMethod.value) return
+  // Начинаем с противоположного текущему способу: менеджер открыл окно,
+  // чтобы переключить.
+  nextPaymentMethod.value = currentOrder.value.payment_type === 'card' ? 'cash' : 'card'
+  paymentMethodError.value = ''
+  paymentMethodModalOpen.value = true
+}
+
+function closePaymentMethodModal() {
+  if (changingPaymentMethod.value) return
+  paymentMethodModalOpen.value = false
+  paymentMethodError.value = ''
+}
+
+const paymentMethodModalTitle = computed(() => {
+  if (!currentOrder.value) return 'Изменить способ оплаты'
+  return `Способ оплаты заказа #${currentOrder.value.order_number}`
+})
+
+const paymentMethodSwitchHint = computed(() => {
+  if (!currentOrder.value) return ''
+  const amount = formatCurrency(currentOrder.value.final_amount)
+  if (nextPaymentMethod.value === 'card') {
+    return `Заказ на ${amount} целиком резервируется картой. Карточный лимит проверит сервер: если карта не разрешена или лимиты исчерпаны — покажем причину.`
+  }
+  return `Заказ на ${amount} целиком переводится на наличные. Карточный резерв снимется, лимиты освободятся.`
+})
+
+const paymentMethodChangeLabel = computed(() =>
+  nextPaymentMethod.value === 'card' ? 'Оплата картой' : 'Оплата наличными',
+)
+
+const paymentMethodCurrentLabel = computed(() => {
+  const type = currentOrder.value?.payment_type
+  if (type === 'card') return 'Картой'
+  if (type === 'cash') return 'Наличными'
+  return 'Не выбран'
+})
+
+async function submitPaymentMethodChange() {
+  if (!currentOrder.value || changingPaymentMethod.value) return
+  changingPaymentMethod.value = true
+  paymentMethodError.value = ''
+  try {
+    const updated = await crmStore.changeOrderPaymentMethod(
+      currentOrder.value.id,
+      { payment_type: nextPaymentMethod.value },
+    )
+    currentOrder.value = updated
+    initializeForm(updated)
+    paymentMethodModalOpen.value = false
+    saveSuccess.value = nextPaymentMethod.value === 'card'
+      ? 'Способ оплаты изменён: картой. Резерв карты поставлен.'
+      : 'Способ оплаты изменён: наличными. Карточный резерв снят.'
+    if (successTimer) clearTimeout(successTimer)
+    successTimer = setTimeout(() => {
+      saveSuccess.value = ''
+    }, 5000)
+    await loadHistory()
+  } catch (error: any) {
+    if (await handleShiftRequired(
+      error,
+      `Изменить способ оплаты заказа #${currentOrder.value?.order_number || ''}`,
+      () => submitPaymentMethodChange(),
+    )) return
+    console.error('[CRM] change payment method error', error)
+    // Сервер кладёт причину отказа в details.message (например,
+    // «У клиента пауза на оплату картой…»), fetchAPI поднимает её в message.
+    paymentMethodError.value = formatErrorMessage(
+      String(error?.message || 'Не удалось изменить способ оплаты'),
+    )
+  } finally {
+    changingPaymentMethod.value = false
   }
 }
 

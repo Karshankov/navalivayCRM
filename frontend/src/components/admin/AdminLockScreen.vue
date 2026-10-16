@@ -64,7 +64,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch, onBeforeUnmount } from 'vue'
 import { LockClosedIcon } from '@heroicons/vue/24/solid'
 import { useAdminStore } from '@/stores/admin'
 
@@ -86,7 +86,29 @@ onMounted(() => {
   }, 100)
 })
 
+// Автовход: после паузы в вводе проверяем ключ сами — Enter нажимать не нужно.
+// После неверного ключа поле очищается, поэтому цикла повторных проверок нет.
+let autoSubmitTimer: ReturnType<typeof setTimeout> | null = null
+
+watch(password, (value) => {
+  if (autoSubmitTimer) clearTimeout(autoSubmitTimer)
+  const key = value.trim()
+  if (!key || key.length < 4 || isVerifying.value) return
+  autoSubmitTimer = setTimeout(() => {
+    autoSubmitTimer = null
+    handleUnlock()
+  }, 700)
+})
+
+onBeforeUnmount(() => {
+  if (autoSubmitTimer) clearTimeout(autoSubmitTimer)
+})
+
 async function handleUnlock() {
+  if (autoSubmitTimer) {
+    clearTimeout(autoSubmitTimer)
+    autoSubmitTimer = null
+  }
   if (!password.value.trim() || isVerifying.value) return
 
   errorMessage.value = ''

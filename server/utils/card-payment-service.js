@@ -131,7 +131,7 @@ export function getCardAdminSnapshot(referenceDate = new Date()) {
   `).all();
   const tariffs = db.prepare(`
     SELECT id, title, limit_minor, monthly_limit_minor, per_order_limit_minor,
-      transition_cost_text, position, active
+      cooldown_days, transition_cost_text, position, active
     FROM card_payment_tariffs ORDER BY position, id
   `).all();
   const requests = db.prepare(`
@@ -398,22 +398,12 @@ export function getCardCustomerSnapshot(telegramId, telegramUsername = "", refer
     ? new Date(account.cooldown_started_at).getTime() + accountCooldownMs(account)
     : 0;
   const isCoolingDown = cooldownUntil > now;
-  const monthKey = cardBusinessMonthKey(referenceDate);
-  const monthlyUsedMinor = account ? Number(db.prepare(`
-    SELECT COALESCE(SUM(amount_minor), 0) AS amount
-    FROM card_payment_operations
-    WHERE customer_telegram_id = ?
-      AND operation_status IN ('reserved', 'spent')
-      AND business_date LIKE ?
-  `).get(String(telegramId), `${monthKey}-%`).amount || 0) : 0;
-  const monthlyLimitMinor = Number(account?.monthly_limit_minor || 0);
-  const personalRemainingMinor = Math.max(0, monthlyLimitMinor - monthlyUsedMinor);
+  // Персонального месячного лимита больше нет: клиенту важны только
+  // лимит одного заказа и пауза. Общие лимиты магазина остаются в limits.
   return {
     enabled: Boolean(account?.enabled),
-    monthly_limit_minor: monthlyLimitMinor,
-    monthly_used_minor: monthlyUsedMinor,
-    monthly_remaining_minor: personalRemainingMinor,
     max_order_minor: Number(account?.max_order_minor || 0),
+    cooldown_days: Number(account?.cooldown_days ?? 10),
     cooldown_until: isCoolingDown ? new Date(cooldownUntil).toISOString() : null,
     card_available: Boolean(account?.enabled) && !isCoolingDown,
     limits,
@@ -462,29 +452,13 @@ export function checkCardOrder({
     };
   }
   const limits = getCardLimitSnapshot(referenceDate);
-  const monthKey = cardBusinessMonthKey(referenceDate);
-  const monthlyUsedMinor = Number(db.prepare(`
-    SELECT COALESCE(SUM(amount_minor), 0) AS amount
-    FROM card_payment_operations
-    WHERE customer_telegram_id = ?
-      AND operation_status IN ('reserved', 'spent')
-      AND business_date LIKE ?
-  `).get(String(telegramId), `${monthKey}-%`).amount || 0);
-  const monthlyRemainingMinor = Math.max(0, Number(account.monthly_limit_minor || 0) - monthlyUsedMinor);
-  if (amountMinor > monthlyRemainingMinor && !allowSplit) {
-    return {
-      ok: false,
-      reason: "personal_monthly_limit_exceeded",
-      personalMonthlyLimitMinor: Number(account.monthly_limit_minor || 0),
-      personalMonthlyRemainingMinor: monthlyRemainingMinor,
-      ...limits,
-    };
-  }
+  // Персонального месячного лимита у клиента больше нет: решают только
+  // лимит одного заказа, пауза аккаунта и общие дневные/месячные лимиты
+  // магазина. resolveCardOrderAmount по умолчанию считает месячный
+  // остаток бесконечным (personalMonthlyRemainingMinor не передаём).
   const decision = resolveCardOrderAmount({
     orderAmountMinor: amountMinor,
     personalLimitMinor: Number(account.max_order_minor || 0),
-    personalMonthlyLimitMinor: Number(account.monthly_limit_minor || 0),
-    personalMonthlyRemainingMinor: monthlyRemainingMinor,
     dailyLimitMinor: limits.daily_limit_minor,
     spentTodayMinor: limits.spent_today_minor,
     reservedMinor: limits.reserved_minor,
@@ -614,26 +588,28 @@ export function applyCardTariffToAccount(telegramId, tariffId, referenceDate = n
     .get(id);
   if (!account) throw new Error("card_account_not_found");
 
-  let monthlyLimitMinor = 25000;
   let maxOrderMinor = 4500;
+  let cooldownDays = account.cooldown_days ?? 10;
   if (tariffId) {
     const tariff = db
       .prepare("SELECT * FROM card_payment_tariffs WHERE id = ?")
       .get(String(tariffId));
     if (!tariff) throw new Error("card_tariff_not_found");
     if (!Number(tariff.active)) throw new Error("card_tariff_inactive");
-    monthlyLimitMinor = Number(tariff.monthly_limit_minor ?? tariff.limit_minor ?? 25000);
-    maxOrderMinor = Number(tariff.per_order_limit_minor ?? 4500);
-    if (monthlyLimitMinor < 0 || maxOrderMinor <= 0) {
+    maxOrderMinor = Number(tariff.per_order_limit_minor ?? tariff.limit_minor ?? 4500);
+    if (tariff.cooldown_days !== null && tariff.cooldown_days !== undefined) {
+      cooldownDays = Number(tariff.cooldown_days);
+    }
+    if (maxOrderMinor <= 0 || cooldownDays < 0 || cooldownDays > 365) {
       throw new Error("invalid_tariff_limits");
     }
   }
 
   db.prepare(`
     UPDATE card_payment_accounts
-    SET monthly_limit_minor = ?, max_order_minor = ?, tariff_id = ?, updated_at = ?
+    SET max_order_minor = ?, cooldown_days = ?, tariff_id = ?, updated_at = ?
     WHERE telegram_id = ?
-  `).run(monthlyLimitMinor, maxOrderMinor, tariffId ? String(tariffId) : null, referenceDate.toISOString(), id);
+  `).run(maxOrderMinor, cooldownDays, tariffId ? String(tariffId) : null, referenceDate.toISOString(), id);
   return db
     .prepare("SELECT * FROM card_payment_accounts WHERE telegram_id = ?")
     .get(id);
@@ -668,25 +644,27 @@ export function approveCardLimitRequest(requestId, actorUsername = "admin", refe
       `).run(telegramId, request.telegram_username || null);
     }
 
-    let monthlyLimitMinor = Number(request.requested_limit_minor || 25000);
-    let maxOrderMinor = 4500;
+    let maxOrderMinor = Number(request.requested_limit_minor || 4500);
+    let cooldownDays = account?.cooldown_days ?? 10;
     let tariffId = null;
     if (request.tariff_id) {
       const tariff = db
         .prepare("SELECT * FROM card_payment_tariffs WHERE id = ?")
         .get(String(request.tariff_id));
       if (tariff) {
-        monthlyLimitMinor = Number(tariff.monthly_limit_minor ?? tariff.limit_minor ?? monthlyLimitMinor);
-        maxOrderMinor = Number(tariff.per_order_limit_minor ?? 4500);
+        maxOrderMinor = Number(tariff.per_order_limit_minor ?? tariff.limit_minor ?? maxOrderMinor);
+        if (tariff.cooldown_days !== null && tariff.cooldown_days !== undefined) {
+          cooldownDays = Number(tariff.cooldown_days);
+        }
         tariffId = tariff.id;
       }
     }
 
     db.prepare(`
       UPDATE card_payment_accounts
-      SET monthly_limit_minor = ?, max_order_minor = ?, tariff_id = ?, enabled = 1, updated_at = ?
+      SET max_order_minor = ?, cooldown_days = ?, tariff_id = ?, enabled = 1, updated_at = ?
       WHERE telegram_id = ?
-    `).run(monthlyLimitMinor, maxOrderMinor, tariffId, referenceDate.toISOString(), telegramId);
+    `).run(maxOrderMinor, cooldownDays, tariffId, referenceDate.toISOString(), telegramId);
 
     db.prepare(`
       UPDATE card_payment_limit_requests

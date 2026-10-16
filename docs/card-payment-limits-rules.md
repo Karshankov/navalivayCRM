@@ -37,18 +37,22 @@ not be treated as cash-register income.
 - A manually entered Telegram username is a pending identity. Once the person
   is verified, bind the permission and settings to their Telegram ID; changing
   their username must not remove or transfer the permission.
-- Each account has a configurable maximum card amount for one order and a
-  10-day cooldown. Using any positive card amount consumes the account's
-  allowance for the full cooldown; the pause starts when the order is issued,
-  not when it is created.
-- A normal card order must fit within the account's available personal limit.
-  If it does not, return the actual personal limit and order amount in the
-  message.
+- **There is no per-account monthly limit.** An account has a configurable
+  maximum card amount for one order and a pause duration (default 10 days).
+  Using any positive card amount consumes the account's allowance for the full
+  cooldown; the pause starts when the order is issued, not when it is created.
+- A normal card order must fit within the account's per-order limit and must
+  not overlap the account's active pause. If it does not fit, return the actual
+  personal limit and order amount in the message. The only monthly/daily
+  constraints are the shared shop limits above.
 - If an already-created card order is edited to exceed the eligible personal
   card amount, keep the allowed amount on card and make the excess payable in
   cash. Do not increase the card reservation beyond the allowed amount.
 - Cancelling an unissued card order releases its reservation. Cancelling or
   reversing an issued card payment restores its card allowance/cooldown.
+- The legacy `monthly_limit_minor` columns on
+  `card_payment_accounts`/`card_payment_tariffs` are kept only for backward
+  compatibility and are never enforced or shown anywhere.
 
 ## Order Lifecycle and Accounting
 
@@ -70,9 +74,15 @@ not be treated as cash-register income.
 ## Requests to Increase an Account Limit
 
 - Only accounts already enabled for card payment can view and submit a request.
-- Tariffs (name, requested limit, order, active state, and informational
-  transition-cost text) are configurable in CRM. Transition-cost text is not a
-  payment or charge in the system.
+- Tariffs are configurable in CRM. A tariff sets the **per-order limit** and
+  optionally the **cooldown duration in days** (empty = keep the account's
+  current pause). Name, position, active state, and informational
+  transition-cost text are also configurable; transition-cost text is not a
+  payment or charge in the system. Example: «Стандарт» — 45 BYN per order,
+  10-day pause; «Старт» — 55 BYN per order, 8-day pause.
+- Applying a tariff (directly or by approving a request) updates the account's
+  per-order limit and, when the tariff sets it, the pause duration. It never
+  touches any monthly value.
 - A request records the account identity, username, selected tariff, current
   limit, requested limit, and timestamp. CRM users handle the request manually.
 - Available request statuses are `Новая`, `Обработана`, and `Отклонена`.

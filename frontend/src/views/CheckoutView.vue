@@ -487,77 +487,123 @@
             type="button"
             :class="{
               'card-payment-choice--active': selectedPaymentMethod === 'card',
-              'card-payment-choice--disabled': isCardPaused || cardOrderExceedsDailyMinor,
             }"
-            :disabled="isCardPaused || cardOrderExceedsDailyMinor"
-            :title="isCardPaused ? 'Оплата картой на паузе'
-              : cardOrderExceedsDailyMinor ? 'Заказ превышает дневной лимит оплаты картой' : undefined"
             @click="selectCardPayment"
           >Картой</button>
         </div>
-        <div
-          v-if="cardOrderExceedsDailyMinor"
-          class="card-status-card card-status-card--unavailable"
-          role="alert"
-        >
-          <span class="card-status-dot" aria-hidden="true" />
-          <div class="card-status-info">
-            <strong>Заказ больше дневного лимита по карте</strong>
-            <span>
-              Остаток на сегодня — {{ formatCardMoney(remainingDailyCardLimitMinor) }} BYN,
-              заказ превышает его на {{ formatCardMoney(cardOrderExceededByMinor) }} BYN.
-              Оплатите заказ наличными или уменьшите корзину.
+
+        <!-- Виджет оплаты картой: лимит, пауза со шкалой, действия.
+             Показывается при выборе «Картой» — даже если карта на паузе
+             или лимит исчерпан: клиент может всё посмотреть, но оформить
+             заказ картой в этом состоянии нельзя. -->
+        <div v-if="selectedPaymentMethod === 'card'" class="card-widget" role="status">
+          <div class="card-widget__head">
+            <span class="card-widget__badge" aria-hidden="true">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                <rect x="2.5" y="5" width="19" height="14" rx="3" stroke="currentColor" stroke-width="1.8" />
+                <path d="M2.5 9.5H21.5" stroke="currentColor" stroke-width="1.8" />
+                <path d="M6 15H10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+              </svg>
             </span>
-          </div>
-        </div>
-        <template v-if="selectedPaymentMethod === 'card'">
-          <div
-            v-if="cardCooldownDaysLeft !== null"
-            class="card-status-card card-status-card--waiting"
-            role="status"
-          >
-            <span class="card-status-dot" aria-hidden="true" />
-            <div class="card-status-info">
-              <strong>Карта доступна через {{ cardCooldownDaysLeft }}</strong>
-              <span>Пауза после прошлой покупки</span>
+            <div class="card-widget__limit">
+              <strong class="card-widget__limit-value">
+                Лимит на заказ {{ formatCardMoney(cardPersonalLimitMinor) }}р
+              </strong>
+              <span class="card-widget__limit-note">картой можно оплатить заказ целиком в пределах лимита</span>
             </div>
           </div>
+
+          <!-- Пауза: сколько дней осталось + шкала прогресса -->
+          <div v-if="isCardPaused" class="card-widget__state card-widget__state--pause" role="alert">
+            <div class="card-widget__state-row">
+              <span class="card-widget__state-dot" aria-hidden="true" />
+              <strong>Оплата картой на паузе</strong>
+            </div>
+            <p class="card-widget__state-copy">
+              Снимется через {{ cardCooldownDaysLeft }} — до
+              {{ formatCardPauseDate(cardPaymentStatus?.cooldown_until) }}.
+            </p>
+            <div
+              class="card-widget__bar"
+              role="progressbar"
+              :aria-valuenow="cardCooldownProgressPercent"
+              :aria-valuemin="0"
+              :aria-valuemax="100"
+              aria-label="Прогресс паузы оплаты картой"
+            >
+              <div
+                class="card-widget__bar-fill"
+                :style="{ width: `${cardCooldownProgressPercent}%` }"
+              />
+            </div>
+          </div>
+
+          <!-- Корзина больше личного лимита -->
           <div
-            v-else-if="isSharedCardLimitExhausted"
-            class="card-status-card card-status-card--unavailable"
+            v-else-if="cardOrderExceedsPersonalLimitMinor > 0"
+            class="card-widget__state card-widget__state--blocked"
             role="alert"
           >
-            <span class="card-status-dot" aria-hidden="true" />
-            <div class="card-status-info">
-              <strong>Общий лимит на день по карте исчерпан</strong>
-              <span>Заказ можно оплатить наличными</span>
+            <div class="card-widget__state-row">
+              <span class="card-widget__state-dot" aria-hidden="true" />
+              <strong>Заказ больше лимита на {{ formatCardMoney(cardOrderExceedsPersonalLimitMinor) }}р</strong>
             </div>
+            <p class="card-widget__state-copy">
+              Уберите товары на {{ formatCardMoney(cardOrderExceedsPersonalLimitMinor) }}р,
+              оплатите наличными или увеличьте лимиты.
+            </p>
           </div>
+
+          <!-- Лимит исчерпан: дневной остаток магазина кончился или заказ
+               больше остатка — картой сейчас оформить нельзя -->
           <div
-            v-else-if="cardMonthlyRemainingMinor <= 0"
-            class="card-status-card card-status-card--unavailable"
-            role="status"
+            v-else-if="isCardDailyLimitReached || cardOrderExceedsDailyMinor"
+            class="card-widget__state card-widget__state--blocked"
+            role="alert"
           >
-            <span class="card-status-dot" aria-hidden="true" />
-            <div class="card-status-info">
-              <strong>Месячный лимит по карте исчерпан</strong>
-              <span>Обновится в следующем месяце</span>
+            <div class="card-widget__state-row">
+              <span class="card-widget__state-dot" aria-hidden="true" />
+              <strong>Лимит по карте исчерпан</strong>
+            </div>
+            <p class="card-widget__state-copy">
+              Оформите заказ наличными или уменьшите корзину.
+            </p>
+          </div>
+
+          <!-- Всё в порядке -->
+          <div v-else class="card-widget__state card-widget__state--ok">
+            <div class="card-widget__state-row">
+              <span class="card-widget__state-dot card-widget__state-dot--ok" aria-hidden="true" />
+              <strong>Оплата картой разрешена</strong>
             </div>
           </div>
-          <div v-else-if="cardPaymentStatus?.enabled" class="card-status-card" role="status">
-            <span class="card-status-dot card-status-dot--ok" aria-hidden="true" />
-            <div class="card-status-info">
-              <strong>Оплата картой доступна</strong>
-              <span>{{ formatCardMoney(cardMonthlyRemainingMinor) }} BYN осталось в этом месяце</span>
-            </div>
-            <div class="card-status-limit" :data-level="cardLimitLevel">
-              <div class="card-status-limit-bar">
-                <span :style="{ width: cardMonthlyProgressPercent + '%' }" :data-level="cardLimitLevel" />
-              </div>
-              <em>лимит {{ formatCardMoney(cardMonthlyLimitMinor) }} BYN</em>
-            </div>
+
+          <div class="card-widget__actions">
+            <button
+              type="button"
+              class="card-widget__link"
+              @click="openCardRules"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8" />
+                <path d="M12 16v-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+                <circle cx="12" cy="8.2" r="1.1" fill="currentColor" />
+              </svg>
+              Правила
+            </button>
+            <button
+              type="button"
+              class="card-widget__link card-widget__link--accent"
+              @click="openCardTariffs"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+              </svg>
+              Увеличить лимиты
+            </button>
           </div>
-        </template>
+        </div>
+
         <p v-if="submitError" class="card-payment-warning" role="alert">
           {{ submitError }}
         </p>
@@ -565,64 +611,67 @@
       <template #footer>
         <div class="card-payment-modal-actions">
           <button
-            v-if="selectedPaymentMethod === 'card'"
+            v-if="selectedPaymentMethod === 'card' && isCardBlockedForOrder"
             type="button"
             class="checkout-modal-cta checkout-modal-cta--dark"
             @click="openCardTariffs"
-          >Увеличить лимит</button>
+          >Увеличить лимиты</button>
           <button
             type="button"
             class="checkout-modal-cta"
-            :disabled="isSubmitting || isCheckingCardPaymentStatus || (selectedPaymentMethod === 'card' && (isSharedCardLimitExhausted || cardOrderExceedsDailyMinor))"
+            :disabled="isSubmitting || isCheckingCardPaymentStatus || (selectedPaymentMethod === 'card' && isCardBlockedForOrder)"
             @click="submitOrder(selectedPaymentMethod)"
           >Оформить заказ</button>
         </div>
       </template>
     </CustomerModalShell>
 
-    <CustomerModalShell
-      :open="showMixedPaymentNotice"
-      title="Заказ изменён"
-      close-label="Закрыть окно"
-      @close="finishMixedPaymentNotice"
-    >
-      <div class="checkout-modal-copy">
-        <p role="status">{{ mixedPaymentNotice }}</p>
-      </div>
-      <template #footer>
-        <button
-          type="button"
-          class="checkout-modal-cta"
-          @click="finishMixedPaymentNotice"
-        >Перейти к заказу</button>
-      </template>
-    </CustomerModalShell>
+    <CardTariffSheet
+      v-model="selectedCardTariff"
+      :open="showCardTariffsModal"
+      :tariffs="cardTariffs"
+      :sending="cardRequestSending"
+      :success="cardRequestSuccess"
+      :success-text="cardRequestSuccessText"
+      :error="cardRequestError"
+      :request-blocked="Boolean(cardPaymentStatus?.request_cooldown_until)"
+      :fallback-cooldown-days="cardPaymentStatus?.cooldown_days ?? 10"
+      @close="closeCardTariffs"
+      @submit="submitCardLimitRequest"
+      @dismiss-success="closeCardTariffs"
+    />
 
     <CustomerModalShell
-      :open="showCardTariffsModal"
-      title="Увеличение лимита"
+      :open="showCardEditLimitModal"
+      title="Лимит превышен"
       close-label="Закрыть окно"
-      @close="showCardTariffsModal = false"
+      @close="closeCardEditLimitModal"
     >
       <div class="checkout-modal-copy">
-        <p>Выберите тариф и отправьте заявку. С вами свяжутся для обработки.</p>
-        <label v-for="tariff in cardTariffs" :key="tariff.id" class="card-tariff-option">
-          <input v-model="selectedCardTariff" type="radio" :value="tariff.id">
-          <span>
-            <strong>{{ tariff.title }}</strong>
-            <small>Лимит {{ (tariff.limit_minor / 100).toFixed(2) }} BYN · {{ tariff.transition_cost_text }}</small>
-          </span>
-        </label>
-        <p v-if="cardRequestSuccess" role="status">Ваша заявка принята, с вами свяжутся.</p>
-        <p v-if="cardRequestError" class="card-payment-warning" role="alert">{{ cardRequestError }}</p>
+        <div class="card-widget__state card-widget__state--blocked card-edit-limit-state" role="alert">
+          <div class="card-widget__state-row">
+            <span class="card-widget__state-dot" aria-hidden="true" />
+            <strong>{{ cardEditLimitMessage }}</strong>
+          </div>
+          <p class="card-widget__state-copy" v-if="cardEditLimitHint">
+            {{ cardEditLimitHint }}
+          </p>
+        </div>
       </div>
       <template #footer>
-        <button
-          type="button"
-          class="checkout-modal-cta"
-          :disabled="!selectedCardTariff || cardRequestSending || Boolean(cardPaymentStatus?.request_cooldown_until)"
-          @click="submitCardLimitRequest"
-        >{{ cardRequestSuccess ? 'Готово' : cardRequestSending ? 'Отправляем…' : 'Отправить заявку' }}</button>
+        <div class="card-payment-modal-actions">
+          <button
+            v-if="isEditingOrder"
+            type="button"
+            class="checkout-modal-cta checkout-modal-cta--dark"
+            @click="openCardTariffsFromEditLimit"
+          >Увеличить лимиты</button>
+          <button
+            type="button"
+            class="checkout-modal-cta"
+            @click="closeCardEditLimitModal"
+          >Понятно</button>
+        </div>
       </template>
     </CustomerModalShell>
 
@@ -708,6 +757,7 @@ import { useCustomerBlock } from "@/composables/useCustomerBlock";
 import MinDeliveryBanner from "@/components/MinDeliveryBanner.vue";
 import DeliveryConditionsBanner from "@/components/DeliveryConditionsBanner.vue";
 import CustomerModalShell from "@/components/CustomerModalShell.vue";
+import CardTariffSheet, { type CardTariffPlan } from "@/components/CardTariffSheet.vue";
 import LoyaltyBonusPopup from "@/components/LoyaltyBonusPopup.vue";
 import {
   LOYALTY_RULES_MODAL_PARAGRAPHS,
@@ -773,6 +823,11 @@ const promoError = ref("");
 const promoInputRef = ref<HTMLInputElement | null>(null);
 const telegramUser = ref<TelegramMiniAppUser | null>(null);
 const showUsernameRequiredModal = ref(false);
+// Окно «Лимит превышен» при изменении карточного заказа: сервер отклонил
+// изменение, потому что новая сумма не проходит по лимиту.
+const showCardEditLimitModal = ref(false);
+const cardEditLimitMessage = ref("");
+const cardEditLimitHint = ref("");
 const telegramUsernameVerified = ref(false);
 const detectedTelegramUsername = ref("");
 const verifiedTelegramUsername = ref("");
@@ -862,36 +917,36 @@ const cardOrderExceedsDailyMinor = computed(() => {
   const remaining = remainingDailyCardLimitMinor.value;
   return remaining > 0 && cardOrderTotalMinor.value > remaining;
 });
-const cardOrderExceededByMinor = computed(() =>
-  Math.max(0, cardOrderTotalMinor.value - remainingDailyCardLimitMinor.value),
+// Личный лимит на заказ — главный ориентир для клиента: картой можно
+// оплатить заказ, который целиком в него помещается. Смешанной оплаты
+// (часть картой, часть наличными) больше нет.
+const cardPersonalLimitMinor = computed(
+  () => Math.max(0, Number(cardPaymentStatus.value?.max_order_minor || 0)),
 );
-// Персональный месячный лимит клиента — единственная цифра про деньги,
-// которую показываем в чекауте. Общая дневная механика магазина —
-// внутренняя информация, клиенту её не показываем.
-const cardMonthlyLimitMinor = computed(
-  () => Math.max(0, Number(cardPaymentStatus.value?.monthly_limit_minor || 0)),
+const cardOrderExceedsPersonalLimitMinor = computed(() =>
+  Math.max(0, cardOrderTotalMinor.value - cardPersonalLimitMinor.value),
 );
-const cardMonthlyRemainingMinor = computed(
-  () => Math.max(0, Number(cardPaymentStatus.value?.monthly_remaining_minor || 0)),
-);
-const cardMonthlyProgressPercent = computed(() => {
-  const limit = cardMonthlyLimitMinor.value;
-  if (limit <= 0) return 0;
-  const remainingPercent = (cardMonthlyRemainingMinor.value / limit) * 100;
-  return Math.min(100, Math.max(0, Math.round(remainingPercent)));
-});
-// Цвет прогресс-бара: >50% зелёный, 20–50% жёлтый, <20% красный.
-const cardLimitLevel = computed(() => {
-  const percent = cardMonthlyProgressPercent.value;
-  if (percent > 50) return "ok";
-  if (percent >= 20) return "warn";
-  return "low";
-});
-// Пауза активна прямо сейчас: кнопка «Картой» серая и неактивна.
+// Пауза активна прямо сейчас: карту можно выбрать и посмотреть виджет,
+// но «Оформить заказ» картой заблокирован.
 const isCardPaused = computed(
   () => Boolean(cardPaymentStatus.value?.enabled)
     && Boolean(cardPaymentStatus.value?.cooldown_until)
     && new Date(cardPaymentStatus.value.cooldown_until).getTime() > Date.now(),
+);
+// Кнопка «Оформить заказ» неактивна, пока карта на паузе, дневной лимит
+// магазина исчерпан или заказ больше личного лимита.
+const isCardBlockedForOrder = computed(
+  () => isCardPaused.value
+    || isSharedCardLimitExhausted.value
+    || cardOrderExceedsDailyMinor.value
+    || cardOrderExceedsPersonalLimitMinor.value > 0,
+);
+// Общий дневной лимит магазина достигнут «в ноль» (исчерпан), но заказ
+// меньше остатка — этого не бывает при exhausted; отдельный кейс для
+// интерфейса, когда лимит потрачен полностью.
+const isCardDailyLimitReached = computed(() =>
+  Boolean(cardPaymentStatus.value?.limits)
+    && remainingDailyCardLimitMinor.value <= 0,
 );
 const cardCooldownDaysLeft = computed(() => {
   const until = cardPaymentStatus.value?.cooldown_until;
@@ -901,6 +956,32 @@ const cardCooldownDaysLeft = computed(() => {
   const days = Math.ceil(milliseconds / 86400000);
   return `${days} ${pluralDays(days)}`;
 });
+// Шкала паузы: сколько времени с начала паузы уже прошло. Считаем от
+// cooldown_until минус полный срок паузы (cooldown_days).
+const cardCooldownTotalMs = computed(() => {
+  const days = Number(cardPaymentStatus.value?.cooldown_days || 10);
+  return Math.max(1, days) * 86_400_000;
+});
+const cardCooldownProgressPercent = computed(() => {
+  const until = cardPaymentStatus.value?.cooldown_until;
+  if (!until) return 0;
+  const left = new Date(until).getTime() - Date.now();
+  if (left <= 0) return 100;
+  const total = cardCooldownTotalMs.value;
+  const elapsed = Math.max(0, total - left);
+  return Math.min(100, Math.max(0, Math.round((elapsed / total) * 100)));
+});
+
+function formatCardPauseDate(value: unknown) {
+  if (!value) return "";
+  const date = new Date(String(value));
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("ru-BY", {
+    day: "numeric",
+    month: "long",
+    timeZone: "Europe/Minsk",
+  }).format(date);
+}
 
 function pluralDays(days: number) {
   const mod10 = days % 10;
@@ -909,14 +990,19 @@ function pluralDays(days: number) {
   if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return "дня";
   return "дней";
 }
-const showMixedPaymentNotice = ref(false);
-const mixedPaymentNotice = ref("");
 const showCardTariffsModal = ref(false);
-const cardTariffs = ref<Array<{ id: string; title: string; limit_minor: number; transition_cost_text: string }>>([]);
+const cardTariffs = ref<CardTariffPlan[]>([]);
 const selectedCardTariff = ref("");
 const cardRequestSending = ref(false);
 const cardRequestSuccess = ref(false);
 const cardRequestError = ref("");
+
+const cardRequestSuccessText = computed(() => {
+  const tariff = cardTariffs.value.find((t) => t.id === selectedCardTariff.value);
+  if (!tariff) return "Заявка отправлена. Продавец свяжется с вами для подтверждения.";
+  const limit = formatCardMoney(tariff.per_order_limit_minor ?? tariff.limit_minor);
+  return `Тариф «${tariff.title}»: лимит заказа до ${limit} BYN. Продавец рассмотрит заявку и свяжется с вами.`;
+});
 
 const orderedCheckoutLoyaltyCategories = computed(() => {
   return [...loyaltyStore.previewCategories].sort((left, right) => {
@@ -1797,11 +1883,6 @@ async function selectCardPayment() {
   await loadCardPaymentStatus();
 }
 
-function finishMixedPaymentNotice() {
-  showMixedPaymentNotice.value = false;
-  void router.push("/my-order");
-}
-
 async function beginCheckout() {
   if (isSubmitting.value || isCheckingCardPaymentStatus.value || checkoutCalculationPending.value) return;
   if (showCardPaymentModal.value || showCardTariffsModal.value) return;
@@ -1811,14 +1892,37 @@ async function beginCheckout() {
   }
   await loadCardPaymentStatus();
   // Показываем выбор оплаты, если карта вообще включена аккаунту — даже
-  // когда карта на паузе: кнопка «Картой» станет серой, а рядом будет
-  // написано, через сколько дней пауза снимется (запрос владельца 2026-10-09).
+  // когда карта на паузе или лимит исчерпан: клиент открывает вкладку
+  // «Картой», смотрит виджет (лимит, шкалу паузы), но «Оформить заказ»
+  // заблокирован. Если карта не разрешена — выбора нет, заказ уходит
+  // наличными автоматически.
   if (cardPaymentStatus.value?.enabled && !isEditingOrder.value) {
     selectedPaymentMethod.value = "cash";
     showCardPaymentModal.value = true;
     return;
   }
   void submitOrder("cash");
+}
+
+function openCardRules() {
+  void router.push({ name: "card-payment-rules" });
+}
+
+function openCardEditLimitModal(message: string, hint: string) {
+  cardEditLimitMessage.value = message;
+  cardEditLimitHint.value = hint;
+  showCardEditLimitModal.value = true;
+}
+
+function closeCardEditLimitModal() {
+  showCardEditLimitModal.value = false;
+  cardEditLimitMessage.value = "";
+  cardEditLimitHint.value = "";
+}
+
+async function openCardTariffsFromEditLimit() {
+  closeCardEditLimitModal();
+  await openCardTariffs();
 }
 
 async function openCardTariffs() {
@@ -1838,6 +1942,12 @@ async function openCardTariffs() {
     showToast(error?.message || "Не удалось загрузить тарифы", "error");
     showCardPaymentModal.value = true;
   }
+}
+
+function closeCardTariffs() {
+  if (cardRequestSending.value) return;
+  cardRequestSuccess.value = false;
+  showCardTariffsModal.value = false;
 }
 
 async function submitCardLimitRequest() {
@@ -2006,7 +2116,11 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
       ) {
         showCardPaymentModal.value = true;
         selectedPaymentMethod.value = "cash";
-        submitError.value = result?.message || "Оплата картой сейчас недоступна для вашего аккаунта.";
+        submitError.value = result?.error === "personal_limit_exceeded"
+          ? (result?.message || "Заказ больше вашего лимита на оплату картой. Уберите лишние товары, оплатите наличными или увеличьте лимиты.")
+          : result?.error === "personal_monthly_limit_exceeded"
+            ? (result?.message || "Личный лимит оплаты картой исчерпан. Оплатите заказ наличными.")
+            : "Оплата картой на паузе для вашего аккаунта. Вы можете оформить этот заказ наличными.";
         await loadCardPaymentStatus();
         return;
       }
@@ -2040,6 +2154,17 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
           result.message || "Количество позиций меньше минимального для выбранного оптового прайса",
         );
       }
+      if (result?.error === "card_limit_exceeded_on_edit") {
+        // Смешанной оплаты больше нет: изменение карточного заказа,
+        // вылезшее за лимит (личный или дневной магазина), не проходит —
+        // показываем отдельное окно с понятным объяснением.
+        openCardEditLimitModal(
+          result?.message
+            || "Заказ больше суммы, зарезервированной картой. Оплатите наличными или оформите новый заказ в пределах лимита.",
+          "Изменить заказ картой в этой сумме нельзя. Уберите лишние товары из корзины или оплатите заказ наличными.",
+        );
+        return;
+      }
       if (isEditingOrder.value && result?.error === "not_found") {
         cartStore.clearOrderEdit();
         await router.push("/my-order");
@@ -2059,16 +2184,10 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
     cartStore.clearCart();
     cartStore.finishOrderEdit();
     showCardPaymentModal.value = false;
-    if (
-      wasEditingOrder &&
-      Number(result?.cash_due_minor || 0) > 0 &&
-      Number(result?.card_amount_minor || 0) > 0
-    ) {
-      mixedPaymentNotice.value =
-        `Лимит оплаты картой использован. Остаток ${(Number(result.cash_due_minor) / 100).toFixed(2)} BYN нужно будет оплатить наличными.`;
-      showMixedPaymentNotice.value = true;
-      return;
-    }
+    // Смешанной оплаты больше нет: заказ либо целиком картой в пределах
+    // лимита, либо целиком наличными. Отдельное уведомление о «наличной
+    // части» не требуется.
+    void wasEditingOrder;
     await router.push("/my-order");
   } catch (error: any) {
     console.error("[Checkout] Submit error", error);
@@ -3111,6 +3230,8 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   background: #fff;
   color: #30343b;
   font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
 }
 
 .card-payment-choice--active {
@@ -3119,32 +3240,97 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   background: linear-gradient(90deg, #f50302 0%, #a90f0e 100%) !important;
 }
 
-.card-payment-choice--disabled {
-  color: #b3bcc7 !important;
-  background: #f1f3f6 !important;
-  border-color: #e5e7eb !important;
-  cursor: not-allowed;
+/* ===== Виджет оплаты картой =====
+   Лимит на заказ, состояние (пауза со шкалой / исчерпано / разрешено)
+   и быстрые действия. Показывается при выборе «Картой». */
+.card-widget {
+  margin-top: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 18px;
+  background: #ffffff;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
-/* Карточка статуса оплаты картой: одна цифра + прогресс-бар + бейдж.
-   Тон: спокоен, без «кричащего» красного (красный — только у бренда-CTA). */
-.card-status-card {
+.card-widget__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.card-widget__badge {
+  flex-shrink: 0;
+  width: 42px;
+  height: 42px;
+  border-radius: 13px;
+  background: linear-gradient(110deg, #f50302 0%, #a90f0e 100%);
+  color: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 6px 14px rgba(245, 3, 2, 0.22);
+}
+
+.card-widget__limit {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.card-widget__limit-value {
+  font-family: "Montserrat", sans-serif;
+  font-weight: 700;
+  font-size: 15.5px;
+  line-height: 20px;
+  color: #191919;
+}
+
+.card-widget__limit-note {
+  font-size: 12.5px;
+  line-height: 16px;
+  color: #687582;
+}
+
+.card-widget__state {
+  border-radius: 14px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.card-widget__state--ok {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+}
+
+.card-widget__state--pause {
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+}
+
+.card-widget__state--blocked {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+}
+
+.card-widget__state-row {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 13px 15px;
-  border: 1px solid #e5e7eb;
-  border-radius: 14px;
-  background: #f7f8fa;
+  gap: 8px;
 }
 
-.card-status-card--waiting,
-.card-status-card--unavailable {
-  background: #fff7ed;
-  border-color: #fed7aa;
+.card-widget__state-row strong {
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.25;
+  color: #1f2933;
 }
 
-.card-status-dot {
+.card-widget__state-dot {
   flex-shrink: 0;
   width: 10px;
   height: 10px;
@@ -3152,85 +3338,76 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   background: #f59e0b;
 }
 
-.card-status-dot--ok {
+.card-widget__state--blocked .card-widget__state-dot {
+  background: #ef4444;
+}
+
+.card-widget__state-dot--ok {
   background: #22c55e;
 }
 
-.card-status-info {
-  display: flex;
-  min-width: 0;
-  flex: 1;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.card-status-info strong {
-  color: #1f2933;
-  font-size: 15px;
-  font-weight: 650;
-  line-height: 1.2;
-}
-
-.card-status-info span {
-  color: #687582;
+.card-widget__state-copy {
+  margin: 0;
   font-size: 12.5px;
-  line-height: 1.3;
+  line-height: 17px;
+  color: #687582;
 }
 
-.card-status-limit {
-  flex-shrink: 0;
-  width: 108px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.card-status-limit-bar {
-  height: 6px;
-  overflow: hidden;
+/* Шкала паузы: заполняется по мере прохождения срока. */
+.card-widget__bar {
+  width: 100%;
+  height: 8px;
   border-radius: 999px;
-  background: #e6e8ec;
+  background: #ffedd5;
+  overflow: hidden;
 }
 
-.card-status-limit-bar span {
-  display: block;
+.card-widget__bar-fill {
   height: 100%;
-  border-radius: inherit;
-  transition: width 0.25s ease;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #f59e0b 0%, #f50302 100%);
+  transition: width 0.3s ease;
 }
 
-/* Уровни остатка лимита: зелёный / жёлтый / красный */
-.card-status-limit-bar span[data-level="ok"] {
-  background: linear-gradient(90deg, #16a34a, #22c55e);
+/* Кнопки-ссылки виджета — всегда в две строки, чтобы длинные подписи
+   не мешали друг другу на узких экранах. */
+.card-widget__actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
 }
 
-.card-status-limit-bar span[data-level="warn"] {
-  background: linear-gradient(90deg, #d97706, #f59e0b);
+.card-widget__link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #f7f8fa;
+  color: #30343b;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
 }
 
-.card-status-limit-bar span[data-level="low"] {
-  background: linear-gradient(90deg, #dc2626, #ef4444);
+.card-widget__link--accent {
+  border-color: #ffd4d4;
+  background: #fff4f5;
+  color: #a90f0e;
 }
 
-.card-status-limit em {
-  color: #9aa5b1;
-  font-size: 10.5px;
-  font-style: normal;
-  text-align: right;
+.card-widget__link:active {
+  transform: scale(0.98);
 }
 
-@media (max-width: 380px) {
-  .card-status-card {
-    flex-wrap: wrap;
-  }
-
-  .card-status-limit {
-    width: 100%;
-  }
-
-  .card-status-limit em {
-    text-align: left;
-  }
+/* Окно «Лимит превышен» при изменении заказа: состояние виджета
+   вписано в модалку отступом, чтобы не прижималось к краям. */
+.card-edit-limit-state {
+  margin: 4px 0 8px;
 }
 
 .card-payment-warning {
@@ -3246,25 +3423,6 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
 
 .checkout-modal-cta--dark {
   background: #191919;
-}
-
-.card-tariff-option {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 12px;
-  border: 1px solid #e5e7eb;
-  border-radius: 14px;
-}
-
-.card-tariff-option span {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.card-tariff-option small {
-  color: #6b7280;
 }
 
 @media (max-width: 768px) {

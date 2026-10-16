@@ -564,18 +564,21 @@ describe("CheckoutView order flows", () => {
     expect(wrapper.find(".payment-modal").text()).toContain("Наличными");
     expect(wrapper.find(".payment-modal").text()).toContain("Картой");
     expect(fetchMock.mock.calls.some(([input]) => String(input) === "/api/orders")).toBe(false);
+    // Кнопка «Картой» всегда активна: даже при исчерпанном дневном лимите
+    // клиент может открыть вкладку и посмотреть виджет.
     await wrapper.findAll(".payment-modal button")[1].trigger("click");
     await flushPromises();
-    // Заказ 45 BYN при дневном остатке 15.00 BYN: картой нельзя, предупреждение
-    // показывает сумму превышения (45 − 15.00 = 30.00 BYN).
-    expect(wrapper.find(".payment-modal").text()).toContain(
-      "Заказ больше дневного лимита по карте",
-    );
-    expect(wrapper.find(".payment-modal").text()).toContain("30.00 BYN");
+    // Заказ 45 BYN при дневном остатке 15.00 BYN: картой нельзя, виджет
+    // показывает состояние исчерпания и блокирует «Оформить заказ».
+    expect(wrapper.find(".payment-modal").text()).toContain("Лимит по карте исчерпан");
     const cardBtn = wrapper.findAll(".payment-modal button")[1];
-    expect(cardBtn.attributes("disabled")).toBeDefined();
-    expect(fetchMock.mock.calls.some(([input]) => String(input) === "/api/orders")).toBe(false);
-    expect(wrapper.find(".payment-modal button.checkout-modal-cta").attributes("disabled")).toBeUndefined();
+    expect(cardBtn.attributes("disabled")).toBeUndefined();
+    expect(
+      wrapper.find(".payment-modal button.checkout-modal-cta:not(.checkout-modal-cta--dark)").attributes("disabled"),
+    ).toBeDefined();
+    // Виджет показывает лимит на заказ и быстрые действия.
+    expect(wrapper.find(".payment-modal").text()).toContain("Лимит на заказ 45.00р");
+    expect(wrapper.find(".payment-modal .card-widget__link").exists()).toBe(true);
 
     wrapper.unmount();
   });
@@ -649,11 +652,12 @@ describe("CheckoutView order flows", () => {
     await wrapper.findAll(".payment-modal button")[1].trigger("click");
     await flushPromises();
 
+    // Дневной лимит исчерпан полностью: виджет показывает состояние блокировки.
     expect(wrapper.find(".payment-modal").text()).toContain(
-      "Общий лимит на день по карте исчерпан",
+      "Лимит по карте исчерпан",
     );
     expect(wrapper.find(".payment-modal").text()).toContain(
-      "Заказ можно оплатить наличными",
+      "наличными",
     );
     expect(wrapper.find(".payment-modal button.checkout-modal-cta:not(.checkout-modal-cta--dark)").attributes("disabled")).toBeDefined();
 
@@ -735,12 +739,16 @@ describe("CheckoutView order flows", () => {
     await wrapper.find(".submit-button").trigger("click");
     await flushPromises();
 
-    // Карта на паузе: окно выбора открывается, кнопка «Картой» серая и неактивна.
+    // Карта на паузе: окно выбора открывается, «Картой» можно нажать и
+    // посмотреть виджет со шкалой паузы, но «Оформить заказ» заблокирован.
     expect(wrapper.find(".payment-modal").exists()).toBe(true);
     const cardButton = wrapper.findAll(".payment-modal button")[1];
-    expect(cardButton.attributes("disabled")).toBeDefined();
-    expect(cardButton.classes()).toContain("card-payment-choice--disabled");
-    // Заказ не отправляется, пока клиент сам не подтвердит наличные
+    expect(cardButton.attributes("disabled")).toBeUndefined();
+    await cardButton.trigger("click");
+    await flushPromises();
+    expect(wrapper.find(".payment-modal").text()).toContain("Оплата картой на паузе");
+    expect(wrapper.find(".payment-modal .card-widget__bar").exists()).toBe(true);
+    // Заказ не отправляется, пока карта на паузе
     expect(fetchMock.mock.calls.some(([input]) => String(input) === "/api/orders")).toBe(false);
 
     wrapper.unmount();
@@ -843,14 +851,14 @@ describe("CheckoutView order flows", () => {
     await wrapper.findAll(".payment-modal button")[1].trigger("click");
     await flushPromises();
 
-    expect(wrapper.find(".payment-modal").text()).toContain("Карта доступна через 4 дня");
-    expect(wrapper.find(".payment-modal").text()).toContain("Пауза после прошлой покупки");
-    expect(wrapper.find(".payment-modal").text()).not.toContain("будет доступна после");
+    expect(wrapper.find(".payment-modal").text()).toContain("Снимется через 4 дня");
+    expect(wrapper.find(".payment-modal").text()).toContain("Оплата картой на паузе");
+    expect(wrapper.find(".payment-modal .card-widget__bar").exists()).toBe(true);
 
     wrapper.unmount();
   });
 
-  it("colors the monthly limit bar yellow when remaining is between 20 and 50 percent", async () => {
+  it("shows per-order limit in the card status", async () => {
     const cartStore = useCartStore();
     cartStore.replaceItemsFromOrder([
       {
@@ -874,14 +882,10 @@ describe("CheckoutView order flows", () => {
         return createJsonResponse({ id: "p-1", hasVariants: false, stock: 10 });
       }
       if (url === "/api/card-payment/status") {
-        // 30% из 200 BYN осталось — жёлтый уровень.
         return createJsonResponse({
           enabled: true,
           max_order_minor: 4500,
           card_available: true,
-          monthly_limit_minor: 20000,
-          monthly_used_minor: 14000,
-          monthly_remaining_minor: 6000,
           limits: {
             daily_limit_minor: 25000,
             spent_today_minor: 0,
@@ -923,9 +927,93 @@ describe("CheckoutView order flows", () => {
     await wrapper.findAll(".payment-modal button")[1].trigger("click");
     await flushPromises();
 
-    expect(wrapper.find(".payment-modal").text()).toContain("60.00 BYN осталось в этом месяце");
-    expect(wrapper.find(".card-status-limit-bar span").attributes("data-level")).toBe("warn");
-    expect(wrapper.find(".card-status-limit-bar span").attributes("style")).toContain("width: 30%");
+    expect(wrapper.find(".payment-modal").text()).toContain("Оплата картой разрешена");
+    expect(wrapper.find(".payment-modal").text()).toContain("Лимит на заказ 45.00р");
+    // Шкала паузы не показывается, когда карта активна.
+    expect(wrapper.find(".card-widget__bar").exists()).toBe(false);
+
+    wrapper.unmount();
+  });
+
+  it("blocks card submit when the order exceeds the personal limit", async () => {
+    const cartStore = useCartStore();
+    cartStore.replaceItemsFromOrder([
+      {
+        productId: "p-1",
+        title: "Liquid Cherry",
+        productTitle: "Liquid Cherry",
+        groupName: "Жидкости",
+        priceRub: 50,
+        quantity: 1,
+        image: "/img/liquid.png",
+        variantId: null,
+        variantName: null,
+        groupId: "group-1",
+        categoryId: "cat-1",
+      },
+    ]);
+
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith("/api/product/")) {
+        return createJsonResponse({ id: "p-1", hasVariants: false, stock: 10 });
+      }
+      if (url === "/api/card-payment/status") {
+        // Личный лимит 45 BYN, корзина 50 BYN.
+        return createJsonResponse({
+          enabled: true,
+          max_order_minor: 4500,
+          card_available: true,
+          limits: {
+            daily_limit_minor: 25000,
+            spent_today_minor: 0,
+            reserved_minor: 0,
+          },
+        });
+      }
+      if (url.startsWith("/api/loyalty/me")) {
+        return createJsonResponse(buildLoyaltySnapshot());
+      }
+      if (url === "/api/loyalty/checkout-preview") {
+        return createJsonResponse(buildLoyaltyPreview(0));
+      }
+      if (url === "/api/agreements") {
+        return createJsonResponse({ items: [] });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    }));
+
+    const wrapper = mount(CheckoutView, {
+      global: {
+        stubs: {
+          MinDeliveryBanner: { template: "<div />" },
+          DeliveryConditionsBanner: { template: "<div />" },
+          AdminModal: { template: "<div><slot /></div>" },
+          CustomerModalShell: {
+            props: ["open", "title"],
+            template: "<div v-if=\"open\" class=\"payment-modal\"><h2>{{ title }}</h2><slot /><slot name='footer' /></div>",
+          },
+          LoyaltyBonusPopup: { template: "<div />" },
+          CheckoutAgreements: { template: "<div />" },
+        },
+      },
+    });
+
+    await flushPromises();
+    await wrapper.find(".submit-button").trigger("click");
+    await flushPromises();
+    await wrapper.findAll(".payment-modal button")[1].trigger("click");
+    await flushPromises();
+
+    // Заказ 50 BYN при личном лимите 45 BYN: смешанной оплаты нет, виджет
+    // просит убрать 5.00 BYN или заплатить наличными.
+    expect(wrapper.find(".payment-modal").text()).toContain("Заказ больше лимита на 5.00р");
+    expect(wrapper.find(".payment-modal").text()).toContain("Уберите товары на 5.00р");
+    expect(
+      wrapper.find(".payment-modal button.checkout-modal-cta:not(.checkout-modal-cta--dark)").attributes("disabled"),
+    ).toBeDefined();
+    // Подсказка «Увеличить лимиты» показывается в заблокированном состоянии.
+    expect(wrapper.find(".payment-modal .checkout-modal-cta--dark").exists()).toBe(true);
 
     wrapper.unmount();
   });

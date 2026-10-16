@@ -1776,6 +1776,23 @@ watch(activeTab, (tab) => {
   }
 }, { immediate: true })
 
+// Уход в CRM (Заказы, Клиенты и т.д.) — это выход из закрытого раздела.
+// Помечаем раздел покинутым: иначе возврат на ту же вкладку не меняет
+// activeTab, watch выше молчит и «Обзор» оставался бы разблокированным.
+watch(isCrmRoute, (crm) => {
+  if (crm) {
+    ensureTabDataLastTab = null
+    return
+  }
+  // Возврат из CRM: если вкладка та же (возврат на «Обзор»), watch(activeTab)
+  // не сработает — форсируем вход в раздел, чтобы ключ спросился заново.
+  // Если вкладка сменилась, ensureTabData уже отработал в watch(activeTab)
+  // (он зарегистрирован раньше) и lastTab совпадает — не дублируем вызов.
+  if (adminStore.isAuthenticated && ensureTabDataLastTab !== activeTab.value) {
+    void ensureTabData(activeTab.value)
+  }
+})
+
 const passwordForm = ref({ currentPassword: '', newPassword: '', confirmPassword: '' })
 const managerForm = ref({ telegram: '' })
 const deliverySettingsForm = ref({
@@ -2087,6 +2104,11 @@ function handleUnlock() {
     resetLoadedState()
     loadInitialAdminData()
     updateManagerForm()
+  }
+  // Первый вход в систему: открываем раздел «Заказы», а не «Обзор» —
+  // менеджер чаще всего сразу идёт к доске заказов.
+  if (!route.path.startsWith('/admin/crm')) {
+    router.push('/admin/crm/orders').catch(() => {})
   }
 }
 

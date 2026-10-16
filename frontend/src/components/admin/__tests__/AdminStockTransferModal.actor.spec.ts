@@ -98,17 +98,10 @@ describe("AdminStockTransferModal: подтверждение сотрудник
     const employeeSelect = document.getElementById("staff-actor") as HTMLSelectElement;
     expect(employeeSelect.value, "сотрудник подставлен").toBe("employee_1");
 
+    // Автоподтверждение: достаточно ввести четыре цифры ПИН — форма
+    // отправляется сама, без нажатия кнопки подтверждения.
     pinInput!.value = "1111";
     pinInput!.dispatchEvent(new Event("input", { bubbles: true }));
-    await flushPromises();
-
-    const confirm = byText("Создать заявку на перемещение");
-    expect(confirm, "кнопка подтверждения").toBeTruthy();
-    expect(
-      (confirm as HTMLButtonElement).disabled,
-      "кнопка подтверждения не должна быть заблокирована",
-    ).toBe(false);
-    confirm!.click();
     await flushPromises();
 
     expect(createTransfer).toHaveBeenCalledTimes(1);

@@ -229,4 +229,19 @@ watch(
     pinInput.value?.focus();
   },
 );
+
+// Автоподтверждение: введены все четыре цифры PIN и выбран сотрудник —
+// отправляем сами, Enter нажимать не нужно. После неверного PIN поле
+// очищается (watch ошибки выше), поэтому цикла попыток не возникает.
+watch(pin, () => {
+  if (props.open && !props.loading && /^\d{4}$/.test(pin.value) && employeeId.value) {
+    submit();
+  }
+});
+
+watch(employeeId, () => {
+  if (props.open && !props.loading && /^\d{4}$/.test(pin.value) && employeeId.value) {
+    submit();
+  }
+});
 </script>
