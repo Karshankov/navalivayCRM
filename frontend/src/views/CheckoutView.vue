@@ -513,29 +513,22 @@
             </div>
           </div>
 
-          <!-- Пауза: сколько дней осталось + шкала прогресса -->
+          <!-- Пауза: дата следующей доступной оплаты -->
           <div v-if="isCardPaused" class="card-widget__state card-widget__state--pause" role="alert">
             <div class="card-widget__state-row">
-              <span class="card-widget__state-dot" aria-hidden="true" />
-              <strong>Оплата картой на паузе</strong>
+              <span class="card-widget__state-icon" aria-hidden="true">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                  <circle cx="12" cy="12" r="9.2" stroke="currentColor" stroke-width="1.9" />
+                  <path d="M12 7.4v5.2" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                  <circle cx="12" cy="16.6" r="1.25" fill="currentColor" />
+                </svg>
+              </span>
+              <strong>Оплата картой недоступна</strong>
             </div>
             <p class="card-widget__state-copy">
-              Снимется через {{ cardCooldownDaysLeft }} — до
-              {{ formatCardPauseDate(cardPaymentStatus?.cooldown_until) }}.
+              Следующая оплата будет доступна
+              <span class="card-widget__state-date">{{ formatCardPauseDate(cardPaymentStatus?.cooldown_until) }}</span>
             </p>
-            <div
-              class="card-widget__bar"
-              role="progressbar"
-              :aria-valuenow="cardCooldownProgressPercent"
-              :aria-valuemin="0"
-              :aria-valuemax="100"
-              aria-label="Прогресс паузы оплаты картой"
-            >
-              <div
-                class="card-widget__bar-fill"
-                :style="{ width: `${cardCooldownProgressPercent}%` }"
-              />
-            </div>
           </div>
 
           <!-- Корзина больше личного лимита -->
@@ -545,7 +538,13 @@
             role="alert"
           >
             <div class="card-widget__state-row">
-              <span class="card-widget__state-dot" aria-hidden="true" />
+              <span class="card-widget__state-icon" aria-hidden="true">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                  <circle cx="12" cy="12" r="9.2" stroke="currentColor" stroke-width="1.9" />
+                  <path d="M12 7.4v5.2" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                  <circle cx="12" cy="16.6" r="1.25" fill="currentColor" />
+                </svg>
+              </span>
               <strong>Заказ больше лимита на {{ formatCardMoney(cardOrderExceedsPersonalLimitMinor) }}р</strong>
             </div>
             <p class="card-widget__state-copy">
@@ -562,11 +561,17 @@
             role="alert"
           >
             <div class="card-widget__state-row">
-              <span class="card-widget__state-dot" aria-hidden="true" />
-              <strong>Лимит по карте исчерпан</strong>
+              <span class="card-widget__state-icon" aria-hidden="true">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                  <circle cx="12" cy="12" r="9.2" stroke="currentColor" stroke-width="1.9" />
+                  <path d="M12 7.4v5.2" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                  <circle cx="12" cy="16.6" r="1.25" fill="currentColor" />
+                </svg>
+              </span>
+              <strong>Оплата картой недоступна</strong>
             </div>
             <p class="card-widget__state-copy">
-              Оформите заказ наличными или уменьшите корзину.
+              Оформите заказ за наличные. Общий лимит на сегодня исчерпан.
             </p>
           </div>
 
@@ -577,31 +582,6 @@
               <strong>Оплата картой разрешена</strong>
             </div>
           </div>
-
-          <div class="card-widget__actions">
-            <button
-              type="button"
-              class="card-widget__link"
-              @click="openCardRules"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8" />
-                <path d="M12 16v-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
-                <circle cx="12" cy="8.2" r="1.1" fill="currentColor" />
-              </svg>
-              Правила
-            </button>
-            <button
-              type="button"
-              class="card-widget__link card-widget__link--accent"
-              @click="openCardTariffs"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
-              </svg>
-              Увеличить лимиты
-            </button>
-          </div>
         </div>
 
         <p v-if="submitError" class="card-payment-warning" role="alert">
@@ -611,7 +591,7 @@
       <template #footer>
         <div class="card-payment-modal-actions">
           <button
-            v-if="selectedPaymentMethod === 'card' && isCardBlockedForOrder"
+            v-if="selectedPaymentMethod === 'card'"
             type="button"
             class="checkout-modal-cta checkout-modal-cta--dark"
             @click="openCardTariffs"
@@ -650,7 +630,13 @@
       <div class="checkout-modal-copy">
         <div class="card-widget__state card-widget__state--blocked card-edit-limit-state" role="alert">
           <div class="card-widget__state-row">
-            <span class="card-widget__state-dot" aria-hidden="true" />
+            <span class="card-widget__state-icon" aria-hidden="true">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="9.2" stroke="currentColor" stroke-width="1.9" />
+                <path d="M12 7.4v5.2" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                <circle cx="12" cy="16.6" r="1.25" fill="currentColor" />
+              </svg>
+            </span>
             <strong>{{ cardEditLimitMessage }}</strong>
           </div>
           <p class="card-widget__state-copy" v-if="cardEditLimitHint">
@@ -948,29 +934,6 @@ const isCardDailyLimitReached = computed(() =>
   Boolean(cardPaymentStatus.value?.limits)
     && remainingDailyCardLimitMinor.value <= 0,
 );
-const cardCooldownDaysLeft = computed(() => {
-  const until = cardPaymentStatus.value?.cooldown_until;
-  if (!until) return null;
-  const milliseconds = new Date(until).getTime() - Date.now();
-  if (milliseconds <= 0) return null;
-  const days = Math.ceil(milliseconds / 86400000);
-  return `${days} ${pluralDays(days)}`;
-});
-// Шкала паузы: сколько времени с начала паузы уже прошло. Считаем от
-// cooldown_until минус полный срок паузы (cooldown_days).
-const cardCooldownTotalMs = computed(() => {
-  const days = Number(cardPaymentStatus.value?.cooldown_days || 10);
-  return Math.max(1, days) * 86_400_000;
-});
-const cardCooldownProgressPercent = computed(() => {
-  const until = cardPaymentStatus.value?.cooldown_until;
-  if (!until) return 0;
-  const left = new Date(until).getTime() - Date.now();
-  if (left <= 0) return 100;
-  const total = cardCooldownTotalMs.value;
-  const elapsed = Math.max(0, total - left);
-  return Math.min(100, Math.max(0, Math.round((elapsed / total) * 100)));
-});
 
 function formatCardPauseDate(value: unknown) {
   if (!value) return "";
@@ -981,14 +944,6 @@ function formatCardPauseDate(value: unknown) {
     month: "long",
     timeZone: "Europe/Minsk",
   }).format(date);
-}
-
-function pluralDays(days: number) {
-  const mod10 = days % 10;
-  const mod100 = days % 100;
-  if (mod10 === 1 && mod100 !== 11) return "день";
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return "дня";
-  return "дней";
 }
 const showCardTariffsModal = ref(false);
 const cardTariffs = ref<CardTariffPlan[]>([]);
@@ -1902,10 +1857,6 @@ async function beginCheckout() {
     return;
   }
   void submitOrder("cash");
-}
-
-function openCardRules() {
-  void router.push({ name: "card-payment-rules" });
 }
 
 function openCardEditLimitModal(message: string, hint: string) {
@@ -3296,25 +3247,26 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
 
 .card-widget__state {
   border-radius: 14px;
-  padding: 12px 14px;
+  padding: 14px 16px;
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
 .card-widget__state--ok {
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
+  background: -webkit-linear-gradient(90deg, #00ff02, #07c100); /* Chrome 10-25, Safari 5.1-6 */
+  background: linear-gradient(90deg, #00ff02, #07c100); /* W3C, IE 10+/ Edge, Firefox 16+, Chrome 26+, Opera 12+, Safari 7+ */
+  border: none;
 }
 
 .card-widget__state--pause {
-  background: #fff7ed;
-  border: 1px solid #fed7aa;
+  background: linear-gradient(106.76deg, #f50302 -2.64%, #a90f0e 85.78%);
+  border: none;
 }
 
 .card-widget__state--blocked {
-  background: #fef2f2;
-  border: 1px solid #fecaca;
+  background: linear-gradient(106.76deg, #f50302 -2.64%, #a90f0e 85.78%);
+  border: none;
 }
 
 .card-widget__state-row {
@@ -3327,7 +3279,13 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   font-size: 14px;
   font-weight: 650;
   line-height: 1.25;
-  color: #1f2933;
+  color: #ffffff;
+}
+
+.card-widget__state--pause .card-widget__state-copy,
+.card-widget__state--blocked .card-widget__state-copy,
+.card-widget__state--ok .card-widget__state-copy {
+  color: rgba(255, 255, 255, 0.92);
 }
 
 .card-widget__state-dot {
@@ -3338,12 +3296,26 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   background: #f59e0b;
 }
 
-.card-widget__state--blocked .card-widget__state-dot {
-  background: #ef4444;
+.card-widget__state-dot--ok {
+  background: #ffffff;
 }
 
-.card-widget__state-dot--ok {
-  background: #22c55e;
+/* Дата следующей доступной оплаты — всегда отдельной строкой. */
+.card-widget__state-date {
+  display: block;
+  margin-top: 3px;
+  font-size: 13.5px;
+  font-weight: 650;
+  color: #ffffff;
+}
+
+/* Белый восклицательный знак в круге для недоступных состояний. */
+.card-widget__state-icon {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
 }
 
 .card-widget__state-copy {
@@ -3351,57 +3323,6 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   font-size: 12.5px;
   line-height: 17px;
   color: #687582;
-}
-
-/* Шкала паузы: заполняется по мере прохождения срока. */
-.card-widget__bar {
-  width: 100%;
-  height: 8px;
-  border-radius: 999px;
-  background: #ffedd5;
-  overflow: hidden;
-}
-
-.card-widget__bar-fill {
-  height: 100%;
-  border-radius: 999px;
-  background: linear-gradient(90deg, #f59e0b 0%, #f50302 100%);
-  transition: width 0.3s ease;
-}
-
-/* Кнопки-ссылки виджета — всегда в две строки, чтобы длинные подписи
-   не мешали друг другу на узких экранах. */
-.card-widget__actions {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 8px;
-}
-
-.card-widget__link {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  min-height: 44px;
-  padding: 0 12px;
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
-  background: #f7f8fa;
-  color: #30343b;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
-}
-
-.card-widget__link--accent {
-  border-color: #ffd4d4;
-  background: #fff4f5;
-  color: #a90f0e;
-}
-
-.card-widget__link:active {
-  transform: scale(0.98);
 }
 
 /* Окно «Лимит превышен» при изменении заказа: состояние виджета

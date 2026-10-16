@@ -570,7 +570,8 @@ describe("CheckoutView order flows", () => {
     await flushPromises();
     // Заказ 45 BYN при дневном остатке 15.00 BYN: картой нельзя, виджет
     // показывает состояние исчерпания и блокирует «Оформить заказ».
-    expect(wrapper.find(".payment-modal").text()).toContain("Лимит по карте исчерпан");
+    expect(wrapper.find(".payment-modal").text()).toContain("Оплата картой недоступна");
+    expect(wrapper.find(".payment-modal").text()).toContain("Общий лимит на сегодня исчерпан");
     const cardBtn = wrapper.findAll(".payment-modal button")[1];
     expect(cardBtn.attributes("disabled")).toBeUndefined();
     expect(
@@ -578,7 +579,9 @@ describe("CheckoutView order flows", () => {
     ).toBeDefined();
     // Виджет показывает лимит на заказ и быстрые действия.
     expect(wrapper.find(".payment-modal").text()).toContain("Лимит на заказ 45.00р");
-    expect(wrapper.find(".payment-modal .card-widget__link").exists()).toBe(true);
+    expect(wrapper.find(".payment-modal .card-widget__link").exists()).toBe(false);
+    // Большая чёрная кнопка «Увеличить лимиты» — в футере модалки.
+    expect(wrapper.find(".payment-modal .checkout-modal-cta--dark").exists()).toBe(true);
 
     wrapper.unmount();
   });
@@ -654,10 +657,10 @@ describe("CheckoutView order flows", () => {
 
     // Дневной лимит исчерпан полностью: виджет показывает состояние блокировки.
     expect(wrapper.find(".payment-modal").text()).toContain(
-      "Лимит по карте исчерпан",
+      "Оплата картой недоступна",
     );
     expect(wrapper.find(".payment-modal").text()).toContain(
-      "наличными",
+      "Оформите заказ за наличные. Общий лимит на сегодня исчерпан",
     );
     expect(wrapper.find(".payment-modal button.checkout-modal-cta:not(.checkout-modal-cta--dark)").attributes("disabled")).toBeDefined();
 
@@ -746,8 +749,11 @@ describe("CheckoutView order flows", () => {
     expect(cardButton.attributes("disabled")).toBeUndefined();
     await cardButton.trigger("click");
     await flushPromises();
-    expect(wrapper.find(".payment-modal").text()).toContain("Оплата картой на паузе");
-    expect(wrapper.find(".payment-modal .card-widget__bar").exists()).toBe(true);
+    expect(wrapper.find(".payment-modal").text()).toContain("Оплата картой недоступна");
+    expect(wrapper.find(".payment-modal").text()).toContain("Следующая оплата будет доступна");
+    // Шкалы паузы больше нет: только текст с датой на новой строке.
+    expect(wrapper.find(".payment-modal .card-widget__bar").exists()).toBe(false);
+    expect(wrapper.find(".payment-modal .card-widget__state-date").exists()).toBe(true);
     // Заказ не отправляется, пока карта на паузе
     expect(fetchMock.mock.calls.some(([input]) => String(input) === "/api/orders")).toBe(false);
 
@@ -851,9 +857,10 @@ describe("CheckoutView order flows", () => {
     await wrapper.findAll(".payment-modal button")[1].trigger("click");
     await flushPromises();
 
-    expect(wrapper.find(".payment-modal").text()).toContain("Снимется через 4 дня");
-    expect(wrapper.find(".payment-modal").text()).toContain("Оплата картой на паузе");
-    expect(wrapper.find(".payment-modal .card-widget__bar").exists()).toBe(true);
+    expect(wrapper.find(".payment-modal").text()).toContain("Оплата картой недоступна");
+    expect(wrapper.find(".payment-modal").text()).toContain("Следующая оплата будет доступна");
+    expect(wrapper.find(".payment-modal .card-widget__bar").exists()).toBe(false);
+    expect(wrapper.find(".payment-modal .card-widget__state-date").exists()).toBe(true);
 
     wrapper.unmount();
   });
@@ -929,7 +936,7 @@ describe("CheckoutView order flows", () => {
 
     expect(wrapper.find(".payment-modal").text()).toContain("Оплата картой разрешена");
     expect(wrapper.find(".payment-modal").text()).toContain("Лимит на заказ 45.00р");
-    // Шкала паузы не показывается, когда карта активна.
+    // Элемента шкалы паузы больше нет в разметке вовсе.
     expect(wrapper.find(".card-widget__bar").exists()).toBe(false);
 
     wrapper.unmount();

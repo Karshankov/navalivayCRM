@@ -11,10 +11,6 @@
             <h1 class="text-2xl sm:text-3xl font-extrabold tracking-tight text-[#102650] m-0">Продажа через кассу</h1>
           </div>
           <div class="flex items-center gap-3 self-start sm:self-auto">
-            <div class="bg-white border border-[#e7edf7] px-4 py-2.5 rounded-xl text-xs font-bold text-[#647594] flex items-center gap-2.5 shadow-sm">
-              <span class="w-2.5 h-2.5 rounded-full bg-[#ffb84d] shadow-[0_0_0_4px_#fff3dc]"></span>
-              <span>Терминал заблокирован</span>
-            </div>
             <button
               @click="clearForm"
               class="border border-[#e6edfb] bg-[#f0f5ff] text-[#3a527a] px-4.5 py-2.5 rounded-xl text-xs font-extrabold inline-flex items-center gap-2 transition hover:brightness-105 shadow-sm"
@@ -60,8 +56,7 @@
                   />
                 </form>
                 <div class="text-[11px] text-[#9aa8bd] mt-2">
-                  <span v-if="isVerifying" class="text-blue-600 font-bold animate-pulse">Проверяем пароль...</span>
-                  <span v-else-if="notFoundMessage" class="text-[#8393af]">{{ notFoundMessage }}</span>
+                  <span v-if="notFoundMessage" class="text-[#8393af]">{{ notFoundMessage }}</span>
                   <span v-else>&nbsp;</span>
                 </div>
               </div>
@@ -268,7 +263,6 @@ const pendingCostInput = ref<HTMLInputElement>()
 const searchQuery = ref('')
 const lastSearchQuery = ref('')
 const notFoundMessage = ref('')
-const isVerifying = ref(false)
 const isSubmitting = ref(false)
 const successMessage = ref('')
 const errorMessage = ref('')
@@ -327,7 +321,6 @@ async function handleSearch() {
 
   // Check if it's admin password for unlock
   if (query.length >= 3) {
-    isVerifying.value = true
     try {
       await adminStore.login({
         username: 'admin',
@@ -341,7 +334,6 @@ async function handleSearch() {
     } catch (e) {
       notFoundMessage.value = 'товаров не найдено'
     } finally {
-      isVerifying.value = false
     }
   }
 }
