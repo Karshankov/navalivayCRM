@@ -11,8 +11,6 @@ import { LockClosedIcon } from '@heroicons/vue/24/outline'
 const props = withDefaults(defineProps<{
   /** Заголовок окна. */
   title?: string
-  /** Пояснение под заголовком. */
-  description?: string
   /** Текст основной кнопки. */
   submitText?: string
   /** Идёт ли проверка ключа прямо сейчас. */
@@ -21,7 +19,6 @@ const props = withDefaults(defineProps<{
   error?: string
 }>(), {
   title: 'Введите код доступа',
-  description: 'Финансовые данные закрыты ключом доступа. Введите его, чтобы продолжить.',
   submitText: 'Войти',
   verifying: false,
   error: '',
@@ -78,7 +75,6 @@ function submit() {
         <LockClosedIcon />
       </span>
       <h3 class="crm-ref-gate-title">{{ title }}</h3>
-      <p class="crm-ref-gate-text">{{ description }}</p>
       <div class="crm-ref-gate-form">
         <label for="crm-profit-gate-input">Ключ</label>
         <!-- Chrome: форма пароля без username → [DOM] Password forms… -->

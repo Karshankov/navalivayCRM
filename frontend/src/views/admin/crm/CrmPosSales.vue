@@ -204,9 +204,6 @@
         >
           <LockClosedIcon class="h-8 w-8" />
         </span>
-        <div class="space-y-2">
-          <p class="text-sm text-gray-600">Оплатите подписку на сервис</p>
-        </div>
         <button
           type="button"
           class="inline-flex items-center gap-2 rounded-full bg-blue-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-400"
@@ -224,7 +221,6 @@
     <AdminModal
       :isOpen="showPasswordModal"
       title="Подтверждение доступа"
-      description="Введите лицензионный ключ"
       size="sm"
       :showActions="false"
       @close="closePasswordModal"

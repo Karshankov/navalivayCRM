@@ -150,7 +150,6 @@
     <AdminModal
       :isOpen="showPasswordModal"
       title="Подтверждение доступа"
-      description="Введите лицензионный ключ"
       size="sm"
       :showActions="false"
       @close="closePasswordModal"

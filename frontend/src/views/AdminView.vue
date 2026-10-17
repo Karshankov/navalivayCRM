@@ -26,8 +26,6 @@
               <!-- Profit access form for dashboard -->
               <div v-if="!dashboardReady">
                 <ProfitAccessGate
-                  title="Введите код доступа"
-                  description="Сводная статистика закрыта. В окне проверок 10:00–16:00 по Минску сюда пускает только ключ владельца."
                   :verifying="verifyingProfit"
                   :error="profitError"
                   @submit="handleProfitGateSubmit"
@@ -481,8 +479,6 @@
           <template v-else-if="activeTab === 'categories'">
             <div v-if="!profitUnlocked">
               <ProfitAccessGate
-                title="Введите код доступа"
-                description="Категории содержат оптовые цены и структуру ассортимента. Введите ключ, чтобы продолжить."
                 :verifying="verifyingProfit"
                 :error="profitError"
                 @submit="handleProfitGateSubmit"
@@ -509,8 +505,6 @@
           <template v-else-if="activeTab === 'products'">
             <div v-if="!profitUnlocked">
               <ProfitAccessGate
-                title="Введите код доступа"
-                description="Каталог содержит себестоимость и остатки. Введите ключ, чтобы продолжить."
                 :verifying="verifyingProfit"
                 :error="profitError"
                 @submit="handleProfitGateSubmit"
@@ -540,6 +534,11 @@
                 @changeLocation="handleProductsLocationChange"
               />
             </div>
+          </template>
+
+          <!-- Reminders (Напоминания) -->
+          <template v-else-if="activeTab === 'reminders'">
+            <AdminReminders />
           </template>
 
           <!-- Settings -->
@@ -1260,6 +1259,7 @@ import AdminProductForm from '@/components/admin/AdminProductForm.vue'
 import AdminLayout from '@/components/admin/layout/AdminLayout.vue'
 import AdminSectionHero from '@/components/admin/layout/AdminSectionHero.vue'
 import AdminProductsTable from '@/components/admin/AdminProductsTable.vue'
+import AdminReminders from '@/components/admin/AdminReminders.vue'
 import AdminStockTransferModal from '@/components/admin/AdminStockTransferModal.vue'
 import AdminCategoryGroupForm from '@/components/admin/AdminCategoryGroupForm.vue'
 import AdminGroupMinStockEditor from '@/components/admin/AdminGroupMinStockEditor.vue'
