@@ -36,7 +36,7 @@
           <!-- Password form -->
           <form @submit.prevent="handleUnlock" class="space-y-4">
             <div>
-              <label for="lock-password" class="sr-only">Пароль</label>
+              <label for="lock-password" class="sr-only">Лицензионный ключ</label>
               <input
                 id="lock-password"
                 ref="passwordInput"

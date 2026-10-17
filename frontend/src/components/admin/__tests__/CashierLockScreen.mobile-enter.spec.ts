@@ -30,7 +30,8 @@ async function mountLockScreen() {
 // Экран входа в админку с телефона: см. комментарий над полем в
 // CashierLockScreen.vue. Клавиша на мобильной клавиатуре не даёт keydown с
 // Enter, поэтому проверять надо не нажатие, а то, что поле лежит в форме и
-// форма отправляется.
+// форма отправляется. Поле одновременно вводит название товара чека:
+// верный ключ разблокирует CRM, неверный текст остаётся товаром.
 describe("CashierLockScreen: вход по паролю с мобильной клавиатуры", () => {
   beforeEach(() => {
     loginMock.mockReset();
@@ -76,15 +77,19 @@ describe("CashierLockScreen: вход по паролю с мобильной к
     expect(wrapper.emitted("unlocked")).toBeUndefined();
   });
 
-  it("неверный пароль оставляет экран закрытым и показывает «не найдено»", async () => {
+  it("неверный пароль оставляет экран закрытым и не блокирует ввод товара", async () => {
     const wrapper = await mountLockScreen();
     loginMock.mockRejectedValue(new Error("unauthorized"));
 
-    await wrapper.find("form input").setValue("wrong-pass");
+    await wrapper.find("form input").setValue("Одноразка PPWJ 2000");
     await wrapper.find("form").trigger("submit");
     await flushPromises();
 
     expect(wrapper.emitted("unlocked")).toBeUndefined();
-    expect(wrapper.text()).toContain("товаров не найдено");
+    // Неверный ключ — это просто название товара: оно остаётся в поле
+    // и попадает в чек продажи.
+    expect((wrapper.find("form input").element as HTMLInputElement).value).toBe(
+      "Одноразка PPWJ 2000",
+    );
   });
 });

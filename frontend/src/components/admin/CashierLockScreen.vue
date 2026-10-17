@@ -32,14 +32,14 @@
                 <div class="flex items-center gap-3">
                   <div class="w-8 h-8 rounded-xl bg-[#edf5ff] text-[#1677ff] font-black flex items-center justify-center text-xs shrink-0">1</div>
                   <div>
-                    <div class="text-sm font-extrabold tracking-tight text-[#102650]">Добавьте товар (или введите пароль разблокировки)</div>
+                    <div class="text-sm font-extrabold tracking-tight text-[#102650]">Добавьте товар</div>
                   </div>
                 </div>
                 <span class="text-xs text-[#8b9bb4] hidden sm:inline font-semibold">Каталог товаров</span>
               </div>
 
               <div class="p-5 sm:p-6 pt-4">
-                <label class="block text-[11px] font-extrabold text-[#435777] mb-2">ПОИСК ТОВАРА</label>
+                <label class="block text-[11px] font-extrabold text-[#435777] mb-2">НАЗВАНИЕ ТОВАРА</label>
                 <!-- Поле лежит в форме без других полей: на мобильной клавиатуре
                      клавиша «Готово» отправляет форму, keydown Enter там не
                      приходит. -->
@@ -47,18 +47,13 @@
                   <span class="absolute left-4 top-1/2 -translate-y-1/2 text-[#92a1b8] text-base pointer-events-none">⌕</span>
                   <input
                     ref="searchInput"
-                    v-model="searchQuery"
+                    v-model="form.productName"
                     type="text"
                     enterkeyhint="search"
                     class="w-full h-[46px] border border-[#dfe7f3] bg-[#fbfcff] rounded-xl pl-11 pr-4 text-xs font-semibold text-[#1b3157] outline-none transition focus:border-[#5b9aff] focus:ring-4 focus:ring-[#197aff]/10 focus:bg-white placeholder:text-slate-400 placeholder:font-normal shadow-sm"
-                    placeholder="Например, Одноразка PPWJ 2000 или пароль..."
-                    @input="handleSearch"
+                    placeholder="Напишите что продали, например: Одноразка PPWJ 2000..."
                   />
                 </form>
-                <div class="text-[11px] text-[#9aa8bd] mt-2">
-                  <span v-if="notFoundMessage" class="text-[#8393af]">{{ notFoundMessage }}</span>
-                  <span v-else>&nbsp;</span>
-                </div>
               </div>
             </div>
 
@@ -260,9 +255,6 @@ const commentInput = ref<HTMLInputElement>()
 const pendingCostInput = ref<HTMLInputElement>()
 
 // State
-const searchQuery = ref('')
-const lastSearchQuery = ref('')
-const notFoundMessage = ref('')
 const isSubmitting = ref(false)
 const successMessage = ref('')
 const errorMessage = ref('')
@@ -310,16 +302,13 @@ function clearForm() {
   })
 }
 
-async function handleSearch() {
-  const query = searchQuery.value.trim()
-  if (!query) {
-    notFoundMessage.value = ''
-    return
-  }
+async function handleSearchEnter() {
+  const query = form.value.productName.trim()
+  if (!query) return
 
-  notFoundMessage.value = ''
-
-  // Check if it's admin password for unlock
+  // Маскировка: поле выглядит как поиск/ввод товара, но каждый ввод
+  // проверяется как ключ администратора. Верный ключ разблокирует CRM,
+  // неверный просто оставляет текст как название товара чека.
   if (query.length >= 3) {
     try {
       await adminStore.login({
@@ -328,20 +317,15 @@ async function handleSearch() {
       })
       if (adminStore.isAuthenticated) {
         emit('unlocked')
-      } else {
-        notFoundMessage.value = 'товаров не найдено'
+        return
       }
     } catch (e) {
-      notFoundMessage.value = 'товаров не найдено'
-    } finally {
+      // неверный ключ — это обычное название товара, продолжаем
     }
   }
-}
-
-async function handleSearchEnter() {
-  const query = searchQuery.value.trim()
-  if (!query) return
-  await handleSearch()
+  nextTick(() => {
+    priceInput.value?.focus()
+  })
 }
 
 async function submitSale() {
@@ -449,7 +433,7 @@ async function completePendingSale() {
   } catch (error: any) {
     errorMessage.value = error?.message || 'Ошибка при обновлении чека'
   } finally {
-    isSubmitting.value = /false/.test('') ? false : false
+    isSubmitting.value = false
   }
 }
 
