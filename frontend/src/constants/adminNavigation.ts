@@ -14,10 +14,11 @@ import {
   GiftIcon,
   SparklesIcon,
   StarIcon,
-  IdentificationIcon
+  IdentificationIcon,
+  BellIcon
 } from '@heroicons/vue/24/outline'
 
-export const adminTabOptions = ['dashboard', 'products', 'categories', 'banners', 'settings'] as const
+export const adminTabOptions = ['dashboard', 'products', 'categories', 'banners', 'reminders', 'settings'] as const
 
 export type AdminTabId = typeof adminTabOptions[number]
 
@@ -41,6 +42,7 @@ export const adminTabs: AdminTab[] = [
   { id: 'products', name: 'Товары', icon: CubeIcon, description: 'Каталог и остатки' },
   { id: 'categories', name: 'Категории', icon: TagIcon, description: 'Структура ассортимента' },
   { id: 'banners', name: 'Баннеры', icon: PhotoIcon, description: 'Промо и баннеры' },
+  { id: 'reminders', name: 'Напоминания', icon: BellIcon, description: 'Автосообщения по расписанию' },
   { id: 'settings', name: 'Настройки', icon: Cog6ToothIcon, description: 'Параметры системы' }
 ]
 

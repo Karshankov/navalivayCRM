@@ -19,12 +19,14 @@ import { posRouter } from './routes/pos.js';
 import { promoRouter } from './routes/promo.js';
 import { loyaltyRouter } from './routes/loyalty.js';
 import { wheelRouter } from './routes/wheel.js';
+import { remindersRouter } from './routes/reminders.js';
 import { archiveOldDeliveredOrders, scheduleArchiving } from './cleanup-delivered-orders.js';
 import { scheduleReviewMonthlyDraw } from './utils/schedule-review-monthly-draw.js';
 import { startAutoNotifyRetryWorker } from './utils/auto-notify-retry.js';
 import { startReferralWelcomeNotificationWorker } from './utils/referral-welcome-notify.js';
 import { startInternalNotificationWorker } from './utils/internal-notification-worker.js';
 import { startSalaryReminderScheduler } from './utils/salary-reminder-scheduler.js';
+import { startCustomReminderScheduler } from './utils/custom-reminder-scheduler.js';
 import { startStaffShiftScheduler } from './utils/staff-service.js';
 import { DEV_BACKEND_PORT, PROD_BACKEND_PORT } from '../shared/runtime-ports.js';
 
@@ -103,6 +105,7 @@ startAutoNotifyRetryWorker();
 startReferralWelcomeNotificationWorker();
 startInternalNotificationWorker(db);
 startSalaryReminderScheduler(db);
+startCustomReminderScheduler(db);
 startStaffShiftScheduler();
 
 // Middlewares
@@ -162,6 +165,8 @@ app.use(promoRouter);
 app.use(loyaltyRouter);
 // Wheel API
 app.use(wheelRouter);
+// Reminders API (раздел «Напоминания»)
+app.use(remindersRouter);
 
 
 app.listen(PORT, () => {
