@@ -104,8 +104,9 @@ function reminderRow(reminderId) {
 /** Человекочитаемое описание расписания для карточки. */
 function scheduleLabel(reminder, { hour, minute, date } = {}) {
   const time = `${String(hour ?? reminder.schedule_hour).padStart(2, '0')}:${String(minute ?? reminder.schedule_minute).padStart(2, '0')}`;
-  if (reminder.schedule_type === 'once') {
-    return `Один раз ${date ?? reminder.once_date} в ${time}`;
+  if (reminder.schedule_type === 'monthly') {
+    const day = Number(String(date ?? reminder.monthly_date).split('-')[2]);
+    return `Каждый месяц ${day}-го в ${time}`;
   }
   const days = Number(reminder.interval_days);
   if (days === 1) return `Каждый день в ${time}`;
@@ -133,7 +134,7 @@ function publicReminder(reminder, { now = new Date() } = {}) {
     schedule_hour: reminder.schedule_hour,
     schedule_minute: reminder.schedule_minute,
     interval_days: reminder.interval_days,
-    once_date: reminder.once_date,
+    monthly_date: reminder.monthly_date,
     enabled: Number(reminder.enabled) === 1,
     schedule_label: scheduleLabel(reminder),
     recipients: members.map((member) => ({
@@ -163,18 +164,18 @@ function validateReminderInput(body) {
   if (!time) return { error: 'invalid_time' };
 
   const scheduleType = String(body?.schedule_type || 'interval');
-  if (!['interval', 'once'].includes(scheduleType)) return { error: 'invalid_schedule_type' };
+  if (!['interval', 'monthly'].includes(scheduleType)) return { error: 'invalid_schedule_type' };
 
   let intervalDays = null;
-  let onceDate = null;
+  let monthlyDate = null;
   if (scheduleType === 'interval') {
     const days = Number(body?.interval_days);
     if (!Number.isInteger(days) || days < 1 || days > 365) return { error: 'invalid_interval_days' };
     intervalDays = days;
   } else {
-    const date = parseDate(body?.once_date);
-    if (!date) return { error: 'invalid_once_date' };
-    onceDate = body?.once_date;
+    const date = parseDate(body?.monthly_date);
+    if (!date) return { error: 'invalid_monthly_date' };
+    monthlyDate = body?.monthly_date;
   }
 
   const rawUsernames = Array.isArray(body?.recipient_usernames)
@@ -205,7 +206,7 @@ function validateReminderInput(body) {
     schedule_hour: time.hour,
     schedule_minute: time.minute,
     interval_days: intervalDays,
-    once_date: onceDate,
+    monthly_date: monthlyDate,
     recipient_usernames: usernames,
   };
 }
@@ -294,7 +295,7 @@ remindersRouter.post(BASE, authMiddleware, (req, res) => {
       db.prepare(`
         INSERT INTO custom_reminders (
           id, title, message, schedule_type, schedule_hour, schedule_minute,
-          interval_days, once_date, recipient_usernames, enabled
+          interval_days, monthly_date, recipient_usernames, enabled
         )
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
       `).run(
@@ -305,7 +306,7 @@ remindersRouter.post(BASE, authMiddleware, (req, res) => {
         input.schedule_hour,
         input.schedule_minute,
         input.interval_days,
-        input.once_date,
+        input.monthly_date,
         JSON.stringify(input.recipient_usernames),
       );
       return reminderRow(reminderId);
@@ -351,7 +352,7 @@ remindersRouter.patch(`${BASE}/:id`, authMiddleware, (req, res) => {
     db.prepare(`
       UPDATE custom_reminders
       SET title = ?, message = ?, schedule_type = ?, schedule_hour = ?,
-          schedule_minute = ?, interval_days = ?, once_date = ?,
+          schedule_minute = ?, interval_days = ?, monthly_date = ?,
           recipient_usernames = ?, last_due_key = NULL, last_enqueued_at = NULL,
           updated_at = DATETIME('now')
       WHERE id = ?
@@ -362,7 +363,7 @@ remindersRouter.patch(`${BASE}/:id`, authMiddleware, (req, res) => {
       input.schedule_hour,
       input.schedule_minute,
       input.interval_days,
-      input.once_date,
+      input.monthly_date,
       JSON.stringify(input.recipient_usernames),
       current.id,
     );

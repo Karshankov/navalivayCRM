@@ -25,6 +25,7 @@ const { remindersRouter } = await import('../routes/reminders.js');
 const {
   computeLastDueAt,
   getReminderDueKey,
+  listUpcomingRuns,
   enqueueDueCustomReminders,
   _stopCustomReminderSchedulerForTests,
 } = await import('../utils/custom-reminder-scheduler.js');
@@ -56,7 +57,7 @@ function insertReminder(id, {
   hour = 15,
   minute = 0,
   intervalDays = null,
-  onceDate = null,
+  monthlyDate = null,
   usernames = ['ppofic'],
   enabled = 1,
   createdAt = '2026-01-01 00:00:00',
@@ -64,12 +65,12 @@ function insertReminder(id, {
   db.prepare(`
     INSERT INTO custom_reminders (
       id, title, message, schedule_type, schedule_hour, schedule_minute,
-      interval_days, once_date, recipient_usernames, enabled, created_at
+      interval_days, monthly_date, recipient_usernames, enabled, created_at
     )
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id, `Заголовок ${id}`, `Сообщение ${id}`, scheduleType,
-    hour, minute, intervalDays, onceDate, JSON.stringify(usernames), enabled, createdAt,
+    hour, minute, intervalDays, monthlyDate, JSON.stringify(usernames), enabled, createdAt,
   );
   return db.prepare('SELECT * FROM custom_reminders WHERE id = ?').get(id);
 }
@@ -124,18 +125,65 @@ try {
     'шаг 2',
   );
 
-  console.log('scheduler: разовое напоминание');
-  const once = insertReminder('rem-once', { scheduleType: 'once', onceDate: '2026-02-01', hour: 10, minute: 30 });
-  // computeLastDueAt возвращает сам момент отправки; наступил он или нет,
-  // решает enqueueDueCustomReminders (сравнение с now).
+  console.log('scheduler: ежемесячное напоминание');
+  const monthly = insertReminder('rem-monthly', { scheduleType: 'monthly', monthlyDate: '2026-02-01', hour: 10, minute: 30 });
+  // 1-го числа каждого месяца в 10:30 Минск = 07:30 UTC.
+  // computeLastDueAt возвращает последний прошедший момент.
   assert.equal(
-    computeLastDueAt(once, new Date('2026-01-20T10:00:00Z'))?.toISOString(),
+    computeLastDueAt(monthly, new Date('2026-02-15T10:00:00Z'))?.toISOString(),
     '2026-02-01T07:30:00.000Z',
-    'момент отправки: 10:30 Минск = 07:30 UTC',
+    'после 1 февраля берём 1 февраля',
   );
   assert.equal(
-    computeLastDueAt(once, new Date('2026-02-01T08:00:00Z'))?.toISOString(),
+    computeLastDueAt(monthly, new Date('2026-01-20T10:00:00Z'))?.toISOString(),
+    '2026-01-01T07:30:00.000Z',
+    'создано 1 января — вхождение 1 января действительно',
+  );
+  assert.equal(
+    computeLastDueAt(monthly, new Date('2026-03-20T10:00:00Z'))?.toISOString(),
+    '2026-03-01T07:30:00.000Z',
+    'в марте берём 1 марта',
+  );
+
+  console.log('scheduler: ежемесячное не догоняет до даты создания');
+  const monthlyLate = insertReminder('rem-monthly-late', {
+    scheduleType: 'monthly', monthlyDate: '2026-02-01', hour: 10, minute: 30,
+    createdAt: '2026-01-15 00:00:00',
+  });
+  assert.equal(
+    computeLastDueAt(monthlyLate, new Date('2026-01-20T10:00:00Z')),
+    null,
+    'создано 15 января — вхождение 1 января не считается',
+  );
+  assert.equal(
+    computeLastDueAt(monthlyLate, new Date('2026-02-15T10:00:00Z'))?.toISOString(),
     '2026-02-01T07:30:00.000Z',
+    'а 1 февраля — считается',
+  );
+
+  console.log('scheduler: ежемесячное 31-го числа пропускает короткие месяцы');
+  const monthly31 = insertReminder('rem-monthly-31', { scheduleType: 'monthly', monthlyDate: '2026-01-31', hour: 10, minute: 30 });
+  assert.equal(
+    computeLastDueAt(monthly31, new Date('2026-02-15T10:00:00Z'))?.toISOString(),
+    '2026-01-31T07:30:00.000Z',
+    'в феврале 31-го нет — берём январское',
+  );
+  assert.equal(
+    computeLastDueAt(monthly31, new Date('2026-03-01T10:00:00Z'))?.toISOString(),
+    '2026-01-31T07:30:00.000Z',
+    '1 марта всё ещё январское (31 марта не наступило)',
+  );
+  assert.equal(
+    computeLastDueAt(monthly31, new Date('2026-03-31T07:30:00Z'))?.toISOString(),
+    '2026-03-31T07:30:00.000Z',
+    '31 марта в 10:30 — момент наступил',
+  );
+
+  console.log('scheduler: ежемесячное — прогноз следующих отправок');
+  assert.deepEqual(
+    listUpcomingRuns(monthly, { now: new Date('2026-02-15T10:00:00Z') }).map((d) => d.toISOString()),
+    ['2026-03-01T07:30:00.000Z', '2026-04-01T07:30:00.000Z'],
+    'следующие: 1 марта и 1 апреля',
   );
 
   console.log('scheduler: догон и идемпотентность');
@@ -182,6 +230,84 @@ try {
   const enqueue3 = enqueueDueCustomReminders(db, { now: new Date('2026-01-05T12:00:00Z') });
   assert.ok(enqueue3.enqueued === 0);
 
+  console.log('scheduler: ежемесячное — раз в месяц, без повторов в остальные дни');
+  // Создано 2025-12-21, день 20-е, 15:00: вхождение 20 декабря было до
+  // создания и не считается — первое срабатывание 20 января.
+  // Проверяем доставки только этого напоминания: тик обрабатывает все
+  // включённые сразу, и соседи дают фоновый шум.
+  insertReminder('rem-monthly-due', {
+    scheduleType: 'monthly', monthlyDate: '2026-01-20', hour: 15, minute: 0,
+    createdAt: '2025-12-21 00:00:00', usernames: ['ppofic'],
+  });
+  const dueCount = () => db.prepare(`
+    SELECT COUNT(*) AS c FROM internal_notification_outbox
+    WHERE unique_key LIKE 'custom-reminder:rem-monthly-due:%'
+  `).get().c;
+
+  enqueueDueCustomReminders(db, { now: new Date('2026-01-05T12:00:00Z') });
+  assert.equal(dueCount(), 0, 'до 20 января не отправляется');
+  enqueueDueCustomReminders(db, { now: new Date('2026-01-20T12:00:00Z') });
+  assert.equal(dueCount(), 1, '20 января в 15:00 — отправка');
+  enqueueDueCustomReminders(db, { now: new Date('2026-01-20T12:01:00Z') });
+  assert.equal(dueCount(), 1, 'повторный тик — без дубля');
+  enqueueDueCustomReminders(db, { now: new Date('2026-01-25T12:00:00Z') });
+  assert.equal(dueCount(), 1, 'позже в том же месяце — без повторов (ключ от даты момента)');
+  enqueueDueCustomReminders(db, { now: new Date('2026-02-20T12:00:00Z') });
+  assert.equal(dueCount(), 2, '20 февраля — следующая отправка');
+  assert.equal(
+    db.prepare("SELECT COUNT(*) AS c FROM internal_notification_outbox WHERE unique_key LIKE 'custom-reminder:rem-monthly-due:%'").get().c,
+    2,
+    'всего две доставки за два месяца',
+  );
+
+  console.log('migration: конвертация разового в ежемесячное');
+  {
+    const Database = (await import('better-sqlite3')).default;
+    const legacyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'navalivay-reminders-legacy-'));
+    const legacyDb = new Database(path.join(legacyDir, 'legacy.db'));
+    legacyDb.exec(`
+      CREATE TABLE custom_reminders (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        message TEXT NOT NULL,
+        schedule_type TEXT NOT NULL DEFAULT 'interval' CHECK (schedule_type IN ('interval','once')),
+        schedule_hour INTEGER NOT NULL DEFAULT 12,
+        schedule_minute INTEGER NOT NULL DEFAULT 0,
+        interval_days INTEGER,
+        once_date TEXT,
+        recipient_usernames TEXT NOT NULL DEFAULT '[]',
+        enabled INTEGER NOT NULL DEFAULT 1,
+        last_due_key TEXT,
+        last_enqueued_at TEXT,
+        created_at TEXT NOT NULL DEFAULT (DATETIME('now')),
+        updated_at TEXT NOT NULL DEFAULT (DATETIME('now'))
+      );
+    `);
+    legacyDb.prepare(`
+      INSERT INTO custom_reminders (id, title, message, schedule_type, schedule_hour, schedule_minute, once_date, recipient_usernames, last_due_key)
+      VALUES ('legacy-once', 'Отчёт', 'Текст', 'once', 10, 30, '2026-09-07', '["ppofic"]', 'once:legacy-once')
+    `).run();
+    legacyDb.prepare(`
+      INSERT INTO custom_reminders (id, title, message, schedule_type, schedule_hour, schedule_minute, interval_days, recipient_usernames)
+      VALUES ('legacy-int', 'Остатки', 'Текст', 'interval', 15, 0, 2, '["rk0ff"]')
+    `).run();
+    const { migrateCustomReminders } = await import('../migrations/add_custom_reminders.js');
+    migrateCustomReminders(legacyDb, { now: new Date('2026-10-18T12:00:00Z') });
+    const converted = legacyDb.prepare('SELECT * FROM custom_reminders ORDER BY id').all();
+    assert.equal(converted.length, 2, 'обе строки сохранены');
+    const once = converted.find((r) => r.id === 'legacy-once');
+    assert.equal(once.schedule_type, 'monthly', 'once стал monthly');
+    assert.equal(once.monthly_date, '2026-09-07', 'дата перенесена');
+    assert.equal(once.last_due_key, 'day:2026-10-07', 'последнее прошедшее вхождение помечено — догона нет');
+    const int = converted.find((r) => r.id === 'legacy-int');
+    assert.equal(int.schedule_type, 'interval', 'интервальное не тронуто');
+    assert.equal(int.last_due_key, null);
+    const cols = legacyDb.prepare('SELECT name FROM pragma_table_info(\'custom_reminders\')').all().map((c) => c.name);
+    assert.equal(cols.includes('once_date'), false, 'колонка once_date удалена');
+    legacyDb.close();
+    fs.rmSync(legacyDir, { recursive: true, force: true });
+  }
+
   // ===== Ручки =====
   console.log('routes: 401 без авторизации');
   const noAuth = await fetch(`${baseUrl}/api/admin/reminders`);
@@ -218,20 +344,21 @@ try {
   assert.ok(created.body.reminder.next_run_at);
   const createdId = created.body.reminder.id;
 
-  console.log('routes: создание разового');
+  console.log('routes: создание ежемесячного');
   const onceCreated = await api('', {
     method: 'POST',
     body: {
       title: 'Отчёт',
       message: 'Сделать отчёт',
       time: '10:30',
-      schedule_type: 'once',
-      once_date: '2027-03-01',
+      schedule_type: 'monthly',
+      monthly_date: '2027-03-01',
       recipient_usernames: ['ppofic', 'rk0ff'],
     },
   });
   assert.equal(onceCreated.status, 201);
-  assert.equal(onceCreated.body.reminder.schedule_label, 'Один раз 2027-03-01 в 10:30');
+  assert.equal(onceCreated.body.reminder.schedule_label, 'Каждый месяц 1-го в 10:30');
+  assert.equal(onceCreated.body.reminder.monthly_date, '2027-03-01');
 
   console.log('routes: валидация');
   const badTime = await api('', {
@@ -249,9 +376,16 @@ try {
 
   const badDate = await api('', {
     method: 'POST',
-    body: { title: 'x', message: 'x', time: '15:00', schedule_type: 'once', once_date: '2026-02-31', recipient_username: 'ppofic' },
+    body: { title: 'x', message: 'x', time: '15:00', schedule_type: 'monthly', monthly_date: '2026-02-31', recipient_username: 'ppofic' },
   });
   assert.equal(badDate.status, 400);
+
+  const badType = await api('', {
+    method: 'POST',
+    body: { title: 'x', message: 'x', time: '15:00', schedule_type: 'once', once_date: '2027-03-01', recipient_username: 'ppofic' },
+  });
+  assert.equal(badType.status, 400);
+  assert.equal(badType.body.error, 'invalid_schedule_type', 'once больше не принимается');
 
   console.log('routes: посторонний юзернейм не принимается');
   const stranger = await api('', {

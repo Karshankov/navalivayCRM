@@ -14,11 +14,12 @@ import { enqueueInternalNotification } from './internal-notifications.js';
  * часовому поясу Минска), и ставит их в internal_notification_outbox —
  * дальше доставляет штатный воркер userbot-уведомлений.
  *
- * Защита от дублей — таблица custom_reminders + UNIQUE(reminder_id, due_key):
- * каждый момент отправки имеет свой ключ (интервальные — дата календаря,
- * разовые — id напоминания). Перезапуск процесса не меняет картину: если
- * сервер был выключен ровно в 15:00, при включении тик увидит «момент
- * наступил, а строки с таким due_key ещё нет» и догонит отправку.
+ * Защита от дублей — поле last_due_key: каждый момент отправки имеет свой
+ * ключ — календарную дату этого момента по Минску (день наступления, а не
+ * день обработки тиком: догон через неделю всё равно помнит, что
+ * отправлял). Перезапуск процесса не меняет картину: если сервер был
+ * выключен ровно в 15:00, при включении тик увидит «момент наступил, а
+ * ключ ещё не зафиксирован» и догонит отправку.
  */
 
 export const CUSTOM_REMINDER_INTERVAL_MS = 60_000;
@@ -35,42 +36,73 @@ function pad2(value) {
   return String(value).padStart(2, '0');
 }
 
-/** Ключ одного момента отправки: календарная дата по Минску (для интервальных). */
+/** Ключ одного момента отправки: календарная дата по Минску. */
 export function getReminderDueKey(reminder, now = new Date()) {
   const parts = getTimeZoneDateParts(now, BUSINESS_TIME_ZONE);
-  if (reminder.schedule_type === 'once') {
-    return `once:${reminder.id}`;
-  }
   return `day:${parts.year}-${pad2(parts.month)}-${pad2(parts.day)}`;
+}
+
+/** Дней в месяце (календарь, зона не важна). */
+function daysInMonth(year, month) {
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+/** created_at ('YYYY-MM-DD HH:MM:SS' UTC) как Date; null, если не читается. */
+function parseCreatedAt(reminder) {
+  const parsed = new Date(String(reminder.created_at || '').replace(' ', 'T') + 'Z');
+  return Number.isFinite(parsed.getTime()) ? parsed : null;
 }
 
 /**
  * UTC-момент очередной отправки напоминания, не позже now.
  *
- * interval: двигаемся от даты создания назад/вперёд по календарю Минска
- * с шагом interval_days и берём последний момент времени отправки <= now.
- * once: единственная дата (границы месяца/года корректны, т.к. дата
- * задаётся через getUtcDateForTimeZoneLocalTime).
+ * interval: двигаемся от даты создания по календарю Минска с шагом
+ * interval_days и берём последний момент времени отправки <= now.
+ * monthly: каждый месяц в день monthly_date (если в месяце такого дня
+ * нет — месяц пропускается) в заданное время; берём последний прошедший.
  */
 export function computeLastDueAt(reminder, now = new Date()) {
-  if (reminder.schedule_type === 'once') {
-    const [year, month, day] = String(reminder.once_date || '').split('-').map(Number);
-    if (!year || !month || !day) return null;
-    return getUtcDateForTimeZoneLocalTime(
-      year,
-      month,
-      day,
-      reminder.schedule_hour,
-      reminder.schedule_minute,
-    );
+  const nowParts = getTimeZoneDateParts(now, BUSINESS_TIME_ZONE);
+
+  if (reminder.schedule_type === 'monthly') {
+    const dayOfMonth = Number(String(reminder.monthly_date || '').split('-')[2]);
+    if (!Number.isInteger(dayOfMonth) || dayOfMonth < 1 || dayOfMonth > 31) return null;
+    // Идём назад по календарю от текущего месяца: первый день-в-месяце,
+    // чей момент уже наступил. Максимум 3 шага (30-е/31-е числа могут
+    // отсутствовать в коротких месяцах подряд не больше раза).
+    // Вхождение до created_at не считается: напоминание ещё не существовало
+    // (как и у интервальных, где отсчёт шагов идёт от даты создания).
+    const createdAt = parseCreatedAt(reminder);
+    let year = nowParts.year;
+    let month = nowParts.month;
+    for (let step = 0; step < 3; step += 1) {
+      if (dayOfMonth <= daysInMonth(year, month)) {
+        const at = getUtcDateForTimeZoneLocalTime(
+          year,
+          month,
+          dayOfMonth,
+          reminder.schedule_hour,
+          reminder.schedule_minute,
+        );
+        if (at <= now) {
+          if (createdAt && at < createdAt) return null;
+          return at;
+        }
+      }
+      month -= 1;
+      if (month < 1) {
+        month = 12;
+        year -= 1;
+      }
+    }
+    return null;
   }
 
   const intervalDays = Number(reminder.interval_days);
   if (!Number.isInteger(intervalDays) || intervalDays < 1) return null;
 
-  const nowParts = getTimeZoneDateParts(now, BUSINESS_TIME_ZONE);
-  const created = new Date(String(reminder.created_at || '').replace(' ', 'T') + 'Z');
-  const createdParts = Number.isFinite(created.getTime())
+  const created = parseCreatedAt(reminder);
+  const createdParts = created
     ? getTimeZoneDateParts(created, BUSINESS_TIME_ZONE)
     : { year: nowParts.year, month: nowParts.month, day: nowParts.day };
 
@@ -104,22 +136,43 @@ function scheduledDateForStep(createdParts, step, reminder) {
   );
 }
 
-/** Прогноз следующих отправок для карточки в CRM (Minsk-метки, ISO-даты). */
+/** Прогноз следующих отправок для карточки в CRM (ISO-даты). */
 export function listUpcomingRuns(reminder, { now = new Date(), count = 2 } = {}) {
   const runs = [];
-  if (reminder.schedule_type === 'once') {
-    const at = computeLastDueAt(reminder, now);
-    if (at && at >= now) runs.push(at);
+  const nowParts = getTimeZoneDateParts(now, BUSINESS_TIME_ZONE);
+
+  if (reminder.schedule_type === 'monthly') {
+    const dayOfMonth = Number(String(reminder.monthly_date || '').split('-')[2]);
+    if (!Number.isInteger(dayOfMonth) || dayOfMonth < 1 || dayOfMonth > 31) return runs;
+    // Идём вперёд от текущего месяца (включая его): первый день-в-месяце,
+    // чей момент ещё не наступил, — это ближайшая отправка.
+    let year = nowParts.year;
+    let month = nowParts.month;
+    for (let guard = 0; guard < 24 && runs.length < count; guard += 1) {
+      if (dayOfMonth <= daysInMonth(year, month)) {
+        const at = getUtcDateForTimeZoneLocalTime(
+          year, month, dayOfMonth,
+          reminder.schedule_hour, reminder.schedule_minute,
+        );
+        if (at > now) runs.push(at);
+      }
+      month += 1;
+      if (month > 12) {
+        month = 1;
+        year += 1;
+      }
+    }
     return runs;
   }
+
   const last = computeLastDueAt(reminder, now);
-  let anchor = last || now;
+  let anchorMs = (last || now).getTime();
   for (let i = 0; i < count; i += 1) {
     const next = new Date(
-      anchor.getTime() + Number(reminder.interval_days) * 86_400_000,
+      anchorMs + Number(reminder.interval_days) * 86_400_000,
     );
     runs.push(next);
-    anchor = next;
+    anchorMs = next.getTime();
   }
   return runs;
 }
@@ -161,7 +214,11 @@ export function enqueueDueCustomReminders(database, { now = new Date() } = {}) {
         skipped += 1;
         continue;
       }
-      const dueKey = getReminderDueKey(reminder, now);
+      // Ключ — календарный день САМОГО МОМЕНТА отправки (не дня тика):
+      // иначе ежемесячное напоминание после срабатывания повторялось бы
+      // каждый день до конца месяца, а догон в тот же день гасил бы
+      // собственную отправку этого дня.
+      const dueKey = getReminderDueKey(reminder, dueAt);
       if (reminder.last_due_key === dueKey) {
         skipped += 1;
         continue;

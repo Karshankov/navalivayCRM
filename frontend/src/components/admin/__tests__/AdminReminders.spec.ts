@@ -41,7 +41,7 @@ const reminderFixture = {
   schedule_hour: 15,
   schedule_minute: 0,
   interval_days: 1,
-  once_date: null,
+  monthly_date: null,
   enabled: true,
   schedule_label: "Каждый день в 15:00",
   recipients: [
@@ -238,14 +238,20 @@ describe("AdminReminders раздел «Напоминания»", () => {
     expect(wrapper.text()).toContain("Выберите хотя бы одного получателя.");
   });
 
-  it("переключает режим расписания на разовую дату", async () => {
+  it("переключает режим расписания на ежемесячный", async () => {
     const wrapper = mount(AdminReminders);
     await flushPromises();
 
     await wrapper.find('[data-test="reminders-create"]').trigger("click");
-    await wrapper.findAll("button").find((b) => b.text().includes("Один раз"))!.trigger("click");
+    await wrapper.findAll("button").find((b) => b.text().includes("Каждый месяц"))!.trigger("click");
     expect(wrapper.find("#reminder-date").exists()).toBe(true);
-    expect(wrapper.text()).toContain("один раз");
+    expect(wrapper.find("#reminder-date").attributes("type")).toBe("date");
+    expect(wrapper.text()).toContain("каждый месяц");
+    expect(wrapper.text()).toContain("в выбранное число");
+    // Превью показывает выбранное число месяца
+    const dateInput = wrapper.find("#reminder-date");
+    await dateInput.setValue("2027-03-20");
+    expect(wrapper.text()).toContain("каждый месяц 20-го числа");
   });
 
   it("журнал доставок выводится таблицей эталона с юзернеймом", async () => {

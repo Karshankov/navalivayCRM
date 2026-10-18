@@ -145,7 +145,7 @@
           <div class="flex flex-wrap items-center gap-2 xl:shrink-0">
             <button
               type="button"
-              class="crm-ref-chip-button"
+              class="crm-ref-chip-button reminder-chip--green"
               :disabled="actionBusy(reminder.id) || !reminder.recipients_ok"
               :title="reminder.recipients_ok ? 'Отправить сообщение сейчас, не дожидаясь расписания' : 'У одного из юзернеймов нет карточки клиента с Telegram ID'"
               @click="sendTest(reminder)"
@@ -160,6 +160,7 @@
             <button
               type="button"
               class="crm-ref-chip-button"
+              :class="reminder.enabled ? 'reminder-chip--red' : 'reminder-chip--green'"
               :disabled="actionBusy(reminder.id)"
               @click="toggleReminder(reminder)"
             >
@@ -169,7 +170,7 @@
             </button>
             <button
               type="button"
-              class="crm-ref-chip-button crm-ref-chip-button--danger"
+              class="crm-ref-chip-button reminder-chip--red"
               :disabled="actionBusy(reminder.id)"
               @click="confirmDelete(reminder)"
             >
@@ -374,14 +375,17 @@
           <template v-else>
             <div class="grid grid-cols-2 gap-2">
               <div class="space-y-2">
-                <label class="crm-ref-form-label" for="reminder-date">Дата</label>
+                <label class="crm-ref-form-label" for="reminder-date">Дата (число месяца)</label>
                 <input
                   id="reminder-date"
-                  v-model="form.once_date"
+                  v-model="form.monthly_date"
                   type="date"
                   required
                   class="crm-ref-input"
                 />
+                <p class="m-0 text-[10.5px] text-[#8898b5]">
+                  Каждый месяц в выбранное число (в коротких месяцах 29–31-е пропускается).
+                </p>
               </div>
               <div class="space-y-2">
                 <label class="crm-ref-form-label" for="reminder-time">Время (Минск)</label>
@@ -404,7 +408,7 @@
         <p v-if="formError" class="m-0 text-[12.5px] leading-relaxed text-[#e5484d]">{{ formError }}</p>
 
         <div class="crm-ref-modal-actions">
-          <button type="button" class="crm-ref-button crm-ref-button--gray" @click="closeFormModal">Отмена</button>
+          <button type="button" class="crm-ref-button reminder-button--cancel" @click="closeFormModal">Отмена</button>
           <button type="submit" class="crm-ref-button reminder-button--create" :disabled="isSubmitting">
             {{ isSubmitting ? 'Сохраняем…' : (editingId ? 'Сохранить' : 'Создать') }}
           </button>
@@ -428,10 +432,10 @@
           История доставок останется в журнале.
         </p>
         <div class="crm-ref-modal-actions">
-          <button type="button" class="crm-ref-button crm-ref-button--gray" @click="showDeleteModal = false">Отмена</button>
+          <button type="button" class="crm-ref-button reminder-button--cancel" @click="showDeleteModal = false">Отмена</button>
           <button
             type="button"
-            class="crm-ref-button crm-ref-button--danger"
+            class="crm-ref-button reminder-button--delete"
             :disabled="isSubmitting"
             @click="deleteReminder"
           >
@@ -466,11 +470,11 @@ interface Reminder {
   id: string
   title: string
   message: string
-  schedule_type: 'interval' | 'once'
+  schedule_type: 'interval' | 'monthly'
   schedule_hour: number
   schedule_minute: number
   interval_days: number | null
-  once_date: string | null
+  monthly_date: string | null
   enabled: boolean
   schedule_label: string
   recipients: Array<{
@@ -536,16 +540,16 @@ const intervalPresets = [
 
 const scheduleTypeOptions = [
   { value: 'interval' as const, label: 'Повторяется', hint: 'Каждый день или каждые N дней' },
-  { value: 'once' as const, label: 'Один раз', hint: 'В конкретную дату и время' },
+  { value: 'monthly' as const, label: 'Каждый месяц', hint: 'В выбранное число каждый месяц' },
 ]
 
 const form = reactive({
   title: '',
   message: '',
   recipient_usernames: [] as string[],
-  schedule_type: 'interval' as 'interval' | 'once',
+  schedule_type: 'interval' as 'interval' | 'monthly',
   interval_days: 1,
-  once_date: '',
+  monthly_date: '',
   time: '15:00',
 })
 
@@ -573,9 +577,10 @@ const formPreviewLabel = computed(() => {
       ? `Отправим ${recipientPreviewLabel()} каждый день в ${time} по Минску.`
       : `Отправим ${recipientPreviewLabel()} каждые ${days} дн. в ${time} по Минску.`
   }
-  return form.once_date
-    ? `Отправим ${recipientPreviewLabel()} один раз ${form.once_date} в ${time} по Минску.`
-    : `Отправим ${recipientPreviewLabel()} один раз в ${time} по Минску.`
+  const day = form.monthly_date ? Number(form.monthly_date.split('-')[2]) : null
+  return day
+    ? `Отправим ${recipientPreviewLabel()} каждый месяц ${day}-го числа в ${time} по Минску.`
+    : `Отправим ${recipientPreviewLabel()} каждый месяц в ${time} по Минску.`
 })
 
 function recipientPreviewLabel() {
@@ -697,7 +702,7 @@ async function api<T>(path: string, options?: RequestInit): Promise<T> {
       invalid_time: 'Укажите время в формате ЧЧ:ММ.',
       invalid_schedule_type: 'Выберите тип расписания.',
       invalid_interval_days: 'Интервал: от 1 до 365 дней.',
-      invalid_once_date: 'Укажите корректную дату.',
+      invalid_monthly_date: 'Укажите корректную дату.',
       recipients_required: 'Выберите хотя бы одного получателя.',
       recipient_not_in_team: 'Получатель вне команды.',
       recipient_not_found: 'У этого юзернейма нет карточки клиента с Telegram — напишите ему хотя бы раз, чтобы CRM запомнила ID.',
@@ -752,7 +757,7 @@ function openCreateModal() {
   form.recipient_usernames = []
   form.schedule_type = 'interval'
   form.interval_days = 1
-  form.once_date = todayValue()
+  form.monthly_date = todayValue()
   form.time = '15:00'
   showFormModal.value = true
 }
@@ -765,7 +770,7 @@ function openEditModal(reminder: Reminder) {
   form.recipient_usernames = reminder.recipients.map((member) => member.username)
   form.schedule_type = reminder.schedule_type
   form.interval_days = reminder.interval_days || 1
-  form.once_date = reminder.once_date || todayValue()
+  form.monthly_date = reminder.monthly_date || todayValue()
   const pad = (value: number) => String(value).padStart(2, '0')
   form.time = `${pad(reminder.schedule_hour)}:${pad(reminder.schedule_minute)}`
   showFormModal.value = true
@@ -792,7 +797,7 @@ async function submitForm() {
       recipient_usernames: form.recipient_usernames,
       schedule_type: form.schedule_type,
       interval_days: form.schedule_type === 'interval' ? form.interval_days : null,
-      once_date: form.schedule_type === 'once' ? form.once_date : null,
+      monthly_date: form.schedule_type === 'monthly' ? form.monthly_date : null,
       time: form.time,
     })
     if (editingId.value) {
@@ -889,18 +894,18 @@ onMounted(loadAll)
 .reminder-badge svg { width: 14px; height: 14px; flex-shrink: 0; }
 .reminder-badge-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
 
-.reminder-badge--on { background: #e7f1ff; color: #1759ed; }
-.reminder-badge--on .reminder-badge-dot { background: #1759ed; }
+.reminder-badge--on { background: #eafaf1; color: #0b7a55; }
+.reminder-badge--on .reminder-badge-dot { background: #10b981; }
 .reminder-badge--off { background: #f0f4fa; color: #8493b0; }
 .reminder-badge--off .reminder-badge-dot { background: #9ba8c0; }
 .reminder-badge--schedule { background: #f0f4fa; color: #253663; }
 .reminder-badge--warn { background: #fff3f4; color: #c22036; }
-.reminder-badge--sent { background: #e7f1ff; color: #1759ed; }
+.reminder-badge--sent { background: #eafaf1; color: #0b7a55; }
 .reminder-badge--pending { background: #f0f4fa; color: #253663; }
 .reminder-badge--retry { background: #fff7ea; color: #8a6d3b; }
 .reminder-badge--failed { background: #fff3f4; color: #c22036; }
 
-.reminder-badge-dot--ok { background: #1759ed; }
+.reminder-badge-dot--ok { background: #10b981; }
 .reminder-badge-dot--info { background: #9ba8c0; }
 .reminder-badge-dot--warn { background: #d9a21b; }
 .reminder-badge-dot--err { background: #e5484d; }
@@ -984,17 +989,45 @@ onMounted(loadAll)
   color: white;
 }
 
-/* Зелёный градиент для главного действия раздела */
+/* Кнопки эталона «Заказов»: подтверждение — зелёный градиент,
+   отмена и удаление — красный градиент (как danger «Заказов»). */
 .crm-ref-button.reminder-button--create {
   background: linear-gradient(115deg, #10b981, #059669);
   color: white;
   box-shadow: 0 8px 16px #10b98130;
+}
+.crm-ref-button.reminder-button--cancel {
+  background: linear-gradient(115deg, #ff685a, #fa104f);
+  color: white;
+}
+.crm-ref-button.reminder-button--delete {
+  background: linear-gradient(115deg, #ff685a, #fa104f);
+  color: white;
 }
 .crm-ref-chip-button.reminder-chip--create {
   background: linear-gradient(115deg, #10b981, #059669);
   border-color: transparent;
   color: white;
   box-shadow: 0 8px 16px #10b98130;
+}
+/* Малые кнопки карточек: зелёная — действие, красная — стоп/удаление */
+.crm-ref-chip-button.reminder-chip--green {
+  background: #eafaf1;
+  border-color: #a7e3c4;
+  color: #0b7a55;
+}
+.crm-ref-chip-button.reminder-chip--green:hover {
+  background: #ddf5e7;
+  border-color: #86d9b0;
+}
+.crm-ref-chip-button.reminder-chip--red {
+  background: #fff3f4;
+  border-color: #ffd7dc;
+  color: #c22036;
+}
+.crm-ref-chip-button.reminder-chip--red:hover {
+  background: #ffe9ec;
+  border-color: #ffb9c2;
 }
 .crm-ref-chip-button.reminder-preset--active {
   background: #e7f1ff;
