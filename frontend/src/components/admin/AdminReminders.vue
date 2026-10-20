@@ -373,30 +373,34 @@
           </template>
 
           <template v-else>
-            <div class="grid grid-cols-2 gap-2">
-              <div class="space-y-2">
-                <label class="crm-ref-form-label" for="reminder-date">Дата (число месяца)</label>
-                <input
-                  id="reminder-date"
-                  v-model="form.monthly_date"
-                  type="date"
-                  required
-                  class="crm-ref-input"
-                />
-                <p class="m-0 text-[10.5px] text-[#8898b5]">
-                  Каждый месяц в выбранное число (в коротких месяцах 29–31-е пропускается).
-                </p>
+            <div class="space-y-2">
+              <label class="crm-ref-form-label">Числа месяца</label>
+              <div class="reminder-days" role="group" aria-label="Числа месяца для отправки">
+                <button
+                  v-for="day in 31"
+                  :key="day"
+                  type="button"
+                  class="reminder-day"
+                  :class="{ 'is-active': isDaySelected(day) }"
+                  :aria-pressed="isDaySelected(day)"
+                  @click="toggleDay(day)"
+                >
+                  {{ day }}
+                </button>
               </div>
-              <div class="space-y-2">
-                <label class="crm-ref-form-label" for="reminder-time">Время (Минск)</label>
-                <input
-                  id="reminder-time"
-                  v-model="form.time"
-                  type="time"
-                  required
-                  class="crm-ref-input"
-                />
-              </div>
+              <p class="m-0 text-[10.5px] text-[#8898b5]">
+                Можно выбрать несколько — например 3, 15 и 23. В коротких месяцах 29–31-е пропускается.
+              </p>
+            </div>
+            <div class="space-y-2">
+              <label class="crm-ref-form-label" for="reminder-time">Время (Минск)</label>
+              <input
+                id="reminder-time"
+                v-model="form.time"
+                type="time"
+                required
+                class="crm-ref-input"
+              />
             </div>
           </template>
 
@@ -464,7 +468,6 @@ import {
   CheckIcon,
 } from '@heroicons/vue/24/outline'
 import AdminModal from '@/components/AdminModal.vue'
-import { getBusinessDateParts } from '@/utils/businessTime'
 
 interface Reminder {
   id: string
@@ -474,7 +477,7 @@ interface Reminder {
   schedule_hour: number
   schedule_minute: number
   interval_days: number | null
-  monthly_date: string | null
+  monthly_days: number[]
   enabled: boolean
   schedule_label: string
   recipients: Array<{
@@ -549,7 +552,7 @@ const form = reactive({
   recipient_usernames: [] as string[],
   schedule_type: 'interval' as 'interval' | 'monthly',
   interval_days: 1,
-  monthly_date: '',
+  monthly_days: [] as number[],
   time: '15:00',
 })
 
@@ -577,9 +580,11 @@ const formPreviewLabel = computed(() => {
       ? `Отправим ${recipientPreviewLabel()} каждый день в ${time} по Минску.`
       : `Отправим ${recipientPreviewLabel()} каждые ${days} дн. в ${time} по Минску.`
   }
-  const day = form.monthly_date ? Number(form.monthly_date.split('-')[2]) : null
-  return day
-    ? `Отправим ${recipientPreviewLabel()} каждый месяц ${day}-го числа в ${time} по Минску.`
+  const daysText = form.monthly_days.length
+    ? form.monthly_days.slice().sort((a, b) => a - b).map((day) => `${day}-го`).join(', ')
+    : null
+  return daysText
+    ? `Отправим ${recipientPreviewLabel()} каждый месяц ${daysText} в ${time} по Минску.`
     : `Отправим ${recipientPreviewLabel()} каждый месяц в ${time} по Минску.`
 })
 
@@ -599,6 +604,19 @@ function toggleRecipient(username: string) {
     form.recipient_usernames.push(username)
   } else {
     form.recipient_usernames.splice(index, 1)
+  }
+}
+
+function isDaySelected(day: number): boolean {
+  return form.monthly_days.includes(day)
+}
+
+function toggleDay(day: number) {
+  const index = form.monthly_days.indexOf(day)
+  if (index === -1) {
+    form.monthly_days.push(day)
+  } else {
+    form.monthly_days.splice(index, 1)
   }
 }
 
@@ -702,7 +720,7 @@ async function api<T>(path: string, options?: RequestInit): Promise<T> {
       invalid_time: 'Укажите время в формате ЧЧ:ММ.',
       invalid_schedule_type: 'Выберите тип расписания.',
       invalid_interval_days: 'Интервал: от 1 до 365 дней.',
-      invalid_monthly_date: 'Укажите корректную дату.',
+      invalid_monthly_days: 'Выберите хотя бы одно число месяца.',
       recipients_required: 'Выберите хотя бы одного получателя.',
       recipient_not_in_team: 'Получатель вне команды.',
       recipient_not_found: 'У этого юзернейма нет карточки клиента с Telegram — напишите ему хотя бы раз, чтобы CRM запомнила ID.',
@@ -743,12 +761,6 @@ async function loadLog() {
   }
 }
 
-function todayValue(): string {
-  const parts = getBusinessDateParts(new Date(), 'Europe/Minsk')
-  const pad = (value: number) => String(value).padStart(2, '0')
-  return `${parts.year}-${pad(parts.month)}-${pad(parts.day)}`
-}
-
 function openCreateModal() {
   editingId.value = null
   formError.value = ''
@@ -757,7 +769,7 @@ function openCreateModal() {
   form.recipient_usernames = []
   form.schedule_type = 'interval'
   form.interval_days = 1
-  form.monthly_date = todayValue()
+  form.monthly_days = []
   form.time = '15:00'
   showFormModal.value = true
 }
@@ -770,7 +782,7 @@ function openEditModal(reminder: Reminder) {
   form.recipient_usernames = reminder.recipients.map((member) => member.username)
   form.schedule_type = reminder.schedule_type
   form.interval_days = reminder.interval_days || 1
-  form.monthly_date = reminder.monthly_date || todayValue()
+  form.monthly_days = reminder.monthly_days ? [...reminder.monthly_days] : []
   const pad = (value: number) => String(value).padStart(2, '0')
   form.time = `${pad(reminder.schedule_hour)}:${pad(reminder.schedule_minute)}`
   showFormModal.value = true
@@ -797,7 +809,9 @@ async function submitForm() {
       recipient_usernames: form.recipient_usernames,
       schedule_type: form.schedule_type,
       interval_days: form.schedule_type === 'interval' ? form.interval_days : null,
-      monthly_date: form.schedule_type === 'monthly' ? form.monthly_date : null,
+      monthly_days: form.schedule_type === 'monthly'
+        ? form.monthly_days.slice().sort((a, b) => a - b)
+        : [],
       time: form.time,
     })
     if (editingId.value) {
@@ -1035,10 +1049,41 @@ onMounted(loadAll)
   color: #1759ed;
 }
 
+/* Сетка чисел месяца (мультивыбор): компактные чипы 1–31 */
+.reminder-days {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(38px, 1fr));
+  gap: 6px;
+}
+.reminder-day {
+  display: grid;
+  place-items: center;
+  min-height: 34px;
+  padding: 0;
+  border: 1px solid #eaf0f9;
+  border-radius: 9px;
+  background: white;
+  color: #253663;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color .15s, background .15s, color .15s;
+}
+.reminder-day:hover {
+  background: #f7fbff;
+}
+.reminder-day.is-active {
+  border-color: #a7e3c4;
+  background: #eafaf1;
+  color: #0b7a55;
+}
+
 @media (max-width: 700px) {
   .reminder-schedule-option { padding: 11px 13px; }
   .reminder-member { padding: 9px 11px; }
   .reminder-member-avatar { width: 30px; height: 30px; font-size: 13px; }
+  .reminder-days { grid-template-columns: repeat(auto-fill, minmax(34px, 1fr)); }
+  .reminder-day { min-height: 30px; font-size: 11px; }
 }
 
 </style>

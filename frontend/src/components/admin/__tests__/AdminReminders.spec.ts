@@ -41,7 +41,7 @@ const reminderFixture = {
   schedule_hour: 15,
   schedule_minute: 0,
   interval_days: 1,
-  monthly_date: null,
+  monthly_days: [],
   enabled: true,
   schedule_label: "Каждый день в 15:00",
   recipients: [
@@ -238,20 +238,27 @@ describe("AdminReminders раздел «Напоминания»", () => {
     expect(wrapper.text()).toContain("Выберите хотя бы одного получателя.");
   });
 
-  it("переключает режим расписания на ежемесячный", async () => {
+  it("ежемесячный режим: сетка чисел с мультивыбором и превью", async () => {
     const wrapper = mount(AdminReminders);
     await flushPromises();
 
     await wrapper.find('[data-test="reminders-create"]').trigger("click");
     await wrapper.findAll("button").find((b) => b.text().includes("Каждый месяц"))!.trigger("click");
-    expect(wrapper.find("#reminder-date").exists()).toBe(true);
-    expect(wrapper.find("#reminder-date").attributes("type")).toBe("date");
-    expect(wrapper.text()).toContain("каждый месяц");
-    expect(wrapper.text()).toContain("в выбранное число");
-    // Превью показывает выбранное число месяца
-    const dateInput = wrapper.find("#reminder-date");
-    await dateInput.setValue("2027-03-20");
-    expect(wrapper.text()).toContain("каждый месяц 20-го числа");
+
+    const days = wrapper.findAll(".reminder-day");
+    expect(days.length).toBe(31, "сетка чисел 1–31");
+
+    // Мультивыбор: 3, 15 и 23-го
+    await days[2].trigger("click");
+    await days[14].trigger("click");
+    await days[22].trigger("click");
+    expect(wrapper.text()).toContain("каждый месяц 3-го, 15-го, 23-го в 15:00 по Минску.");
+    expect(days[2].classes()).toContain("is-active");
+    expect(days[14].classes()).toContain("is-active");
+
+    // Снятие выбора
+    await days[14].trigger("click");
+    expect(wrapper.text()).toContain("каждый месяц 3-го, 23-го в 15:00 по Минску.");
   });
 
   it("журнал доставок выводится таблицей эталона с юзернеймом", async () => {

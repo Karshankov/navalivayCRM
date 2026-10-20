@@ -12,9 +12,9 @@ import {
  * команды: @ppofic, @rk0ff, @QuaiLLLL — можно несколько) и расписание двух
  * видов:
  *   - interval: каждые N дней в заданное время (часы:минуты по Минску);
- *   - monthly: каждый месяц в выбранный день и время (день берётся из
- *     monthly_date; в месяцах, где такого дня нет — например 31-го в
- *     феврале — отправка в этом месяце пропускается).
+ *   - monthly: каждый месяц в выбранные числа (массив monthly_days,
+ *     например [3, 15, 23]) в заданное время. В месяцах, где числа нет
+ *     — например 31-го в феврале — отправка в этом месяце пропускается.
  *
  * Отправку выполняет userbot через штатный internal_notification_outbox:
  * планировщик (custom-reminder-scheduler.js) по due_key (календарная дата
@@ -39,8 +39,7 @@ const FINAL_SCHEMA = `
     CHECK (schedule_minute >= 0 AND schedule_minute <= 59),
   interval_days INTEGER
     CHECK (interval_days IS NULL OR (interval_days >= 1 AND interval_days <= 365)),
-  monthly_date TEXT
-    CHECK (monthly_date IS NULL OR monthly_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),
+  monthly_days TEXT NOT NULL DEFAULT '[]',
   recipient_usernames TEXT NOT NULL DEFAULT '[]',
   enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
   last_due_key TEXT,
@@ -57,15 +56,20 @@ function daysInMonth(year, month) {
   return new Date(Date.UTC(year, month, 0)).getUTCDate();
 }
 
+/** День месяца из 'YYYY-MM-DD' или null. */
+function dayFromDate(value) {
+  const day = Number(String(value || '').split('-')[2]);
+  return Number.isInteger(day) && day >= 1 && day <= 31 ? day : null;
+}
+
 /**
  * Ключ последнего прошедшего вхождения дня месяца (для конвертации
  * разовых → ежемесячные): 'day:YYYY-MM-DD' дня этого вхождения или null,
  * если таких вхождений ещё не было. Календарь и время — по Минску,
  * как в планировщике.
  */
-function convertedMonthlyCatchUpKey(monthlyDate, hour, minute, now) {
-  const dayOfMonth = Number(String(monthlyDate).split('-')[2]);
-  if (!Number.isInteger(dayOfMonth) || dayOfMonth < 1 || dayOfMonth > 31) return null;
+function convertedMonthlyCatchUpKey(dayOfMonth, hour, minute, now) {
+  if (!dayOfMonth) return null;
 
   const nowParts = getTimeZoneDateParts(now, BUSINESS_TIME_ZONE);
   let year = nowParts.year;
@@ -87,6 +91,21 @@ function convertedMonthlyCatchUpKey(monthlyDate, hour, minute, now) {
   return null;
 }
 
+/** Числа месяца из старых форматов: monthly_days (JSON) / monthly_date / once_date. */
+function legacyMonthlyDays(row) {
+  if (row.monthly_days) {
+    try {
+      const parsed = JSON.parse(String(row.monthly_days));
+      if (Array.isArray(parsed) && parsed.length) return parsed.map(Number);
+    } catch { /* пробуем monthly_date */ }
+  }
+  const fromDates = [row.monthly_date, row.once_date]
+    .map(dayFromDate)
+    .filter(Boolean);
+  if (fromDates.length) return fromDates;
+  return [];
+}
+
 export function migrateCustomReminders(database = db, { now = new Date() } = {}) {
   const target = database || db;
   target.exec(`
@@ -97,20 +116,24 @@ export function migrateCustomReminders(database = db, { now = new Date() } = {})
   `);
 
   // Развёртка старых схем: v1 (получатель-сотрудник) → v2 (один юзернейм,
-  // расписание once) → v3 (список юзернеймов) → v4 (monthly вместо once).
-  // Таблица могла быть создана на любом шаге — конвертируем данные и
-  // пересоздаём в финальной схеме.
+  // расписание once) → v3 (список юзернеймов) → v4 (одна дата monthly_date)
+  // → v5 (несколько чисел monthly_days). Таблица могла быть создана на любом
+  // шаге — конвертируем данные и пересоздаём в финальной схеме.
   const columns = target.prepare(`
     SELECT name FROM pragma_table_info('custom_reminders')
   `).all().map((row) => row.name);
-  const legacy = ['recipient_employee_id', 'recipient_username', 'once_date']
-    .some((column) => columns.includes(column));
+  const legacy = [
+    'recipient_employee_id',
+    'recipient_username',
+    'once_date',
+    'monthly_date',
+  ].some((column) => columns.includes(column));
 
   if (legacy) {
     const rows = target.prepare('SELECT * FROM custom_reminders').all();
     const converted = [];
     for (const row of rows) {
-      // Получатели: массив (v3) → одиночный юзернейм (v2) → сотрудник (v1).
+      // Получатели: массив → одиночный юзернейм → сотрудник (v1).
       let usernames = [];
       try {
         const parsed = JSON.parse(String(row.recipient_usernames ?? '[]'));
@@ -127,24 +150,30 @@ export function migrateCustomReminders(database = db, { now = new Date() } = {})
       }
       if (!usernames.length) continue;
 
-      // Расписание: 'once' → 'monthly' (тот же день теперь ежемесячный).
-      // Догонные ключи формата day: остаются валидными, прочие сбрасываем.
-      // Но «разовое» с датой, которая уже прошла, при конвертации в
-      // ежемесячное не должно немедленно догоняться: помечаем последнее
-      // прошедшее вхождение как обработанное — первая отправка будет
-      // в следующем месяце.
+      // Расписание: 'once' → 'monthly'. Числа месяца — из старых форматов.
+      // Догонные ключи формата day: остаются валидными (день момента не
+      // меняется), прочие сбрасываем. Разовое с уже прошедшей датой при
+      // конвертации не должно немедленно догоняться: помечаем последнее
+      // прошедшее вхождение обработанным — первая отправка в следующем
+      // месяце.
       const scheduleType = row.schedule_type === 'once' ? 'monthly' : row.schedule_type;
-      const monthlyDate = row.monthly_date || row.once_date || null;
+      const monthlyDays = [...new Set(legacyMonthlyDays(row))]
+        .filter((day) => Number.isInteger(day) && day >= 1 && day <= 31)
+        .sort((a, b) => a - b);
+      if (scheduleType === 'monthly' && !monthlyDays.length) continue;
+
       let lastDueKey = String(row.last_due_key || '').startsWith('day:')
         ? row.last_due_key
         : null;
-      if (scheduleType === 'monthly' && monthlyDate && !lastDueKey) {
-        lastDueKey = convertedMonthlyCatchUpKey(monthlyDate, row.schedule_hour, row.schedule_minute, now);
+      if (scheduleType === 'monthly' && !lastDueKey) {
+        lastDueKey = convertedMonthlyCatchUpKey(
+          monthlyDays[0], row.schedule_hour, row.schedule_minute, now,
+        );
       }
       converted.push({
         ...row,
         schedule_type: scheduleType,
-        monthly_date: monthlyDate,
+        monthly_days: JSON.stringify(monthlyDays),
         recipient_usernames: JSON.stringify(
           usernames.map((item) => String(item).trim().replace(/^@+/, '')).filter(Boolean),
         ),
@@ -161,7 +190,7 @@ export function migrateCustomReminders(database = db, { now = new Date() } = {})
       const insert = target.prepare(`
         INSERT INTO custom_reminders (
           id, title, message, schedule_type, schedule_hour, schedule_minute,
-          interval_days, monthly_date, recipient_usernames, enabled,
+          interval_days, monthly_days, recipient_usernames, enabled,
           last_due_key, last_enqueued_at, created_at, updated_at
         )
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -170,7 +199,7 @@ export function migrateCustomReminders(database = db, { now = new Date() } = {})
         insert.run(
           row.id, row.title, row.message, row.schedule_type,
           row.schedule_hour, row.schedule_minute, row.interval_days,
-          row.monthly_date, row.recipient_usernames, row.enabled,
+          row.monthly_days, row.recipient_usernames, row.enabled,
           row.last_due_key, row.last_enqueued_at, row.created_at, row.updated_at,
         );
       }

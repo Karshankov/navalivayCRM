@@ -47,6 +47,26 @@ function daysInMonth(year, month) {
   return new Date(Date.UTC(year, month, 0)).getUTCDate();
 }
 
+/** Числа месяца из monthly_days (JSON-массив или одиночное значение). */
+export function parseMonthlyDays(value) {
+  let raw = value;
+  if (typeof raw === 'string' && /^\d+$/.test(raw.trim())) {
+    raw = [Number(raw.trim())];
+  } else if (typeof raw === 'number') {
+    raw = [raw];
+  } else if (typeof raw === 'string') {
+    try {
+      raw = JSON.parse(raw);
+    } catch {
+      raw = [];
+    }
+  }
+  if (!Array.isArray(raw)) return [];
+  return [...new Set(
+    raw.map((item) => Number(item)).filter((day) => Number.isInteger(day) && day >= 1 && day <= 31),
+  )].sort((a, b) => a - b);
+}
+
 /** created_at ('YYYY-MM-DD HH:MM:SS' UTC) как Date; null, если не читается. */
 function parseCreatedAt(reminder) {
   const parsed = new Date(String(reminder.created_at || '').replace(' ', 'T') + 'Z');
@@ -58,29 +78,31 @@ function parseCreatedAt(reminder) {
  *
  * interval: двигаемся от даты создания по календарю Минска с шагом
  * interval_days и берём последний момент времени отправки <= now.
- * monthly: каждый месяц в день monthly_date (если в месяце такого дня
- * нет — месяц пропускается) в заданное время; берём последний прошедший.
+ * monthly: каждый месяц в выбранные числа (monthly_days) в заданное
+ * время; числа, которых в месяце нет (31-е в феврале), пропускаются.
+ * Берём последний прошедший момент по всем числам.
  */
 export function computeLastDueAt(reminder, now = new Date()) {
   const nowParts = getTimeZoneDateParts(now, BUSINESS_TIME_ZONE);
 
   if (reminder.schedule_type === 'monthly') {
-    const dayOfMonth = Number(String(reminder.monthly_date || '').split('-')[2]);
-    if (!Number.isInteger(dayOfMonth) || dayOfMonth < 1 || dayOfMonth > 31) return null;
-    // Идём назад по календарю от текущего месяца: первый день-в-месяце,
-    // чей момент уже наступил. Максимум 3 шага (30-е/31-е числа могут
-    // отсутствовать в коротких месяцах подряд не больше раза).
+    const monthlyDays = parseMonthlyDays(reminder.monthly_days);
+    if (!monthlyDays.length) return null;
+    // Идём назад по календарю от текущего месяца: в каждом месяце берём
+    // самое позднее из выбранных чисел, чей момент уже наступил. Максимум
+    // 3 шага (30-е/31-е числа могут отсутствовать в коротких месяцах).
     // Вхождение до created_at не считается: напоминание ещё не существовало
     // (как и у интервальных, где отсчёт шагов идёт от даты создания).
     const createdAt = parseCreatedAt(reminder);
     let year = nowParts.year;
     let month = nowParts.month;
     for (let step = 0; step < 3; step += 1) {
-      if (dayOfMonth <= daysInMonth(year, month)) {
+      const daysHere = monthlyDays.filter((day) => day <= daysInMonth(year, month));
+      for (let i = daysHere.length - 1; i >= 0; i -= 1) {
         const at = getUtcDateForTimeZoneLocalTime(
           year,
           month,
-          dayOfMonth,
+          daysHere[i],
           reminder.schedule_hour,
           reminder.schedule_minute,
         );
@@ -142,19 +164,21 @@ export function listUpcomingRuns(reminder, { now = new Date(), count = 2 } = {})
   const nowParts = getTimeZoneDateParts(now, BUSINESS_TIME_ZONE);
 
   if (reminder.schedule_type === 'monthly') {
-    const dayOfMonth = Number(String(reminder.monthly_date || '').split('-')[2]);
-    if (!Number.isInteger(dayOfMonth) || dayOfMonth < 1 || dayOfMonth > 31) return runs;
-    // Идём вперёд от текущего месяца (включая его): первый день-в-месяце,
-    // чей момент ещё не наступил, — это ближайшая отправка.
+    const monthlyDays = parseMonthlyDays(reminder.monthly_days);
+    if (!monthlyDays.length) return runs;
+    // Идём вперёд от текущего месяца (включая его): в каждом месяце —
+    // выбранные числа по возрастанию; момент ещё не наступил — в прогноз.
     let year = nowParts.year;
     let month = nowParts.month;
     for (let guard = 0; guard < 24 && runs.length < count; guard += 1) {
-      if (dayOfMonth <= daysInMonth(year, month)) {
+      const daysHere = monthlyDays.filter((day) => day <= daysInMonth(year, month));
+      for (const day of daysHere) {
         const at = getUtcDateForTimeZoneLocalTime(
-          year, month, dayOfMonth,
+          year, month, day,
           reminder.schedule_hour, reminder.schedule_minute,
         );
         if (at > now) runs.push(at);
+        if (runs.length >= count) break;
       }
       month += 1;
       if (month > 12) {

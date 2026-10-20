@@ -57,7 +57,7 @@ function insertReminder(id, {
   hour = 15,
   minute = 0,
   intervalDays = null,
-  monthlyDate = null,
+  monthlyDays = null,
   usernames = ['ppofic'],
   enabled = 1,
   createdAt = '2026-01-01 00:00:00',
@@ -65,12 +65,14 @@ function insertReminder(id, {
   db.prepare(`
     INSERT INTO custom_reminders (
       id, title, message, schedule_type, schedule_hour, schedule_minute,
-      interval_days, monthly_date, recipient_usernames, enabled, created_at
+      interval_days, monthly_days, recipient_usernames, enabled, created_at
     )
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id, `Заголовок ${id}`, `Сообщение ${id}`, scheduleType,
-    hour, minute, intervalDays, monthlyDate, JSON.stringify(usernames), enabled, createdAt,
+    hour, minute, intervalDays,
+    JSON.stringify(monthlyDays || []),
+    JSON.stringify(usernames), enabled, createdAt,
   );
   return db.prepare('SELECT * FROM custom_reminders WHERE id = ?').get(id);
 }
@@ -126,7 +128,7 @@ try {
   );
 
   console.log('scheduler: ежемесячное напоминание');
-  const monthly = insertReminder('rem-monthly', { scheduleType: 'monthly', monthlyDate: '2026-02-01', hour: 10, minute: 30 });
+  const monthly = insertReminder('rem-monthly', { scheduleType: 'monthly', monthlyDays: [1], hour: 10, minute: 30 });
   // 1-го числа каждого месяца в 10:30 Минск = 07:30 UTC.
   // computeLastDueAt возвращает последний прошедший момент.
   assert.equal(
@@ -147,7 +149,7 @@ try {
 
   console.log('scheduler: ежемесячное не догоняет до даты создания');
   const monthlyLate = insertReminder('rem-monthly-late', {
-    scheduleType: 'monthly', monthlyDate: '2026-02-01', hour: 10, minute: 30,
+    scheduleType: 'monthly', monthlyDays: [1], hour: 10, minute: 30,
     createdAt: '2026-01-15 00:00:00',
   });
   assert.equal(
@@ -162,7 +164,7 @@ try {
   );
 
   console.log('scheduler: ежемесячное 31-го числа пропускает короткие месяцы');
-  const monthly31 = insertReminder('rem-monthly-31', { scheduleType: 'monthly', monthlyDate: '2026-01-31', hour: 10, minute: 30 });
+  const monthly31 = insertReminder('rem-monthly-31', { scheduleType: 'monthly', monthlyDays: [31], hour: 10, minute: 30 });
   assert.equal(
     computeLastDueAt(monthly31, new Date('2026-02-15T10:00:00Z'))?.toISOString(),
     '2026-01-31T07:30:00.000Z',
@@ -184,6 +186,36 @@ try {
     listUpcomingRuns(monthly, { now: new Date('2026-02-15T10:00:00Z') }).map((d) => d.toISOString()),
     ['2026-03-01T07:30:00.000Z', '2026-04-01T07:30:00.000Z'],
     'следующие: 1 марта и 1 апреля',
+  );
+
+  console.log('scheduler: несколько чисел месяца — 3, 15 и 23-го');
+  const multiDays = insertReminder('rem-multi-days', {
+    scheduleType: 'monthly', monthlyDays: [3, 15, 23], hour: 15, minute: 0,
+  });
+  assert.equal(
+    computeLastDueAt(multiDays, new Date('2026-01-10T12:00:00Z'))?.toISOString(),
+    '2026-01-03T12:00:00.000Z',
+    '10 января — последнее прошедшее 3 января',
+  );
+  assert.equal(
+    computeLastDueAt(multiDays, new Date('2026-01-20T12:00:00Z'))?.toISOString(),
+    '2026-01-15T12:00:00.000Z',
+    '20 января — 15 января',
+  );
+  assert.equal(
+    computeLastDueAt(multiDays, new Date('2026-01-25T12:00:00Z'))?.toISOString(),
+    '2026-01-23T12:00:00.000Z',
+    '25 января — 23 января',
+  );
+  assert.equal(
+    computeLastDueAt(multiDays, new Date('2026-01-02T12:00:00Z')),
+    null,
+    '2 января — ничего не наступило',
+  );
+  assert.deepEqual(
+    listUpcomingRuns(multiDays, { now: new Date('2026-01-10T12:00:00Z') }).map((d) => d.toISOString()),
+    ['2026-01-15T12:00:00.000Z', '2026-01-23T12:00:00.000Z'],
+    'прогноз: 15 и 23 января',
   );
 
   console.log('scheduler: догон и идемпотентность');
@@ -236,7 +268,7 @@ try {
   // Проверяем доставки только этого напоминания: тик обрабатывает все
   // включённые сразу, и соседи дают фоновый шум.
   insertReminder('rem-monthly-due', {
-    scheduleType: 'monthly', monthlyDate: '2026-01-20', hour: 15, minute: 0,
+    scheduleType: 'monthly', monthlyDays: [20], hour: 15, minute: 0,
     createdAt: '2025-12-21 00:00:00', usernames: ['ppofic'],
   });
   const dueCount = () => db.prepare(`
@@ -297,13 +329,14 @@ try {
     assert.equal(converted.length, 2, 'обе строки сохранены');
     const once = converted.find((r) => r.id === 'legacy-once');
     assert.equal(once.schedule_type, 'monthly', 'once стал monthly');
-    assert.equal(once.monthly_date, '2026-09-07', 'дата перенесена');
+    assert.deepEqual(JSON.parse(once.monthly_days), [7], 'число месяца из даты перенесено');
     assert.equal(once.last_due_key, 'day:2026-10-07', 'последнее прошедшее вхождение помечено — догона нет');
     const int = converted.find((r) => r.id === 'legacy-int');
     assert.equal(int.schedule_type, 'interval', 'интервальное не тронуто');
     assert.equal(int.last_due_key, null);
     const cols = legacyDb.prepare('SELECT name FROM pragma_table_info(\'custom_reminders\')').all().map((c) => c.name);
     assert.equal(cols.includes('once_date'), false, 'колонка once_date удалена');
+    assert.equal(cols.includes('monthly_date'), false, 'колонка monthly_date удалена');
     legacyDb.close();
     fs.rmSync(legacyDir, { recursive: true, force: true });
   }
@@ -344,7 +377,7 @@ try {
   assert.ok(created.body.reminder.next_run_at);
   const createdId = created.body.reminder.id;
 
-  console.log('routes: создание ежемесячного');
+  console.log('routes: создание ежемесячного с несколькими числами');
   const onceCreated = await api('', {
     method: 'POST',
     body: {
@@ -352,13 +385,14 @@ try {
       message: 'Сделать отчёт',
       time: '10:30',
       schedule_type: 'monthly',
-      monthly_date: '2027-03-01',
+      monthly_days: [3, 15, 23],
       recipient_usernames: ['ppofic', 'rk0ff'],
     },
   });
   assert.equal(onceCreated.status, 201);
-  assert.equal(onceCreated.body.reminder.schedule_label, 'Каждый месяц 1-го в 10:30');
-  assert.equal(onceCreated.body.reminder.monthly_date, '2027-03-01');
+  assert.equal(onceCreated.body.reminder.schedule_label, 'Каждый месяц 3-го, 15-го, 23-го в 10:30');
+  assert.deepEqual(onceCreated.body.reminder.monthly_days, [3, 15, 23]);
+  assert.ok(onceCreated.body.reminder.next_run_at, 'ближайшая отправка есть');
 
   console.log('routes: валидация');
   const badTime = await api('', {
@@ -376,9 +410,17 @@ try {
 
   const badDate = await api('', {
     method: 'POST',
-    body: { title: 'x', message: 'x', time: '15:00', schedule_type: 'monthly', monthly_date: '2026-02-31', recipient_username: 'ppofic' },
+    body: { title: 'x', message: 'x', time: '15:00', schedule_type: 'monthly', monthly_days: [], recipient_username: 'ppofic' },
   });
   assert.equal(badDate.status, 400);
+  assert.equal(badDate.body.error, 'invalid_monthly_days');
+
+  const badDay = await api('', {
+    method: 'POST',
+    body: { title: 'x', message: 'x', time: '15:00', schedule_type: 'monthly', monthly_days: [0, 32], recipient_username: 'ppofic' },
+  });
+  assert.equal(badDay.status, 400);
+  assert.equal(badDay.body.error, 'invalid_monthly_days', 'числа вне 1–31 отбрасываются');
 
   const badType = await api('', {
     method: 'POST',
