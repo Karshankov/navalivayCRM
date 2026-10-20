@@ -125,6 +125,15 @@ import {
   sendViaUserbot,
   isUserbotAvailable,
 } from '../utils/userbot-client.js';
+import {
+  DISCOUNT_BLOCK_NOTIFY_TEMPLATE_KEY,
+} from '../migrations/add_customer_discount_block.js';
+import {
+  discountBlockUntilFromDate,
+  getDiscountBlockNotifyTemplate,
+  getDiscountBlockStatus,
+  renderDiscountBlockMessage,
+} from '../utils/customer-discount-block.js';
 import { gateSendCustomTelegramForCrmBlock } from '../utils/crm-telegram-outbound.js';
 import {
   addDisallowedInviterUsernames,
@@ -217,7 +226,8 @@ function findCustomerByUsernameForWholesaleSettings(rawUsername) {
   // клиента с самым свежим заказом.
   return db.prepare(`
     SELECT c.id, c.telegram_id, c.telegram_username, c.first_name, c.last_name,
-      c.wholesale_min_override, c.total_orders, c.notes
+      c.wholesale_min_override, c.total_orders, c.notes,
+      c.discount_blocked_until, c.discount_block_comment
     FROM customers c
     WHERE c.telegram_username = ? COLLATE NOCASE AND c.deleted_at IS NULL
     ORDER BY (SELECT MAX(o.created_at) FROM orders o WHERE o.customer_id = c.id) DESC
@@ -242,6 +252,7 @@ function serializeWholesaleCustomer(customerRow) {
       || customerRow.wholesale_min_override === undefined
       ? null
       : Number(customerRow.wholesale_min_override),
+    discount_block: getDiscountBlockStatus(customerRow),
   };
 }
 
@@ -2098,6 +2109,7 @@ crmRouter.get('/api/admin/crm/customers/:id', authMiddleware, (req, res) => {
       posSales,
       blocks,
       visitLogs,
+      discount_block: getDiscountBlockStatus(customer),
     });
   } catch (error) {
     console.error('[crm] Get customer error:', error);
@@ -2363,6 +2375,121 @@ crmRouter.post('/api/admin/crm/blocks/:blockId/notify', authMiddleware, async (r
   } catch (err) {
     console.error('[crm] block notify error:', err);
     res.status(500).json({ error: 'notify_failed' });
+  }
+});
+
+// ----- Заморозка скидочной системы -------------------------------------------
+//
+// Отдельная от customer_blocks мягкая блокировка: клиенту запрещены
+// применение бонусных штампов и промокодов, но накопленное не сгорает.
+// Ставится до конца выбранного дня (23:59:59 по Минску).
+crmRouter.post('/api/admin/crm/customers/:id/discount-block', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const customer = db.prepare('SELECT * FROM customers WHERE id = ?').get(id);
+    if (!customer) return res.status(404).json({ error: 'not_found' });
+
+    const until = discountBlockUntilFromDate(req.body?.until ?? req.body?.date);
+    if (!until) {
+      return res.status(400).json({
+        error: 'invalid_discount_block_date',
+        message: 'Укажите корректную дату (ГГГГ-ММ-ДД)',
+      });
+    }
+    const comment = String(req.body?.comment ?? '').trim().slice(0, 2000) || null;
+
+    db.prepare(`
+      UPDATE customers
+      SET discount_blocked_until = ?, discount_block_comment = ?, updated_at = DATETIME('now')
+      WHERE id = ?
+    `).run(until, comment, id);
+
+    // Уведомление клиенту: шаблон из settings с подстановками {date}/{comment}.
+    // Best-effort: ошибка отправки не ломает блокировку.
+    let notify = { ok: false, error: 'no_telegram_id' };
+    if (customer.telegram_id) {
+      const template = getDiscountBlockNotifyTemplate();
+      const text = renderDiscountBlockMessage(template, { until, comment });
+      if (text) {
+        try {
+          const result = await sendViaUserbot({
+            chatId: customer.telegram_id,
+            text,
+            auto: false,
+          });
+          notify = { ok: result.ok, error: result.error || null };
+        } catch (notifyError) {
+          console.error('[crm] discount block notify error:', notifyError);
+          notify = { ok: false, error: 'notify_failed' };
+        }
+      }
+    }
+
+    const updated = db.prepare('SELECT * FROM customers WHERE id = ?').get(id);
+    res.json({
+      ok: true,
+      notify,
+      discount_block: getDiscountBlockStatus(updated),
+    });
+  } catch (error) {
+    console.error('[crm] discount block error:', error);
+    res.status(500).json({ error: 'failed', message: error.message });
+  }
+});
+
+// Снятие заморозки вручную: обнуляем оба поля, уведомление не отправляем.
+crmRouter.delete('/api/admin/crm/customers/:id/discount-block', authMiddleware, (req, res) => {
+  try {
+    const { id } = req.params;
+    const customer = db.prepare('SELECT id FROM customers WHERE id = ?').get(id);
+    if (!customer) return res.status(404).json({ error: 'not_found' });
+
+    db.prepare(`
+      UPDATE customers
+      SET discount_blocked_until = NULL, discount_block_comment = NULL, updated_at = DATETIME('now')
+      WHERE id = ?
+    `).run(id);
+
+    res.json({ ok: true, discount_block: { blocked: false, until: null, comment: null } });
+  } catch (error) {
+    console.error('[crm] discount unblock error:', error);
+    res.status(500).json({ error: 'failed', message: error.message });
+  }
+});
+
+// Шаблон уведомления о заморозке ({date} — дата окончания, {comment} — комментарий).
+crmRouter.get('/api/admin/crm/discount-block-notify-template', authMiddleware, (_req, res) => {
+  try {
+    res.json({ template: getDiscountBlockNotifyTemplate() });
+  } catch (error) {
+    console.error('[crm] discount block template GET error:', error);
+    res.status(500).json({ error: 'failed' });
+  }
+});
+
+crmRouter.put('/api/admin/crm/discount-block-notify-template', authMiddleware, (req, res) => {
+  try {
+    const template = String(req.body?.template ?? '').trim();
+    if (!template) {
+      return res.status(400).json({ error: 'template_required' });
+    }
+    if (!template.includes('{date}')) {
+      return res.status(400).json({
+        error: 'template_date_required',
+        message: 'Шаблон должен содержать переменную {date}',
+      });
+    }
+    if (template.length > 4096) {
+      return res.status(400).json({ error: 'template_too_long' });
+    }
+    db.prepare(
+      `INSERT INTO settings (key, value) VALUES (?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+    ).run(DISCOUNT_BLOCK_NOTIFY_TEMPLATE_KEY, template);
+    res.json({ template });
+  } catch (error) {
+    console.error('[crm] discount block template PUT error:', error);
+    res.status(500).json({ error: 'failed' });
   }
 });
 

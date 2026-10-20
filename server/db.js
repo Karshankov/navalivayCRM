@@ -36,6 +36,7 @@ import { migrateVariantIdToOrderItems } from './migrations/add_variant_id_to_ord
 import { migrateEmptySinceToGroups } from './migrations/add_empty_since_to_groups.js';
 import { migrateParkedOrderToGroups } from './migrations/add_parked_order_to_groups.js';
 import { migrateCustomerBlockLifecycle } from './migrations/add_customer_block_lifecycle.js';
+import { migrateCustomerDiscountBlock } from './migrations/add_customer_discount_block.js';
 import { migratePosCustomerLink } from './migrations/add_pos_customer_link.js';
 import { migrateLowStockGroups } from './migrations/add_low_stock_groups.js';
 import { migrateAgreements } from './migrations/add_agreements.js';
@@ -220,6 +221,7 @@ export function initDb() {
   migrateEmptySinceToGroups();
   migrateParkedOrderToGroups();
   migrateCustomerBlockLifecycle();
+  migrateCustomerDiscountBlock();
   migratePosSales();
   migratePosCustomerLink();
   migrateLowStockGroups();

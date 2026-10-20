@@ -13,6 +13,7 @@ import {
   isInsecureTelegramFallbackEnabled,
   requireTelegramMiniAppAuth,
 } from "../telegram-miniapp-auth.js";
+import { getDiscountBlockStatus } from "../utils/customer-discount-block.js";
 
 export const loyaltyRouter = express.Router();
 const allowInsecureTelegramFallback = isInsecureTelegramFallbackEnabled();
@@ -108,6 +109,7 @@ loyaltyRouter.get(
       customer_id: customer?.id || null,
       telegram_username: customer?.telegram_username || normalizeTelegramUsername(telegramUsername) || null,
       ...serializeLoyaltySnapshot(snapshot),
+      discount_block: getDiscountBlockStatus(customer),
     });
   } catch (error) {
     console.error("[loyalty] Failed to fetch loyalty snapshot:", error);
@@ -142,6 +144,7 @@ loyaltyRouter.post(
       telegramId: String(req.telegramAuth?.telegramId || "").trim(),
       telegramUsername: normalizeTelegramUsername(req.telegramAuth?.telegramUsername),
     });
+    const discountBlock = getDiscountBlockStatus(customer);
 
     const application = buildLoyaltyApplication({
       customerId: customer?.id || null,
@@ -157,6 +160,7 @@ loyaltyRouter.post(
       })),
       promoCodeText: promo_code || null,
       existingOrderId: editing_order_id || null,
+      discountBlocked: discountBlock.blocked,
     });
 
     res.json({
@@ -164,6 +168,7 @@ loyaltyRouter.post(
       promo_blocked: application.promo_blocked,
       total_loyalty_discount: application.total_loyalty_discount,
       categories: application.categories,
+      discount_block: discountBlock,
     });
   } catch (error) {
     const knownErrors = new Set([
@@ -171,6 +176,7 @@ loyaltyRouter.post(
       "loyalty_category_not_available",
       "loyalty_balance_not_enough",
       "loyalty_category_limit_exceeded",
+      "discount_blocked",
     ]);
     if (knownErrors.has(error.message)) {
       return res.status(400).json({

@@ -1,6 +1,7 @@
 import { db } from "./db.js";
 import { resolveDiscountPrice } from "./utils/catalog-discounts.js";
 import { resolveCatalogUnitPrice } from "./utils/order-line-pricing.js";
+import { getDiscountBlockStatus } from "./utils/customer-discount-block.js";
 
 function generateId(prefix) {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -353,6 +354,7 @@ export function buildLoyaltyApplication({
   items = [],
   promoCodeText = null,
   existingOrderId = null,
+  discountBlocked = false,
 }) {
   const categories = getLoyaltyCategories();
   const categoryById = new Map(categories.map((category) => [category.id, category]));
@@ -369,6 +371,12 @@ export function buildLoyaltyApplication({
       Number(effectiveBalances.get(categoryId) || 0) + Number(restored || 0),
     );
   }
+
+  // Заморозка скидочной системы: балансы не трогаем (накопленное не сгорает),
+  // но расход штампов запрещён — приложение считает «как будто балансов нет».
+  // Начисление (earned_after_fulfillment в preview) остаётся прогнозом;
+  // реальное начисление отсекается в awardLoyaltyForOrder.
+  const spendableBalances = discountBlocked ? new Map() : effectiveBalances;
 
   const promoBlocked = Boolean(String(promoCodeText || "").trim());
   const normalizedItems = [];
@@ -422,6 +430,7 @@ export function buildLoyaltyApplication({
       preview = previewByCategory.get(category.id);
       if (!preview) {
         const balance = Number(effectiveBalances.get(category.id) || 0);
+        const availableForSpend = Number(spendableBalances.get(category.id) || 0);
         preview = {
           category_id: category.id,
           category_key: category.key,
@@ -430,8 +439,9 @@ export function buildLoyaltyApplication({
           threshold: category.threshold,
           discount_amount: category.discount_amount,
           current_balance: balance,
-          current_available_bonus_count:
-            category.threshold > 0 ? Math.floor(balance / category.threshold) : 0,
+          current_available_bonus_count: discountBlocked
+            ? 0
+            : category.threshold > 0 ? Math.floor(availableForSpend / category.threshold) : 0,
           items_in_cart: 0,
           eligible_purchase_units: 0,
           loyalty_units_applied: 0,
@@ -460,7 +470,7 @@ export function buildLoyaltyApplication({
     const lineHasCatalogDiscount =
       catalogDiscountPrice !== null && catalogDiscountPrice < basePricePerUnit;
 
-    const lineBlocked = promoBlocked || !category || !category.active;
+    const lineBlocked = promoBlocked || discountBlocked || !category || !category.active;
     const lineCanApplyBonus =
       !lineBlocked && manualDiscountAmount <= 0 && !lineHasCatalogDiscount;
     const lineRequestedUnits = lineCanApplyBonus ? requestedUnits : 0;
@@ -521,7 +531,7 @@ export function buildLoyaltyApplication({
   if (!promoBlocked) {
     for (const [categoryId, requestedUnits] of requestedByCategory.entries()) {
       const category = categoryById.get(categoryId);
-      const balance = Number(effectiveBalances.get(categoryId) || 0);
+      const balance = Number(spendableBalances.get(categoryId) || 0);
       const threshold = Number(category?.threshold || 0);
       if (!category || threshold <= 0) {
         throw new Error("loyalty_category_not_available");
@@ -535,7 +545,13 @@ export function buildLoyaltyApplication({
 
       const availableUnits = Math.floor(balance / threshold);
       if (requestedUnits > availableUnits) {
-        throw new Error("loyalty_balance_not_enough");
+        const error = discountBlocked
+          ? new Error("discount_blocked")
+          : new Error("loyalty_balance_not_enough");
+        error.userMessage = discountBlocked
+          ? "Скидочная система временно заморожена"
+          : "Недостаточно бонусов на балансе";
+        throw error;
       }
     }
   } else if (normalizedItems.some((item) => Number(item.loyalty_units_applied || 0) > 0)) {
@@ -766,6 +782,18 @@ export function awardLoyaltyForOrder(orderId) {
 
   if (String(order.promo_code_text || "").trim()) {
     return { awarded: false, reason: "promo_applied" };
+  }
+
+  // Заморозка скидочной системы: если на момент выдачи заказа у клиента
+  // активна блокировка, новые штампы за этот заказ не начисляются.
+  // Накопленные ранее — не трогаем.
+  const customerRow = db
+    .prepare(
+      "SELECT discount_blocked_until, discount_block_comment FROM customers WHERE id = ?",
+    )
+    .get(order.customer_id);
+  if (getDiscountBlockStatus(customerRow).blocked) {
+    return { awarded: false, reason: "discount_blocked" };
   }
 
   const categories = getLoyaltyCategories();

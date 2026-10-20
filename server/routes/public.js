@@ -55,6 +55,10 @@ import {
 } from "../utils/business-bot.js";
 import { autoNotifyOrderAcceptedAfterRecipientWarmup } from "../utils/auto-notify.js";
 import {
+  getDiscountBlockStatus,
+  getDiscountBlockStatusById,
+} from "../utils/customer-discount-block.js";
+import {
   assignLowestAvailablePickupCell,
   getActivePickupCellAssignment,
   releaseActivePickupCell,
@@ -3021,9 +3025,37 @@ publicRouter.put(
         if (order.stock_deducted) {
           restoreStockForOrderItems(previousItems);
         }
-        releaseOrderLoyaltyReservations(id);
 
         const normalizedPromoCode = normalizePromoCode(promo_code);
+        // Заморозка скидочной системы при редактировании заказа: заказ был
+        // оформлен до блокировки — его скидка сохраняется, но увеличить её
+        // или добавить/сменить промокод нельзя. Проверяем ДО release:
+        // новый набор позиций может применять бонусов не больше прежнего.
+        const modifyDiscountBlock = resolveDiscountBlockForRequest(req);
+        if (modifyDiscountBlock.blocked) {
+          const hadPromo = String(order.promo_code_text || "").trim();
+          if (normalizedPromoCode && (!hadPromo || normalizedPromoCode !== hadPromo)) {
+            const error = new Error("Скидки и промокоды временно недоступны");
+            error.code = "discount_blocked";
+            error.payload = discountBlockedError(modifyDiscountBlock);
+            throw error;
+          }
+          const previousLoyaltyTotal = previousItems.reduce(
+            (sum, item) => sum + Number(item.loyalty_units_applied || 0),
+            0,
+          );
+          const nextLoyaltyTotal = items.reduce(
+            (sum, item) => sum + Math.max(0, Math.floor(Number(item?.loyalty_units_applied || 0))),
+            0,
+          );
+          if (nextLoyaltyTotal > previousLoyaltyTotal) {
+            const error = new Error("Скидки и промокоды временно недоступны");
+            error.code = "discount_blocked";
+            error.payload = discountBlockedError(modifyDiscountBlock);
+            throw error;
+          }
+        }
+        releaseOrderLoyaltyReservations(id);
         const orderBuild = buildPublicOrderItems({
           items,
           customerId: order.customer_id || null,
@@ -3326,6 +3358,15 @@ publicRouter.put(
       if (error.payload?.error === "wholesale_min_not_met") {
         return res.status(400).json(error.payload);
       }
+      if (error.payload?.error === "discount_blocked") {
+        return res.status(403).json(error.payload);
+      }
+      if (errorCode === "discount_blocked") {
+        return res.status(403).json({
+          error: "discount_blocked",
+          message: error.userMessage || "Скидки и промокоды временно недоступны",
+        });
+      }
       if (
         errorCode === "order_not_modifiable"
       ) {
@@ -3497,12 +3538,20 @@ publicRouter.post(
 
       const normalizedPromoCode = normalizePromoCode(promo_code);
       const preflightCustomerId = resolveCustomerIdFromVerifiedAuth(req);
+      // Заморозка скидочной системы: новый заказ можно оформить только без
+      // бонусов и промокода. Проверка и здесь, и внутри транзакции ниже —
+      // заблокировать могут между preflight и INSERT.
+      const discountBlockStatus = resolveDiscountBlockForRequest(req);
+      if (discountBlockStatus.blocked && requestUsesDiscountPrivileges({ items, promoCodeText: normalizedPromoCode })) {
+        return res.status(403).json(discountBlockedError(discountBlockStatus));
+      }
       const runBusinessPreflight = () => validatePublicOrderPreflight({
         items,
         customerId: preflightCustomerId,
         normalizedPromoCode,
         wholesaleContext,
         deliveryType: delivery_type,
+        discountBlocked: discountBlockStatus.blocked,
       });
 
       // Ошибки товара, остатков, скидок и оптового минимума должны вернуться
@@ -3667,11 +3716,21 @@ publicRouter.post(
 
         const createdOrderId = generateId("order");
         const createdOrderNumber = getNextNumber("orders", "order_number");
+        // Повторная проверка заморозки внутри транзакции: блокировка могла
+        // быть установлена между preflight и INSERT.
+        const txDiscountBlock = resolveDiscountBlockForRequest(req);
+        if (txDiscountBlock.blocked && requestUsesDiscountPrivileges({ items, promoCodeText: normalizedPromoCode })) {
+          const error = new Error("Скидки и промокоды временно недоступны");
+          error.code = "discount_blocked";
+          error.payload = discountBlockedError(txDiscountBlock);
+          throw error;
+        }
         const orderBuild = buildPublicOrderItems({
           items,
           customerId: resolvedCustomerId,
           promoCodeText: normalizedPromoCode,
           wholesaleContext,
+          discountBlocked: txDiscountBlock.blocked,
         });
 
         if (delivery_type === "delivery") {
@@ -3975,10 +4034,19 @@ publicRouter.post(
       if (error.payload?.error === "wholesale_min_not_met") {
         return res.status(400).json(error.payload);
       }
+      if (error.payload?.error === "discount_blocked") {
+        return res.status(403).json(error.payload);
+      }
       if (errorCode === "pickup_cells_full") {
         return res.status(409).json({
           error: "pickup_cells_full",
           message: "Свободных мест для заказов нет. Попробуйте позже.",
+        });
+      }
+      if (errorCode === "discount_blocked") {
+        return res.status(403).json({
+          error: "discount_blocked",
+          message: error.userMessage || "Скидки и промокоды временно недоступны",
         });
       }
       if (
@@ -4024,6 +4092,16 @@ publicRouter.post(
         return;
       }
       const expectedCustomerId = resolveCustomerIdFromVerifiedAuth(req);
+      // Заморозка скидочной системы: промокоды недоступны, пока активна.
+      const discountBlock = resolveDiscountBlockForRequest(req);
+      if (discountBlock.blocked) {
+        return res.json({
+          valid: false,
+          error: "discount_blocked",
+          message: "Скидки и промокоды временно недоступны",
+          block_until: discountBlock.until,
+        });
+      }
       const result = validatePromoCodeForOrder(code, Number(order_amount), {
         excludeOrderId:
           typeof editing_order_id === "string" && editing_order_id.trim()
@@ -4074,6 +4152,41 @@ function resolveCustomerIdFromVerifiedAuth(req) {
   return (
     db.prepare("SELECT id FROM customers WHERE telegram_id = ?").get(telegramId)?.id || null
   );
+}
+
+/**
+ * Статус заморозки скидочной системы для автора запроса (миниапка).
+ * Telegram ID → customers → getDiscountBlockStatus.
+ */
+function resolveDiscountBlockForRequest(req) {
+  const telegramId = String(req.telegramAuth?.telegramId || "").trim();
+  if (!telegramId) return { blocked: false, until: null, comment: null };
+  const row = db
+    .prepare(
+      "SELECT discount_blocked_until, discount_block_comment FROM customers WHERE telegram_id = ?",
+    )
+    .get(telegramId);
+  return getDiscountBlockStatus(row);
+}
+
+/** Проверка: запрос пытается применить бонусы/промокод при заморозке? */
+function requestUsesDiscountPrivileges({ items = [], promoCodeText = null } = {}) {
+  const hasLoyaltyUsage = (Array.isArray(items) ? items : []).some((item) =>
+    Number(item?.loyalty_units_applied || 0) > 0,
+  );
+  return hasLoyaltyUsage || Boolean(String(promoCodeText || "").trim());
+}
+
+/** Ответ 403 о заморозке — единый формат с block_until для UI-плашки. */
+function discountBlockedError(status) {
+  return {
+    error: "discount_blocked",
+    message: "Скидки и промокоды временно недоступны",
+    block: {
+      blocked: true,
+      until: status.until,
+    },
+  };
 }
 
 function upsertPublicCustomer({
@@ -4170,12 +4283,14 @@ function validatePublicOrderPreflight({
   normalizedPromoCode,
   wholesaleContext,
   deliveryType,
+  discountBlocked = false,
 }) {
   const orderBuild = buildPublicOrderItems({
     items,
     customerId,
     promoCodeText: normalizedPromoCode,
     wholesaleContext,
+    discountBlocked,
   });
 
   if (deliveryType === "delivery") {
@@ -4224,6 +4339,7 @@ function buildPublicOrderItems({
   promoCodeText = null,
   existingOrderId = null,
   wholesaleContext = null,
+  discountBlocked = false,
 }) {
   let totalAmount = 0;
   let totalCost = 0;
@@ -4393,6 +4509,7 @@ function buildPublicOrderItems({
     items: preparedItems,
     promoCodeText,
     existingOrderId,
+    discountBlocked,
   });
 
   const finalizedItems = application.items.map((item) => ({
