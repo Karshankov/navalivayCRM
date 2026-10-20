@@ -1410,6 +1410,14 @@
       @created="handleInviteBanChanged"
     />
 
+    <DiscountBlockModal
+      :is-open="showDiscountBlockModal"
+      :customer-id="discountBlockCustomerId"
+      :status="lastHubDiscountBlock"
+      @close="showDiscountBlockModal = false; maybeReopenCustomerHub()"
+      @changed="handleDiscountBlockChanged"
+    />
+
     <AdminModal
       :is-open="showInviterMessageModal"
       title="Написать пригласившему"
@@ -1739,6 +1747,7 @@ import CustomerBlockModal from "@/components/admin/CustomerBlockModal.vue";
 import CustomerNoteModal from "@/components/admin/CustomerNoteModal.vue";
 import CustomerSettingsModal from "@/components/admin/crm/CustomerSettingsModal.vue";
 import CustomerInviteBanModal from "@/components/admin/CustomerInviteBanModal.vue";
+import DiscountBlockModal from "@/components/admin/DiscountBlockModal.vue";
 import CustomerHubModal, { type CustomerHubAction, type CustomerHubActionContext, type CustomerHubInviter, type HubInviterAction } from "@/components/admin/crm/CustomerHubModal.vue";
 import FindInviterModal, { type InviterAction } from "@/components/admin/crm/FindInviterModal.vue";
 import FinancialDayCloseModal from "@/components/admin/crm/FinancialDayCloseModal.vue";
@@ -1916,6 +1925,10 @@ const customerHubPrefill = ref<{
 const lastHubCustomer = ref<{ username: string; customerId: string | null; customerName: string | null } | null>(null);
 // Предзаполнение «Настройки клиента» из хаба — клиент не вводится заново.
 const customerSettingsPrefill = ref<{ username: string | null } | null>(null);
+// Заморозка скидочной системы из хаба: статус подтянется при переоткрытии.
+const showDiscountBlockModal = ref(false);
+const discountBlockCustomerId = ref('');
+const lastHubDiscountBlock = ref<{ blocked: boolean; until: string | null; comment: string | null } | null>(null);
 // Хаб возвращается после закрытия под-модалки действия: HeadlessUI не умеет
 // стек диалогов, поэтому закрываем хаб → открываем действие → возвращаемся.
 const customerHubReturnAfterAction = ref(false);
@@ -1964,7 +1977,8 @@ function rememberHubCustomer(payload: { username: string; customerId: string | n
 function maybeReopenCustomerHub() {
   if (!customerHubReturnAfterAction.value) return;
   if (showCustomerHubModal.value || showBlockModal.value || showInviteBanModal.value || showNoteModal.value ||
-      showCustomerSettingsModal.value || showInviterMessageModal.value || showFindInviterModal.value || lookupActionBusy.value) return;
+      showCustomerSettingsModal.value || showInviterMessageModal.value || showFindInviterModal.value ||
+      showDiscountBlockModal.value || lookupActionBusy.value) return;
   customerHubReturnAfterAction.value = false;
   customerHubContactOrderId.value = null;
   // Клиент искали вручную — возвращаемся к нему, а не к пустому поиску.
@@ -1999,6 +2013,10 @@ async function handleCustomerHubAction(action: CustomerHubAction, context: Custo
   await nextTick();
   if (action === 'block') {
     openBlockModal(context.username, context.customerId);
+  } else if (action === 'discount-block') {
+    discountBlockCustomerId.value = context.customerId || '';
+    lastHubDiscountBlock.value = context.discountBlock ?? null;
+    showDiscountBlockModal.value = true;
   } else if (action === 'invite-ban') {
     inviteBanCustomerId.value = context.customerId;
     inviteBanUsername.value = context.username;
@@ -2126,6 +2144,14 @@ async function handleInviteBanChanged() {
   showInviteBanModal.value = false;
   await refreshOrders({ skipNotify: true });
   maybeReopenCustomerHub();
+}
+
+/** Заморозка изменилась: хаб переоткроется (из close) и перезагрузит статус. */
+function handleDiscountBlockChanged() {
+  // Ничего не закрываем принудительно: сабмит оставляет модалку открытой
+  // для повторной правки, снятие закрывает её само (emit close).
+  // Статус на кнопке хаба обновится при переоткрытии.
+  lastHubDiscountBlock.value = null;
 }
 
 function openInviterMessage(target: { customerId: string | null; username: string }) {

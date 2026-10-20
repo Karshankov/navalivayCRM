@@ -281,6 +281,14 @@ export interface Customer {
   blocks?: CustomerBlock[];
   visitLogs?: VisitLog[];
   recent_visits?: VisitLog[];
+  discount_block?: DiscountBlockStatus;
+}
+
+/** Статус заморозки скидочной системы клиента. */
+export interface DiscountBlockStatus {
+  blocked: boolean;
+  until: string | null;
+  comment: string | null;
 }
 
 export interface CustomerBlock {
@@ -1547,6 +1555,7 @@ export interface CustomerWholesaleSettings {
     first_name: string | null;
     last_name: string | null;
     wholesale_min_override: number | null;
+    discount_block?: DiscountBlockStatus;
   };
   tiers: CustomerWholesaleTier[];
   active_wholesale_order: {
@@ -3725,6 +3734,49 @@ export const useCrmStore = defineStore("crm", () => {
     await fetchCustomer(id);
   }
 
+  // ===== Заморозка скидочной системы =====
+
+  /** Ставит заморозку до конца выбранного дня; возвращает результат уведомления. */
+  async function blockCustomerDiscount(
+    id: string,
+    until: string,
+    comment: string = "",
+  ): Promise<{ ok: boolean; notify: { ok: boolean; error: string | null }; discount_block: DiscountBlockStatus }> {
+    const result = await fetchAPI<{
+      ok: boolean;
+      notify: { ok: boolean; error: string | null };
+      discount_block: DiscountBlockStatus;
+    }>(`${API_BASE}/customers/${id}/discount-block`, {
+      method: "POST",
+      body: JSON.stringify({ until, comment: comment || null }),
+    });
+    await fetchCustomer(id);
+    return result;
+  }
+
+  /** Снимает заморозку вручную (накопленные бонусы остаются). */
+  async function unblockCustomerDiscount(id: string) {
+    await fetchAPI(`${API_BASE}/customers/${id}/discount-block`, {
+      method: "DELETE",
+    });
+    await fetchCustomer(id);
+  }
+
+  async function fetchDiscountBlockTemplate(): Promise<string> {
+    const result = await fetchAPI<{ template: string }>(
+      `${API_BASE}/discount-block-notify-template`,
+    );
+    return result.template;
+  }
+
+  async function saveDiscountBlockTemplate(template: string): Promise<string> {
+    const result = await fetchAPI<{ template: string }>(
+      `${API_BASE}/discount-block-notify-template`,
+      { method: "PUT", body: JSON.stringify({ template }) },
+    );
+    return result.template;
+  }
+
   // ===== Универсальные блокировки клиентов (новый API) =====
   const customerBlocksList = ref<{
     active: ActiveCustomerBlock[];
@@ -5798,6 +5850,12 @@ export const useCrmStore = defineStore("crm", () => {
     blockCustomer,
     unblockCustomer,
     deleteCustomer,
+
+    // Заморозка скидочной системы
+    blockCustomerDiscount,
+    unblockCustomerDiscount,
+    fetchDiscountBlockTemplate,
+    saveDiscountBlockTemplate,
 
     // Универсальные блокировки (новый API: pre-ban по @username + срок)
     customerBlocksList,

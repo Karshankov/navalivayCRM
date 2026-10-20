@@ -207,7 +207,11 @@
           </p>
         </div>
 
-        <div class="promo-card" :class="{ 'promo-card-applied': promoResult, 'promo-card-error': promoError }">
+        <div class="promo-card" :class="{ 'promo-card-applied': promoResult, 'promo-card-error': promoError, 'promo-card--frozen': discountBlocked }">
+          <p v-if="discountBlocked" class="promo-frozen-notice" role="status">
+            Скидки и ввод промокодов недоступны до {{ discountBlockedUntilLabel }}
+          </p>
+
           <label class="promo-label" for="checkout-promo-code">
             {{ wholesaleStore.isWholesale ? 'Есть промокод на подарок?' : 'Есть промокод?' }}
           </label>
@@ -221,14 +225,14 @@
               class="promo-input"
               placeholder="Введите промокод"
               enterkeyhint="done"
-              :disabled="promoValidating"
+              :disabled="promoValidating || discountBlocked"
               :aria-describedby="promoError ? 'checkout-promo-error' : undefined"
               @keydown.enter="handlePromoApply"
               @input="promoError = ''"
             />
             <button
               class="promo-apply-btn"
-              :disabled="!promoCode.trim() || promoValidating"
+              :disabled="!promoCode.trim() || promoValidating || discountBlocked"
               @click="handlePromoApply"
             >
               {{ promoValidating ? '...' : 'Применить' }}
@@ -282,7 +286,19 @@
           v-if="!wholesaleStore.isWholesale && availableCheckoutLoyaltyCategories.length"
           class="loyalty-section"
         >
-          <article class="loyalty-card loyalty-card--checkout">
+          <article class="loyalty-card loyalty-card--checkout" :class="{ 'loyalty-card--frozen': discountBlocked }">
+            <div v-if="discountBlocked" class="loyalty-frozen-overlay loyalty-frozen-overlay--checkout" role="status">
+              <div class="loyalty-frozen-icon loyalty-frozen-icon--checkout" aria-hidden="true">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="9.2" />
+                  <path d="M8.6 8.6l6.8 6.8M15.4 8.6l-6.8 6.8" />
+                </svg>
+              </div>
+              <h3 class="loyalty-frozen-title">Скидки по бонусной карте заблокированы</h3>
+              <p class="loyalty-frozen-date">до {{ discountBlockedUntilLabel }}</p>
+              <p class="loyalty-frozen-note">Накопленные бонусы сохранятся</p>
+            </div>
+
             <div class="loyalty-card-header">
               <h2 class="loyalty-card-title-main">Доступны скидки по бонусной карте</h2>
             </div>
@@ -310,7 +326,7 @@
                       class="loyalty-line-button"
                       :class="{ 'loyalty-line-button--applied': isLoyaltyAppliedToLine(choice.line) }"
                       :aria-pressed="isLoyaltyAppliedToLine(choice.line)"
-                      :disabled="loyaltyStore.loadingPreview"
+                      :disabled="loyaltyStore.loadingPreview || (discountBlocked && !isLoyaltyAppliedToLine(choice.line))"
                       @click="toggleLoyaltyLine(choice.category, choice.line)"
                     >
                       {{ isLoyaltyAppliedToLine(choice.line) ? "Применено" : "Применить" }}
@@ -995,6 +1011,19 @@ const isEditingOrder = computed(() => Boolean(cartStore.editingOrderId));
 const checkoutCalculationPending = computed(
   () => promoValidating.value || loyaltyStore.loadingPreview,
 );
+// Заморозка скидочной системы: промокоды и новые бонусы недоступны
+const discountBlocked = computed(() => loyaltyStore.isDiscountBlocked);
+const discountBlockedUntilLabel = computed(() => {
+  const until = loyaltyStore.discountBlock?.until;
+  if (!until) return "разморозки";
+  const normalized = until.includes("T") ? until : until.replace(" ", "T") + "Z";
+  const parsed = new Date(normalized);
+  if (!Number.isFinite(parsed.getTime())) return until;
+  const minsk = new Date(parsed.getTime() + 3 * 60 * 60 * 1000);
+  const day = String(minsk.getUTCDate()).padStart(2, "0");
+  const month = String(minsk.getUTCMonth() + 1).padStart(2, "0");
+  return `${day}.${month}.${minsk.getUTCFullYear()}`;
+});
 const checkoutTitle = computed(() =>
   isEditingOrder.value ? "Изменение заказа" : "Оформление заказа",
 );
@@ -1193,6 +1222,12 @@ function handlePromoInputDone() {
 async function handlePromoApply() {
   const code = promoCode.value.trim();
   if (!code || promoValidating.value) return;
+  if (discountBlocked.value) {
+    // Промокоды недоступны при заморозке — сервер тоже откажет,
+    // но здесь быстрее и без запроса.
+    promoError.value = `Скидки и ввод промокодов недоступны до ${discountBlockedUntilLabel.value}`;
+    return;
+  }
 
   promoInputRef.value?.blur();
   promoError.value = '';
@@ -2085,6 +2120,20 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
         );
         return;
       }
+      if (result?.error === "discount_blocked") {
+        // Заморозка скидочной системы: обновляем статус в loyalty store,
+        // чтобы плашка и disabled-состояния появились сразу.
+        loyaltyStore.discountBlock = {
+          blocked: true,
+          until: result?.block?.until ?? null,
+          comment: null,
+        };
+        showToast(
+          result?.message || "Скидки и промокоды временно недоступны",
+          "error",
+        );
+        return;
+      }
       if (
         result?.error === "referral_authorization_required" ||
         String(result?.error || "").startsWith("referral_")
@@ -2563,6 +2612,28 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   border-color: #dc2626;
 }
 
+/* Заморозка скидочной системы: плашка в фирменном градиенте кнопки заказа,
+ * поле ввода остаётся обычным (disabled, приглушено) */
+.promo-card--frozen {
+  border-color: transparent;
+}
+
+.promo-frozen-notice {
+  margin: 0 0 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: linear-gradient(90deg, #f50302 0%, #a90f0e 100%);
+  color: #ffffff;
+  font-family: -apple-system, "SF Pro Display", sans-serif;
+  font-weight: 600;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.promo-card--frozen .promo-input-row {
+  opacity: 0.55;
+}
+
 .promo-error-text {
   font-family: -apple-system, "SF Pro Display", sans-serif;
   font-weight: 400;
@@ -2731,6 +2802,70 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
 
 .loyalty-card--checkout {
   min-height: 0;
+}
+
+/* Заморозка бонусной карты на чекауте: лёд-оверлей поверх карточки */
+.loyalty-card--frozen.loyalty-card--checkout > .loyalty-card-header,
+.loyalty-card--frozen.loyalty-card--checkout > .loyalty-available-list,
+.loyalty-card--frozen.loyalty-card--checkout > .loyalty-rules-link {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.loyalty-frozen-overlay--checkout {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 20px 24px;
+  text-align: center;
+  background: linear-gradient(
+    106.76deg,
+    rgba(28, 70, 190, 0.82) 0%,
+    rgba(13, 42, 130, 0.88) 100%
+  );
+  backdrop-filter: blur(2px);
+}
+
+.loyalty-frozen-icon--checkout {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  margin-bottom: 2px;
+  border: 1.5px solid rgba(255, 255, 255, 0.35);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+.loyalty-frozen-overlay--checkout .loyalty-frozen-title {
+  margin: 0;
+  color: #ffffff;
+  font-family: -apple-system, "SF Pro Display", sans-serif;
+  font-weight: 800;
+  font-size: 15px;
+  line-height: 1.25;
+}
+
+.loyalty-frozen-overlay--checkout .loyalty-frozen-date {
+  margin: 0;
+  color: #ffffff;
+  font-family: -apple-system, "SF Pro Display", sans-serif;
+  font-weight: 800;
+  font-size: 17px;
+}
+
+.loyalty-frozen-overlay--checkout .loyalty-frozen-note {
+  margin: 3px 0 0;
+  color: rgba(255, 255, 255, 0.78);
+  font-family: -apple-system, "SF Pro Display", sans-serif;
+  font-size: 11px;
+  line-height: 1.4;
 }
 
 .loyalty-card-header,

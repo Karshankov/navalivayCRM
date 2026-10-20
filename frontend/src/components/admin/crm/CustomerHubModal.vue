@@ -142,6 +142,17 @@
             </button>
             <button
               type="button"
+              class="crm-hub-action crm-hub-action--danger"
+              :disabled="busy"
+              data-test="customer-hub-discount-block"
+              @click="emitAction('discount-block')"
+            >
+              <span class="crm-hub-action-icon" aria-hidden="true"><LockClosedIcon /></span>
+              <span>{{ hub.customer.discount_block?.blocked ? `Скидки заморожены до ${discountBlockUntilLabel}` : 'Заморозить скидки' }}</span>
+              <ChevronRightIcon aria-hidden="true" class="crm-hub-action-arrow" />
+            </button>
+            <button
+              type="button"
               class="crm-hub-action"
               :disabled="busy"
               data-test="customer-hub-note"
@@ -284,6 +295,7 @@ import {
   ChevronDownIcon,
   ChevronRightIcon,
   Cog6ToothIcon,
+  LockClosedIcon,
   NoSymbolIcon,
   PencilSquareIcon,
   UserGroupIcon,
@@ -292,7 +304,7 @@ import {
 import AdminModal from '@/components/AdminModal.vue'
 import { useCrmStore, type CustomerHubData } from '@/stores/crm'
 
-export type CustomerHubAction = 'block' | 'note' | 'invite-ban' | 'remove-invite-ban' | 'wholesale' | 'find-inviter' | 'contact'
+export type CustomerHubAction = 'block' | 'discount-block' | 'note' | 'invite-ban' | 'remove-invite-ban' | 'wholesale' | 'find-inviter' | 'contact'
 export type HubInviterAction = 'copy' | 'message' | 'block' | 'invite-ban' | 'remove-ban'
 
 export interface CustomerHubActionContext {
@@ -303,6 +315,8 @@ export interface CustomerHubActionContext {
   orderId: string | null
   /** ID действующего запрета приглашать — для его снятия из хаба. */
   inviteBanId: string | null
+  /** Статус заморозки скидочной системы клиента (для действия discount-block). */
+  discountBlock: { blocked: boolean; until: string | null; comment: string | null } | null
 }
 
 export interface CustomerHubInviter {
@@ -365,6 +379,19 @@ const customerName = computed(() => {
   const customer = hub.value?.customer
   if (!customer) return ''
   return [customer.first_name, customer.last_name].filter(Boolean).join(' ') || ''
+})
+
+/** Дата окончания заморозки скидочной системы (Минск, ДД.ММ.ГГГГ). */
+const discountBlockUntilLabel = computed(() => {
+  const until = hub.value?.customer.discount_block?.until
+  if (!until) return ''
+  const normalized = until.includes('T') ? until : until.replace(' ', 'T') + 'Z'
+  const parsed = new Date(normalized)
+  if (!Number.isFinite(parsed.getTime())) return until
+  const minsk = new Date(parsed.getTime() + 3 * 60 * 60 * 1000)
+  const day = String(minsk.getUTCDate()).padStart(2, '0')
+  const month = String(minsk.getUTCMonth() + 1).padStart(2, '0')
+  return `${day}.${month}.${minsk.getUTCFullYear()}`
 })
 
 /** Инициалы для плашки-аватара в шапке карточки клиента. */
@@ -456,6 +483,7 @@ function emitAction(action: CustomerHubAction) {
     notes: customer.notes ?? null,
     orderId: hubOrderId.value,
     inviteBanId: hub.value?.invite_ban?.id ?? null,
+    discountBlock: customer.discount_block ?? null,
   })
 }
 
@@ -471,6 +499,7 @@ function toggleInviter() {
       notes: current.customer.notes ?? null,
       orderId: hubOrderId.value,
       inviteBanId: current.invite_ban?.id ?? null,
+      discountBlock: current.customer.discount_block ?? null,
     })
     return
   }

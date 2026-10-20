@@ -349,7 +349,7 @@ describe('CustomerHubModal: actions', () => {
     const w = await setup()
     await findClient(w)
     const expected = {
-      username: 'alice', customerId: 'client-1', customerName: 'Алиса', notes: null, orderId: null, inviteBanId: null,
+      username: 'alice', customerId: 'client-1', customerName: 'Алиса', notes: null, orderId: null, inviteBanId: null, discountBlock: null,
     }
     for (const [test, action] of [
       ['customer-hub-block', 'block'], ['customer-hub-note', 'note'],
@@ -368,7 +368,7 @@ describe('CustomerHubModal: actions', () => {
     const w = await setup({ prefill: { username: 'alice', customerId: 'client-1', orderId: 'order-1' } })
     await w.get('[data-test="customer-hub-note"]').trigger('click')
     expect(w.emitted('action')?.at(-1)).toEqual(['note', {
-      username: 'alice', customerId: 'client-1', customerName: 'Алиса', notes: 'Перезвонить', orderId: 'order-1', inviteBanId: null,
+      username: 'alice', customerId: 'client-1', customerName: 'Алиса', notes: 'Перезвонить', orderId: 'order-1', inviteBanId: null, discountBlock: null,
     }])
   })
 
@@ -388,7 +388,7 @@ describe('CustomerHubModal: actions', () => {
     expect(unban.text()).toContain('Разрешить приглашать')
     await unban.trigger('click')
     expect(w.emitted('action')?.at(-1)).toEqual(['remove-invite-ban', {
-      username: 'alice', customerId: 'client-1', customerName: 'Алиса', notes: null, orderId: null, inviteBanId: 'ib1',
+      username: 'alice', customerId: 'client-1', customerName: 'Алиса', notes: null, orderId: null, inviteBanId: 'ib1', discountBlock: null,
     }])
   })
 

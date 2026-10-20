@@ -41,6 +41,18 @@
             </svg>
             Заблокировать доставку
           </button>
+          <button
+            @click="showDiscountBlockModal = true"
+            class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors"
+            :class="discountBlockActive
+              ? 'border border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100'
+              : 'border border-gray-200 bg-white text-gray-600 hover:bg-gray-100'"
+          >
+            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+            {{ discountBlockActive ? `Скидки: до ${discountBlockUntilLabel}` : 'Блокировка скидок' }}
+          </button>
         </div>
       </div>
 
@@ -336,6 +348,14 @@
         </div>
       </div>
     </div>
+
+    <DiscountBlockModal
+      :is-open="showDiscountBlockModal"
+      :customer-id="customer?.id || ''"
+      :status="customer?.discount_block ?? null"
+      @close="showDiscountBlockModal = false"
+      @changed="loadCustomer()"
+    />
   </div>
 </template>
 
@@ -344,6 +364,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useCrmStore } from '@/stores/crm'
 import type { Customer, Order, VisitLog } from '@/stores/crm'
+import DiscountBlockModal from '@/components/admin/DiscountBlockModal.vue'
 import { vSafeBackdropClose } from '@/directives/safeBackdropClose'
 
 type CustomerTemperature = 'cold' | 'inactive' | 'warm' | 'hot'
@@ -361,6 +382,21 @@ const showBlockModal = ref(false)
 const blockReason = ref('')
 const blockInProgress = ref(false)
 const saveSuccess = ref(false)
+const showDiscountBlockModal = ref(false)
+
+// Статус заморозки скидочной системы (кнопка в шапке)
+const discountBlockActive = computed(() => Boolean(customer.value?.discount_block?.blocked))
+const discountBlockUntilLabel = computed(() => {
+  const until = customer.value?.discount_block?.until
+  if (!until) return ''
+  const normalized = until.includes('T') ? until : until.replace(' ', 'T') + 'Z'
+  const parsed = new Date(normalized)
+  if (!Number.isFinite(parsed.getTime())) return until
+  const minsk = new Date(parsed.getTime() + 3 * 60 * 60 * 1000)
+  const day = String(minsk.getUTCDate()).padStart(2, '0')
+  const month = String(minsk.getUTCMonth() + 1).padStart(2, '0')
+  return `${day}.${month}.${minsk.getUTCFullYear()}`
+})
 
 let saveSuccessTimeout: ReturnType<typeof setTimeout> | null = null
 

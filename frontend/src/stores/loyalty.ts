@@ -95,6 +95,13 @@ export interface LoyaltyLedgerEntry {
   category_title: string
 }
 
+/** Статус заморозки скидочной системы (из /api/loyalty/me и checkout-preview). */
+export interface DiscountBlockInfo {
+  blocked: boolean
+  until: string | null
+  comment: string | null
+}
+
 const POPUP_SESSION_KEY = 'navalivay_loyalty_popup_seen'
 
 async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
@@ -128,12 +135,15 @@ export const useLoyaltyStore = defineStore('loyalty', () => {
   const adminCategories = ref<LoyaltyAdminCategory[]>([])
   const adminCustomers = ref<LoyaltyAdminCustomer[]>([])
   const adminLedger = ref<LoyaltyLedgerEntry[]>([])
+  /** Заморозка скидочной системы клиента (из /api/loyalty/me и preview). */
+  const discountBlock = ref<DiscountBlockInfo | null>(null)
   let checkoutPreviewRequestId = 0
 
   const availableCategories = computed(() =>
     snapshot.value.filter((category) => Number(category.available_bonus_count || 0) > 0),
   )
   const hasAvailableBonuses = computed(() => availableCategories.value.length > 0)
+  const isDiscountBlocked = computed(() => Boolean(discountBlock.value?.blocked))
 
   async function fetchSnapshot(identity: CustomerIdentity = getTelegramIdentity()) {
     const params = new URLSearchParams()
@@ -143,10 +153,14 @@ export const useLoyaltyStore = defineStore('loyalty', () => {
     loadingSnapshot.value = true
     snapshotError.value = ''
     try {
-      const response = await fetchJson<{ categories: LoyaltySnapshotCategory[] }>(
+      const response = await fetchJson<{
+        categories: LoyaltySnapshotCategory[]
+        discount_block?: DiscountBlockInfo | null
+      }>(
         `/api/loyalty/me?${params.toString()}`,
       )
       snapshot.value = response.categories || []
+      discountBlock.value = response.discount_block || null
       return snapshot.value
     } catch (error: any) {
       snapshotError.value = error?.message || 'Не удалось загрузить бонусы'
@@ -187,6 +201,7 @@ export const useLoyaltyStore = defineStore('loyalty', () => {
       const response = await fetchJson<{
         categories: LoyaltyPreviewCategory[]
         total_loyalty_discount: number
+        discount_block?: DiscountBlockInfo | null
       }>('/api/loyalty/checkout-preview', {
         method: 'POST',
         body: JSON.stringify(payload),
@@ -196,6 +211,9 @@ export const useLoyaltyStore = defineStore('loyalty', () => {
       }
       previewCategories.value = response.categories || []
       totalLoyaltyDiscount.value = Number(response.total_loyalty_discount || 0)
+      if (response.discount_block !== undefined) {
+        discountBlock.value = response.discount_block || null
+      }
       return previewCategories.value
     } catch (error: any) {
       if (requestId !== checkoutPreviewRequestId) {
@@ -313,8 +331,10 @@ export const useLoyaltyStore = defineStore('loyalty', () => {
     adminCategories,
     adminCustomers,
     adminLedger,
+    discountBlock,
     availableCategories,
     hasAvailableBonuses,
+    isDiscountBlocked,
     fetchSnapshot,
     fetchCheckoutPreview,
     resetPreview,

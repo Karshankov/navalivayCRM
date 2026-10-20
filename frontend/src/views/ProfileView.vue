@@ -62,8 +62,20 @@
         <article
           v-else
           class="loyalty-card"
-          :class="{ 'loyalty-card--empty': !selectedLoyaltyCategory }"
+          :class="{ 'loyalty-card--empty': !selectedLoyaltyCategory, 'loyalty-card--frozen': discountBlocked }"
         >
+          <div v-if="discountBlocked" class="loyalty-frozen-overlay" role="status">
+            <div class="loyalty-frozen-icon" aria-hidden="true">
+              <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="9.2" />
+                <path d="M8.6 8.6l6.8 6.8M15.4 8.6l-6.8 6.8" />
+              </svg>
+            </div>
+            <h3 class="loyalty-frozen-title">Скидочная система заблокирована</h3>
+            <p class="loyalty-frozen-date">до {{ discountBlockedUntilLabel }}</p>
+            <p class="loyalty-frozen-note">Накопленные бонусы сохранятся и вернутся после разблокировки</p>
+          </div>
+
           <div class="loyalty-card-header">
             <h2 class="loyalty-card-title-main">Бонусная система</h2>
             <p v-if="loyaltyStore.loadingSnapshot" class="loyalty-loading">Обновляем...</p>
@@ -364,6 +376,20 @@ const selectedLoyaltyCategory = computed(() => {
       (category) => category.key === activeLoyaltyKey.value,
     ) || orderedLoyaltyCategories.value[0]
   );
+});
+
+// Заморозка скидочной системы: оверлей поверх баннера бонусов
+const discountBlocked = computed(() => loyaltyStore.isDiscountBlocked);
+const discountBlockedUntilLabel = computed(() => {
+  const until = loyaltyStore.discountBlock?.until;
+  if (!until) return "разморозки";
+  const normalized = until.includes("T") ? until : until.replace(" ", "T") + "Z";
+  const parsed = new Date(normalized);
+  if (!Number.isFinite(parsed.getTime())) return until;
+  const minsk = new Date(parsed.getTime() + 3 * 60 * 60 * 1000);
+  const day = String(minsk.getUTCDate()).padStart(2, "0");
+  const month = String(minsk.getUTCMonth() + 1).padStart(2, "0");
+  return `${day}.${month}.${minsk.getUTCFullYear()}`;
 });
 
 const selectedLoyaltyDescriptionLines = computed(() => {
@@ -689,6 +715,71 @@ async function goShopping() {
 
 .loyalty-card--empty {
   justify-content: space-between;
+}
+
+/* Заморозка: лёд-оверлей поверх баннера, содержимое видно приглушённо */
+.loyalty-card--frozen > .loyalty-card-header,
+.loyalty-card--frozen > .loyalty-tabs,
+.loyalty-card--frozen > .loyalty-progress-row,
+.loyalty-card--frozen > .loyalty-copy-row,
+.loyalty-card--frozen > .loyalty-rules-link {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.loyalty-frozen-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 20px 24px;
+  text-align: center;
+  background: linear-gradient(
+    106.76deg,
+    rgba(120, 6, 5, 0.92) 0%,
+    rgba(70, 5, 4, 0.95) 100%
+  );
+  backdrop-filter: blur(2px);
+}
+
+.loyalty-frozen-icon {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  margin-bottom: 4px;
+  border: 1.5px solid rgba(255, 255, 255, 0.35);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+.loyalty-frozen-title {
+  margin: 0;
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.loyalty-frozen-date {
+  margin: 0;
+  color: #ffffff;
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.loyalty-frozen-note {
+  margin: 4px 0 0;
+  max-width: 260px;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 11px;
+  line-height: 1.45;
 }
 
 .loyalty-card-header,
