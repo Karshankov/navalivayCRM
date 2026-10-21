@@ -27,6 +27,7 @@ import { startReferralWelcomeNotificationWorker } from './utils/referral-welcome
 import { startInternalNotificationWorker } from './utils/internal-notification-worker.js';
 import { startSalaryReminderScheduler } from './utils/salary-reminder-scheduler.js';
 import { startCustomReminderScheduler } from './utils/custom-reminder-scheduler.js';
+import { startRevenueTriggerScheduler } from './utils/revenue-trigger-scheduler.js';
 import { startStaffShiftScheduler } from './utils/staff-service.js';
 import { DEV_BACKEND_PORT, PROD_BACKEND_PORT } from '../shared/runtime-ports.js';
 
@@ -106,6 +107,7 @@ startReferralWelcomeNotificationWorker();
 startInternalNotificationWorker(db);
 startSalaryReminderScheduler(db);
 startCustomReminderScheduler(db);
+startRevenueTriggerScheduler(db);
 startStaffShiftScheduler();
 
 // Middlewares

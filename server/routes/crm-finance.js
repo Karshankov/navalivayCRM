@@ -1528,3 +1528,153 @@ crmFinanceRouter.get('/api/admin/crm/products/low-stock', authMiddleware, (req, 
     res.status(500).json({ error: 'failed', message: error.message });
   }
 });
+
+// ----- Триггеры выручки -------------------------------------------------------
+//
+// Порог на счёте «Выручка»: достигнут — юзербот уведомляет выбранных
+// (юзернеймы из команды @ppofic/@rk0ff/@quaillll). Проверяет планировщик
+// раз в минуту, триггер одноразовый.
+
+import {
+  findRevenueAccount,
+  parseRecipientUsernames,
+  checkRevenueTriggers,
+} from '../utils/revenue-trigger-scheduler.js';
+
+const REVENUE_TEAM_USERNAMES = ['ppofic', 'rk0ff', 'quaillll'];
+
+function serializeRevenueTrigger(row) {
+  return {
+    id: row.id,
+    is_system: row.id === 'system_revenue_notify',
+    threshold_amount: Number(row.threshold_amount),
+    recipient_usernames: parseRecipientUsernames(row.recipient_usernames),
+    enabled: Number(row.enabled) === 1,
+    triggered_at: row.triggered_at || null,
+    triggered_balance: row.triggered_balance === null || row.triggered_balance === undefined
+      ? null
+      : Number(row.triggered_balance),
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
+}
+
+function validateRevenueTriggerInput(body) {
+  const threshold = Number(body?.threshold_amount);
+  if (!Number.isFinite(threshold) || threshold <= 0) {
+    return { error: 'invalid_threshold' };
+  }
+  const rawUsernames = Array.isArray(body?.recipient_usernames)
+    ? body.recipient_usernames
+    : (body?.recipient_usernames ? [body.recipient_usernames] : []);
+  const usernames = [...new Set(
+    rawUsernames
+      .map((item) => String(item ?? '').trim().replace(/^@+/, ''))
+      .filter(Boolean)
+      .map((item) => item.toLowerCase()),
+  )];
+  if (!usernames.length) {
+    return { error: 'recipients_required' };
+  }
+  const outside = usernames.find((item) => !REVENUE_TEAM_USERNAMES.includes(item));
+  if (outside) {
+    return { error: 'recipient_not_in_team' };
+  }
+  return { threshold, usernames };
+}
+
+crmFinanceRouter.get('/api/admin/crm/revenue-triggers', authMiddleware, (req, res) => {
+  try {
+    const account = findRevenueAccount(db);
+    const rows = db.prepare(`
+      SELECT * FROM revenue_triggers
+      ORDER BY enabled DESC, created_at DESC
+    `).all();
+    res.json({
+      triggers: rows.map(serializeRevenueTrigger),
+      account: account
+        ? { id: account.id, name: account.name, balance: Number(account.balance) }
+        : null,
+      team: REVENUE_TEAM_USERNAMES,
+    });
+  } catch (error) {
+    console.error('[crm] List revenue triggers error:', error);
+    res.status(500).json({ error: 'failed', message: error.message });
+  }
+});
+
+crmFinanceRouter.post('/api/admin/crm/revenue-triggers', authMiddleware, (req, res) => {
+  try {
+    const input = validateRevenueTriggerInput(req.body);
+    if (input.error) {
+      return res.status(400).json({ error: input.error });
+    }
+    const triggerId = generateId('revtrg');
+    db.prepare(`
+      INSERT INTO revenue_triggers (id, threshold_amount, recipient_usernames, enabled)
+      VALUES (?, ?, ?, 1)
+    `).run(triggerId, input.threshold, JSON.stringify(input.usernames));
+    const created = db.prepare('SELECT * FROM revenue_triggers WHERE id = ?').get(triggerId);
+    res.status(201).json({ trigger: serializeRevenueTrigger(created) });
+  } catch (error) {
+    console.error('[crm] Create revenue trigger error:', error);
+    res.status(500).json({ error: 'failed', message: error.message });
+  }
+});
+
+crmFinanceRouter.patch('/api/admin/crm/revenue-triggers/:id', authMiddleware, (req, res) => {
+  try {
+    const current = db.prepare('SELECT * FROM revenue_triggers WHERE id = ?').get(req.params.id);
+    if (!current) return res.status(404).json({ error: 'not_found' });
+
+    // Тонкая настройка: только enabled-тоггл
+    if (req.body?.enabled !== undefined && Object.keys(req.body).length === 1) {
+      const enabled = req.body.enabled === true || req.body.enabled === 1 ? 1 : 0;
+      db.prepare(`
+        UPDATE revenue_triggers
+        SET enabled = ?, updated_at = DATETIME('now')
+        WHERE id = ?
+      `).run(enabled, current.id);
+      return res.json({ trigger: serializeRevenueTrigger(db.prepare('SELECT * FROM revenue_triggers WHERE id = ?').get(current.id)) });
+    }
+
+    const input = validateRevenueTriggerInput(req.body);
+    if (input.error) {
+      return res.status(400).json({ error: input.error });
+    }
+    db.prepare(`
+      UPDATE revenue_triggers
+      SET threshold_amount = ?, recipient_usernames = ?, enabled = 1,
+          triggered_at = NULL, triggered_balance = NULL, updated_at = DATETIME('now')
+      WHERE id = ?
+    `).run(input.threshold, JSON.stringify(input.usernames), current.id);
+    res.json({ trigger: serializeRevenueTrigger(db.prepare('SELECT * FROM revenue_triggers WHERE id = ?').get(current.id)) });
+  } catch (error) {
+    console.error('[crm] Update revenue trigger error:', error);
+    res.status(500).json({ error: 'failed', message: error.message });
+  }
+});
+
+crmFinanceRouter.delete('/api/admin/crm/revenue-triggers/:id', authMiddleware, (req, res) => {
+  try {
+    const current = db.prepare('SELECT id FROM revenue_triggers WHERE id = ?').get(req.params.id);
+    if (!current) return res.status(404).json({ error: 'not_found' });
+    db.prepare('DELETE FROM revenue_triggers WHERE id = ?').run(current.id);
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('[crm] Delete revenue trigger error:', error);
+    res.status(500).json({ error: 'failed', message: error.message });
+  }
+});
+
+// Ручная проверка прямо сейчас (кнопка «Проверить» в модалке):
+// баланс мог пересечь порог между тиками планировщика.
+crmFinanceRouter.post('/api/admin/crm/revenue-triggers/check', authMiddleware, (req, res) => {
+  try {
+    const result = checkRevenueTriggers(db, { now: new Date() });
+    res.json({ ok: true, ...result });
+  } catch (error) {
+    console.error('[crm] Check revenue triggers error:', error);
+    res.status(500).json({ error: 'failed', message: error.message });
+  }
+});

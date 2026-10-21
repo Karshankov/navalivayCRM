@@ -706,6 +706,24 @@ export interface CashAccount {
   created_at: string;
 }
 
+export interface RevenueTrigger {
+  id: string;
+  is_system?: boolean;
+  threshold_amount: number;
+  recipient_usernames: string[];
+  enabled: boolean;
+  triggered_at: string | null;
+  triggered_balance: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface RevenueTriggersResponse {
+  triggers: RevenueTrigger[];
+  account: { id: string; name: string; balance: number } | null;
+  team: string[];
+}
+
 export interface CashTransaction {
   id: string;
   account_id: string;
@@ -4714,6 +4732,57 @@ export const useCrmStore = defineStore("crm", () => {
     }
   }
 
+  // ===== Триггеры выручки =====
+
+  const revenueTriggers = ref<RevenueTrigger[]>([]);
+  const revenueAccount = ref<{ id: string; name: string; balance: number } | null>(null);
+  const revenueTeam = ref<string[]>([]);
+  const loadingRevenueTriggers = ref(false);
+
+  async function fetchRevenueTriggers() {
+    loadingRevenueTriggers.value = true;
+    try {
+      const response = await fetchAPI<RevenueTriggersResponse>(
+        `${API_BASE}/revenue-triggers`,
+      );
+      revenueTriggers.value = response.triggers || [];
+      revenueAccount.value = response.account || null;
+      revenueTeam.value = response.team || [];
+      return response;
+    } finally {
+      loadingRevenueTriggers.value = false;
+    }
+  }
+
+  async function createRevenueTrigger(payload: {
+    threshold_amount: number;
+    recipient_usernames: string[];
+  }) {
+    const response = await fetchAPI<{ trigger: RevenueTrigger }>(
+      `${API_BASE}/revenue-triggers`,
+      { method: 'POST', body: JSON.stringify(payload) },
+    );
+    await fetchRevenueTriggers();
+    return response.trigger;
+  }
+
+  async function updateRevenueTrigger(
+    id: string,
+    payload: { threshold_amount: number; recipient_usernames: string[] },
+  ) {
+    const response = await fetchAPI<{ trigger: RevenueTrigger }>(
+      `${API_BASE}/revenue-triggers/${id}`,
+      { method: 'PATCH', body: JSON.stringify(payload) },
+    );
+    await fetchRevenueTriggers();
+    return response.trigger;
+  }
+
+  async function deleteRevenueTrigger(id: string) {
+    await fetchAPI(`${API_BASE}/revenue-triggers/${id}`, { method: 'DELETE' });
+    await fetchRevenueTriggers();
+  }
+
   async function createCashAccount(data: {
     name: string;
     balance?: number;
@@ -5941,6 +6010,14 @@ export const useCrmStore = defineStore("crm", () => {
     cashTransactions,
     loadingCash,
     fetchCashAccounts,
+    revenueTriggers,
+    revenueAccount,
+    revenueTeam,
+    loadingRevenueTriggers,
+    fetchRevenueTriggers,
+    createRevenueTrigger,
+    updateRevenueTrigger,
+    deleteRevenueTrigger,
     createCashAccount,
     updateCashAccount,
     deleteCashAccount,

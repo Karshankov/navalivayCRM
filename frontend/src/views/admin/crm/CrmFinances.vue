@@ -21,6 +21,14 @@
           >
             План пробития
           </button>
+          <button
+            type="button"
+            class="crm-reference-button crm-reference-button--gray"
+            data-test="revenue-trigger-button"
+            @click="openRevenueTriggerModal"
+          >
+            Триггер выручки
+          </button>
         </div>
       </div>
 
@@ -215,6 +223,125 @@
       </div>
     </AdminModal>
 
+    <!-- Revenue Trigger Modal -->
+    <AdminModal
+      :isOpen="showRevenueTriggerModal"
+      title="Триггер выручки"
+      description="Когда счёт «Выручка» достигнет суммы — юзербот уведомит выбранных."
+      size="sm"
+      :showActions="false"
+      @close="showRevenueTriggerModal = false"
+      @cancel="showRevenueTriggerModal = false"
+    >
+      <div class="space-y-4">
+        <!-- Текущий баланс -->
+        <div v-if="revenueAccount" class="rounded-xl border border-[#eaf0f9] bg-[#f7fbff] px-4 py-3">
+          <span class="text-[11px] font-bold uppercase tracking-[.14em] text-[#8898b5]">Сейчас на «{{ revenueAccount.name }}»</span>
+          <p class="m-0 mt-1 text-[18px] font-bold text-[#081b4b]">{{ formatCurrency(revenueAccount.balance) }}</p>
+        </div>
+
+        <!-- Форма: сумма + получатели -->
+        <form class="space-y-3" data-test="revenue-trigger-form" @submit.prevent="submitRevenueTrigger">
+          <div>
+            <label for="revenue-trigger-threshold" class="mb-1 block text-[12px] font-bold text-[#081b4b]">
+              Сумма триггера (BYN)
+            </label>
+            <input
+              id="revenue-trigger-threshold"
+              v-model.number="revenueTriggerForm.threshold"
+              type="number"
+              min="0.01"
+              step="0.01"
+              required
+              placeholder="напр. 2500"
+              class="w-full rounded-xl border border-[#eaf0f9] bg-white px-4 py-3 text-sm text-[#081b4b] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0958ff]"
+            />
+          </div>
+
+          <div>
+            <span class="mb-2 block text-[12px] font-bold text-[#081b4b]">Уведомить</span>
+            <div class="space-y-2">
+              <label
+                v-for="username in revenueTeam"
+                :key="username"
+                class="flex cursor-pointer items-center gap-3 rounded-xl border px-4 py-3 transition-colors"
+                :class="isTriggerRecipientSelected(username) ? 'border-[#a7e3c4] bg-[#eafaf1]' : 'border-[#eaf0f9] bg-white hover:bg-[#f7fbff]'"
+              >
+                <input
+                  type="checkbox"
+                  class="h-4 w-4 accent-[#10b981]"
+                  :checked="isTriggerRecipientSelected(username)"
+                  @change="toggleTriggerRecipient(username)"
+                />
+                <span class="text-sm font-semibold text-[#081b4b]">@{{ username }}</span>
+              </label>
+            </div>
+          </div>
+
+          <p v-if="revenueTriggerError" class="m-0 rounded-xl border border-[#f5c9d3] bg-[#fff1f3] px-4 py-3 text-[12px] text-[#b92444]" role="alert">
+            {{ revenueTriggerError }}
+          </p>
+
+          <div class="flex gap-3 pt-1">
+            <button
+              type="submit"
+              class="flex-1 rounded-xl bg-[linear-gradient(115deg,#10b981,#059669)] px-4 py-3 text-[13px] font-bold text-white shadow-[0_8px_16px_#10b98130] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
+              :disabled="revenueTriggerSaving"
+            >
+              {{ revenueTriggerSaving ? 'Сохраняем…' : (editingRevenueTriggerId ? 'Сохранить' : 'Создать триггер') }}
+            </button>
+            <button
+              type="button"
+              class="flex-1 rounded-xl bg-[linear-gradient(#f7faff,#e9f0fa)] px-4 py-3 text-[13px] font-bold text-[#233e70] transition hover:brightness-105"
+              @click="resetRevenueTriggerForm"
+            >
+              Отмена
+            </button>
+          </div>
+        </form>
+
+        <!-- Список триггеров -->
+        <div v-if="revenueTriggers.length" class="space-y-2 border-t border-[#eaf0f9] pt-4">
+          <span class="block text-[11px] font-bold uppercase tracking-[.14em] text-[#8898b5]">Триггеры</span>
+          <div
+            v-for="trigger in revenueTriggers"
+            :key="trigger.id"
+            class="flex flex-wrap items-center justify-between gap-2 rounded-xl border px-4 py-3"
+            :class="trigger.enabled ? 'border-[#eaf0f9] bg-white' : 'border-[#f4e2c7] bg-[#fff8ed]'"
+            data-test="revenue-trigger-item"
+          >
+            <div class="min-w-0">
+              <p class="m-0 text-sm font-bold text-[#081b4b]">
+                {{ formatCurrency(trigger.threshold_amount) }}
+                <span v-if="trigger.is_system" class="ml-1 text-[11px] font-semibold text-[#1759ed]">ежедневно</span>
+                <span v-if="!trigger.enabled" class="ml-1 text-[11px] font-semibold text-[#8a6d3b]">сработал</span>
+              </p>
+              <p class="m-0 truncate text-[11px] text-[#8898b5]">
+                @{{ trigger.recipient_usernames.join(', @') }}
+                <template v-if="trigger.is_system"> · уведомляет каждый день в ~11:20, пока баланс ≥ порога</template>
+              </p>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <button
+                type="button"
+                class="admin-link-button admin-link-button--edit"
+                @click="startEditRevenueTrigger(trigger)"
+              >
+                Изменить
+              </button>
+              <button
+                type="button"
+                class="admin-link-button admin-link-button--danger"
+                @click="removeRevenueTrigger(trigger)"
+              >
+                Удалить
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </AdminModal>
+
     <!-- Edit Transaction Modal -->
     <AdminModal
       :isOpen="showEditTransactionModal"
@@ -331,6 +458,100 @@ const savingTransaction = ref(false)
 const showPasswordModal = ref(false)
 const passwordInput = ref('')
 const passwordError = ref('')
+const showRevenueTriggerModal = ref(false)
+const revenueTriggerForm = reactive({ threshold: null as number | null, recipients: [] as string[] })
+const editingRevenueTriggerId = ref<string | null>(null)
+const revenueTriggerError = ref('')
+const revenueTriggerSaving = ref(false)
+
+const { revenueTriggers, revenueAccount, revenueTeam } = storeToRefs(crmStore)
+
+async function openRevenueTriggerModal() {
+  // Как панели Финансов: доступ только после ввода лицензионного ключа.
+  if (!profitUnlocked.value) {
+    openPasswordModal()
+    return
+  }
+  showRevenueTriggerModal.value = true
+  resetRevenueTriggerForm()
+  await crmStore.fetchRevenueTriggers()
+}
+
+function resetRevenueTriggerForm() {
+  editingRevenueTriggerId.value = null
+  revenueTriggerForm.threshold = null
+  revenueTriggerForm.recipients = []
+  revenueTriggerError.value = ''
+}
+
+function isTriggerRecipientSelected(username: string): boolean {
+  return revenueTriggerForm.recipients.includes(username)
+}
+
+function toggleTriggerRecipient(username: string) {
+  const index = revenueTriggerForm.recipients.indexOf(username)
+  if (index === -1) {
+    revenueTriggerForm.recipients.push(username)
+  } else {
+    revenueTriggerForm.recipients.splice(index, 1)
+  }
+}
+
+function startEditRevenueTrigger(trigger: { id: string; threshold_amount: number; recipient_usernames: string[] }) {
+  editingRevenueTriggerId.value = trigger.id
+  revenueTriggerForm.threshold = trigger.threshold_amount
+  revenueTriggerForm.recipients = [...trigger.recipient_usernames]
+  revenueTriggerError.value = ''
+}
+
+async function submitRevenueTrigger() {
+  if (revenueTriggerSaving.value) return
+  revenueTriggerError.value = ''
+  if (!revenueTriggerForm.threshold || revenueTriggerForm.threshold <= 0) {
+    revenueTriggerError.value = 'Укажите сумму больше нуля.'
+    return
+  }
+  if (!revenueTriggerForm.recipients.length) {
+    revenueTriggerError.value = 'Выберите хотя бы одного получателя.'
+    return
+  }
+  revenueTriggerSaving.value = true
+  try {
+    const payload = {
+      threshold_amount: revenueTriggerForm.threshold,
+      recipient_usernames: revenueTriggerForm.recipients,
+    }
+    if (editingRevenueTriggerId.value) {
+      await crmStore.updateRevenueTrigger(editingRevenueTriggerId.value, payload)
+    } else {
+      await crmStore.createRevenueTrigger(payload)
+    }
+    resetRevenueTriggerForm()
+  } catch (error: any) {
+    const code = error?.code
+    revenueTriggerError.value = code === 'invalid_threshold'
+      ? 'Сумма должна быть больше нуля.'
+      : code === 'recipients_required'
+        ? 'Выберите хотя бы одного получателя.'
+        : code === 'recipient_not_in_team'
+          ? 'Получатель вне команды.'
+          : (error?.message || 'Не удалось сохранить триггер.')
+  } finally {
+    revenueTriggerSaving.value = false
+  }
+}
+
+async function removeRevenueTrigger(trigger: { id: string; threshold_amount: number }) {
+  if (!confirm(`Удалить триггер на ${formatCurrency(trigger.threshold_amount)}?`)) return
+  try {
+    await crmStore.deleteRevenueTrigger(trigger.id)
+    if (editingRevenueTriggerId.value === trigger.id) {
+      resetRevenueTriggerForm()
+    }
+  } catch {
+    alert('Не удалось удалить триггер.')
+  }
+}
 const verifyingPassword = computed(() => verifyingProfitAccess.value)
 watch(profitUnlocked, (unlocked) => {
   if (!unlocked) {
@@ -338,6 +559,7 @@ watch(profitUnlocked, (unlocked) => {
     showTransactionModal.value = false
     showEditTransactionModal.value = false
     showPasswordModal.value = false
+    showRevenueTriggerModal.value = false
   }
 })
 

@@ -81,6 +81,7 @@ import { migrateStaffManagement } from './migrations/add_staff_management.js';
 import { migrateInternalNotifications } from './migrations/add_internal_notifications.js';
 import { migrateFinancialDayClosures } from './migrations/add_financial_day_closures.js';
 import { migrateCustomReminders } from './migrations/add_custom_reminders.js';
+import { migrateRevenueTriggers } from './migrations/add_revenue_triggers.js';
 import { assertFinancialCloseDatabaseReady } from './utils/financial-close-activation.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -264,6 +265,7 @@ export function initDb() {
   migrateOrderAudit(db);
   if (financialCloseEnabled) migrateFinancialDayClosures(db);
   migrateCustomReminders(db);
+  migrateRevenueTriggers(db);
 
   seedIfEmpty();
   seedDefaultLoyaltyData();
