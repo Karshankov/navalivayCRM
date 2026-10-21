@@ -58,11 +58,14 @@ describe("AdminProductsTable search regressions", () => {
   it("category changes cancel pending search debounce and emit immediately", async () => {
     const wrapper = mountTable();
     const searchInput = wrapper.find('input[type="search"]');
-    const categorySelect = wrapper.find("select");
+    // Розница: категория выбирается чипом (селекта больше нет)
+    const categoryChip = wrapper
+      .findAll('[data-test="retail-category-chip"]')
+      .find((chip) => chip.text().includes("Кальянка"));
 
     await searchInput.setValue("персик");
     await vi.advanceTimersByTimeAsync(100);
-    await categorySelect.setValue("cat-hookah");
+    await categoryChip!.trigger("click");
 
     expect(wrapper.emitted("filters")).toEqual([
       [{ search: "персик", category: "cat-hookah", group: "" }],

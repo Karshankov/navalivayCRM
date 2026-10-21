@@ -216,7 +216,7 @@ export const useAdminStore = defineStore('admin', () => {
   const products = ref<Product[]>([])
   const currentProduct = ref<Product | null>(null)
   const categoryGroups = ref<CategoryGroup[]>([])
-  const availableProductGroups = ref<Array<{ id: string; name: string; categoryId: string }>>([])
+  const availableProductGroups = ref<Array<{ id: string; name: string; categoryId: string; hasStock?: number }>>([])
   const categoryCrossSells = ref<Record<string, Product[]>>({})
   const wholesaleLinks = ref<WholesaleLink[]>([])
   const settings = ref<Record<string, string>>({})

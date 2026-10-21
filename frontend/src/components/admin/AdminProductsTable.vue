@@ -76,47 +76,88 @@
     <div class="crm-ref-card p-5 mb-4">
       <div class="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
         <div class="flex flex-1 flex-col gap-3 sm:flex-row sm:items-center sm:gap-3 flex-wrap">
-          <div class="flex items-center gap-2 min-w-0">
-            <select
-              v-model="category"
-              class="crm-ref-select w-full sm:w-[220px]"
-              @change="onCategoryFilterChange"
-            >
-              <option value="">Все категории</option>
-              <option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }}</option>
-            </select>
-            <button
-              type="button"
-              class="crm-ref-chip-button !px-3 shrink-0"
-              title="Создать категорию"
-              @click="openInlineCategoryModal"
-            >
-              <PlusIcon class="h-4 w-4" />
-              <span class="sr-only">Создать категорию</span>
-            </button>
-          </div>
-          <div class="flex items-center gap-2 min-w-0">
-            <div ref="groupDropdownTriggerRef" class="relative min-w-0">
+          <!-- Розница: фильтры лентой чипов, как на складе.
+               Сначала категории; при выборе категории — линейки этой категории
+               (все, включая без остатков — они в конце и приглушены). -->
+          <template v-if="location === 'retail'">
+            <div class="flex items-center gap-2 min-w-0">
               <button
                 type="button"
-                @click="toggleGroupDropdown"
-                :disabled="!groupFilterOptions.length"
-                class="crm-ref-select !w-[200px] flex items-center justify-between gap-2 text-left disabled:opacity-45 disabled:cursor-not-allowed"
+                class="crm-ref-chip-button !rounded-full !py-2 flex-shrink-0"
+                :class="!category ? 'crm-ref-chip-button--primary' : ''"
+                :aria-pressed="!category"
+                data-test="retail-category-chip"
+                @click="selectRetailCategory('')"
               >
-                <span class="truncate">{{ selectedGroupName }}</span>
+                Все категории
+              </button>
+              <button
+                v-for="c in categories"
+                :key="c.id"
+                type="button"
+                class="crm-ref-chip-button !rounded-full !py-2 flex-shrink-0"
+                :class="category === c.id ? 'crm-ref-chip-button--primary' : ''"
+                :aria-pressed="category === c.id"
+                data-test="retail-category-chip"
+                @click="selectRetailCategory(c.id)"
+              >
+                {{ c.name }}
+              </button>
+              <button
+                type="button"
+                class="crm-ref-chip-button !px-3 shrink-0"
+                title="Создать категорию"
+                @click="openInlineCategoryModal"
+              >
+                <PlusIcon class="h-4 w-4" />
+                <span class="sr-only">Создать категорию</span>
               </button>
             </div>
-            <button
-              type="button"
-              class="crm-ref-chip-button !px-3 shrink-0"
-              :disabled="!category"
-              :title="category ? 'Создать линейку' : 'Сначала выберите категорию'"
-              @click="openInlineGroupModal"
-            >
-              <PlusIcon class="h-4 w-4" />
-              <span class="sr-only">Создать линейку</span>
-            </button>
-          </div>
+          </template>
+          <!-- Склад: прежние селекты -->
+          <template v-else>
+            <div class="flex items-center gap-2 min-w-0">
+              <select
+                v-model="category"
+                class="crm-ref-select w-full sm:w-[220px]"
+                @change="onCategoryFilterChange"
+              >
+                <option value="">Все категории</option>
+                <option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }}</option>
+              </select>
+              <button
+                type="button"
+                class="crm-ref-chip-button !px-3 shrink-0"
+                title="Создать категорию"
+                @click="openInlineCategoryModal"
+              >
+                <PlusIcon class="h-4 w-4" />
+                <span class="sr-only">Создать категорию</span>
+              </button>
+            </div>
+            <div class="flex items-center gap-2 min-w-0">
+              <div ref="groupDropdownTriggerRef" class="relative min-w-0">
+                <button
+                  type="button"
+                  @click="toggleGroupDropdown"
+                  :disabled="!groupFilterOptions.length"
+                  class="crm-ref-select !w-[200px] flex items-center justify-between gap-2 text-left disabled:opacity-45 disabled:cursor-not-allowed"
+                >
+                  <span class="truncate">{{ selectedGroupName }}</span>
+                </button>
+              </div>
+              <button
+                type="button"
+                class="crm-ref-chip-button !px-3 shrink-0"
+                :disabled="!category"
+                :title="category ? 'Создать линейку' : 'Сначала выберите категорию'"
+                @click="openInlineGroupModal"
+              >
+                <PlusIcon class="h-4 w-4" />
+                <span class="sr-only">Создать линейку</span>
+              </button>
+            </div>
+          </template>
 
           <div class="hidden lg:flex items-center gap-1 crm-ref-segment !p-1" role="group" aria-label="Вид">
             <button
@@ -187,6 +228,57 @@
           @click="selectGroupChip(option.id)"
         >
           {{ option.name }}
+        </button>
+      </div>
+
+      <!-- Розница: линейки выбранной категории. Все, включая без остатков —
+           безостаточные уходят в конец ленты и показываются приглушённо.
+           По умолчанию — одна прокручиваемая строка, стрелкой разворачивается
+           на несколько строк. -->
+      <div
+        v-if="location === 'retail' && category && retailGroupChipOptions.length"
+        class="mt-4 hidden sm:block"
+      >
+        <div
+          class="retail-group-ribbon"
+          :class="{ 'retail-group-ribbon--expanded': retailRibbonExpanded }"
+          role="group"
+          aria-label="Фильтр по линейкам категории"
+        >
+          <button
+            type="button"
+            data-test="retail-group-chip"
+            class="crm-ref-chip-button !rounded-full !py-2 flex-shrink-0"
+            :class="!group ? 'crm-ref-chip-button--primary' : ''"
+            :aria-pressed="!group"
+            @click="selectGroupChip('')"
+          >
+            Все линейки
+          </button>
+          <button
+            v-for="option in retailGroupChipOptions"
+            :key="option.id"
+            type="button"
+            data-test="retail-group-chip"
+            class="crm-ref-chip-button !rounded-full !py-2 flex-shrink-0"
+            :class="[group === option.id ? 'crm-ref-chip-button--primary' : '', option.outOfStock ? 'retail-group-chip--empty' : '']"
+            :aria-pressed="group === option.id"
+            :title="option.outOfStock ? 'Нет товаров в наличии' : undefined"
+            @click="selectGroupChip(option.id)"
+          >
+            {{ option.name }}
+          </button>
+        </div>
+        <button
+          v-if="retailGroupChipOptions.length > 1"
+          type="button"
+          class="crm-ref-chip-button !px-3 !py-1.5 mt-2"
+          data-test="retail-ribbon-toggle"
+          :aria-expanded="retailRibbonExpanded"
+          @click="retailRibbonExpanded = !retailRibbonExpanded"
+        >
+          <ChevronDownIcon class="h-3.5 w-3.5" :class="{ 'rotate-180': retailRibbonExpanded }" aria-hidden="true" />
+          <span>{{ retailRibbonExpanded ? 'Свернуть' : 'Показать все' }}</span>
         </button>
       </div>
     </div>
@@ -1238,7 +1330,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch, onMounted, onUnmounted, nextTick } from 'vue'
-import { PlusIcon, FunnelIcon, XMarkIcon, MagnifyingGlassIcon, LockClosedIcon, ArrowsRightLeftIcon } from '@heroicons/vue/24/outline'
+import { PlusIcon, FunnelIcon, XMarkIcon, MagnifyingGlassIcon, LockClosedIcon, ArrowsRightLeftIcon, ChevronDownIcon } from '@heroicons/vue/24/outline'
 import { useAdminStore } from '@/stores/admin'
 import { useCrmStore } from '@/stores/crm'
 import { storeToRefs } from 'pinia'
@@ -1293,7 +1385,7 @@ const props = withDefaults(defineProps<{
   pagination?: Pagination
   isLoading?: boolean
   location?: 'retail' | 'warehouse'
-  availableGroups?: Array<{ id: string; name: string; categoryId: string }>
+  availableGroups?: Array<{ id: string; name: string; categoryId: string; hasStock?: number }>
 }>(), { isLoading: false, location: 'retail', availableGroups: () => [] })
 
 const emit = defineEmits<{
@@ -1343,6 +1435,8 @@ const groupDropdownTriggerRef = ref<HTMLDivElement | null>(null)
 const groupSearchInputRef = ref<HTMLInputElement | null>(null)
 const groupDropdownPosition = ref({ top: 0, left: 0 })
 const showMobileGroupDropdown = ref(false)
+// Розница: лента линеек развёрнута в несколько строк (стрелка «Показать все»)
+const retailRibbonExpanded = ref(false)
 const mobileGroupSearchQuery = ref('')
 const mobileGroupDropdownRef = ref<HTMLDivElement | null>(null)
 const tableRef = ref<HTMLTableElement | null>(null)
@@ -1407,6 +1501,30 @@ const selectedGroupFallback = computed(() => {
   if (!group.value) return null
   const found = (adminStore.categoryGroups || []).find((item) => item.id === group.value)
   return found ? { id: found.id, name: found.name, categoryId: found.categoryId } : null
+})
+
+/**
+ * Розница: линейки выбранной категории — все, включая без остатков.
+ * Наличие (hasStock) приходит с сервера в availableGroups — он считается
+ * по всей базе, а не по текущей странице пагинации. Безостаточные уходят
+ * в конец ленты и помечаются outOfStock — UI показывает их приглушённо.
+ */
+const retailGroupChipOptions = computed(() => {
+  if (props.location !== 'retail' || !category.value) return []
+  const groups = props.availableGroups.filter((item) => item.categoryId === category.value)
+
+  const decorated = groups.map((item) => ({
+    id: item.id,
+    name: item.name,
+    categoryId: item.categoryId,
+    outOfStock: !Number(item.hasStock ?? 0),
+  }))
+
+  // Есть остаток — вперёд по алфавиту; без остатка — в конец, тоже по алфавиту.
+  return decorated.sort((a, b) => {
+    if (a.outOfStock !== b.outOfStock) return a.outOfStock ? 1 : -1
+    return a.name.localeCompare(b.name, 'ru')
+  })
 })
 
 const modalGroupOptions = computed(() => {
@@ -1757,6 +1875,20 @@ function onCategoryFilterChange() {
     clearTimeout(searchDebounceTimer)
     searchDebounceTimer = null
   }
+  group.value = ''
+  onFiltersChanged()
+}
+
+/** Розница: выбор категории чипом — линейка сбрасывается, появляются
+ *  чипы линеек новой категории. Повторный клик по активной категории
+ *  ничего не перезапрашивает. */
+function selectRetailCategory(categoryId: string) {
+  if (category.value === categoryId) return
+  if (searchDebounceTimer !== null) {
+    clearTimeout(searchDebounceTimer)
+    searchDebounceTimer = null
+  }
+  category.value = categoryId
   group.value = ''
   onFiltersChanged()
 }
@@ -2329,3 +2461,27 @@ watch(() => props.products, () => {
   queueColumnMeasurement()
 }, { deep: true })
 </script>
+
+<style scoped>
+/* Розница, лента линеек: чипы без остатков — в конце и приглушённые,
+ * чтобы было видно: линейка есть, но товара в ней сейчас нет. */
+.retail-group-chip--empty:not(.crm-ref-chip-button--primary) {
+  opacity: .55;
+  border-style: dashed;
+  color: #8898b5;
+}
+
+/* Лента линеек: по умолчанию одна прокручиваемая строка,
+ * развёрнутая — переносится на несколько строк. */
+.retail-group-ribbon {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+.retail-group-ribbon--expanded {
+  flex-wrap: wrap;
+  overflow-x: visible;
+  padding-bottom: 0;
+}
+</style>

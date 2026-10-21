@@ -1425,15 +1425,37 @@ adminRouter.get('/api/admin/products', authMiddleware, (req, res) => {
 
 /**
  * Линейки, которые реально есть в точке. Для склада это ответ на вопрос «что
- * сейчас можно отгрузить», для розницы отдаём весь справочник: там остаток
- * меняется каждый час, и пустой список сбивал бы с толку.
+ * сейчас можно отгрузить», для розницы отдаём весь справочник с признаком
+ * hasStock: UI показывает все линейки, но безостаточные — приглушённо
+ * и в конце ленты. Родительские линейки (на которые ссылаются дочерние)
+ * в рознице не показываем: товары лежат в дочерних.
  */
 function listGroupsWithStock(location) {
   if (location !== 'warehouse') {
-    return db.prepare('SELECT id, name, categoryId FROM category_groups ORDER BY name COLLATE NOCASE').all();
+    return db.prepare(`
+      SELECT g.id, g.name, g.categoryId,
+        g.parent_group_id AS parentId,
+        CASE WHEN EXISTS (
+          SELECT 1 FROM products p
+          WHERE p.groupId = g.id AND (
+            (COALESCE(p.has_variants, 0) = 0 AND COALESCE(p.stock, 0) > 0)
+            OR (COALESCE(p.has_variants, 0) = 1 AND EXISTS (
+              SELECT 1 FROM product_variants v
+              WHERE v.product_id = p.id AND COALESCE(v.stock, 0) > 0
+            ))
+          )
+        ) THEN 1 ELSE 0 END AS hasStock,
+        CASE WHEN EXISTS (
+          SELECT 1 FROM category_groups child
+          WHERE child.parent_group_id = g.id
+        ) THEN 1 ELSE 0 END AS isParent
+      FROM category_groups g
+      ORDER BY g.name COLLATE NOCASE
+    `).all()
+      .filter((group) => !group.isParent);
   }
   return db.prepare(`
-    SELECT DISTINCT g.id, g.name, g.categoryId
+    SELECT DISTINCT g.id, g.name, g.categoryId, 1 AS hasStock
     FROM category_groups g
     JOIN products p ON p.groupId = g.id
     WHERE (
