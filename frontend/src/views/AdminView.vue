@@ -531,6 +531,7 @@
                 @createCategory="handleCreateCategoryFromProducts"
                 @createGroup="handleCreateGroupFromProducts"
                 @transfer="openStockTransfer"
+                @inventory-check="openInventoryCheck"
                 @changeLocation="handleProductsLocationChange"
               />
             </div>
@@ -897,6 +898,14 @@
       @cancelled="handleStockTransferCancelled"
     />
 
+    <InventoryCheckModal
+      :isOpen="showInventoryCheckModal"
+      :groups="adminStore.availableProductGroups || []"
+      :initialLocation="inventoryCheckInitialLocation"
+      @close="showInventoryCheckModal = false"
+      @saved="handleInventoryCheckSaved"
+    />
+
     <!-- Category Groups Modal -->
     <AdminModal
       v-if="showGroupModal && !showWholesaleLinksModal && !minStockEditorOpen && !showGroupOrderModal"
@@ -1261,6 +1270,7 @@ import AdminSectionHero from '@/components/admin/layout/AdminSectionHero.vue'
 import AdminProductsTable from '@/components/admin/AdminProductsTable.vue'
 import AdminReminders from '@/components/admin/AdminReminders.vue'
 import AdminStockTransferModal from '@/components/admin/AdminStockTransferModal.vue'
+import InventoryCheckModal from '@/components/admin/InventoryCheckModal.vue'
 import AdminCategoryGroupForm from '@/components/admin/AdminCategoryGroupForm.vue'
 import AdminGroupMinStockEditor from '@/components/admin/AdminGroupMinStockEditor.vue'
 import AdminCategoryGroupOrderModal from '@/components/admin/AdminCategoryGroupOrderModal.vue'
@@ -1395,6 +1405,8 @@ const showCategoryModal = ref(false)
 const showProductModal = ref(false)
 const showStockTransferModal = ref(false)
 const stockTransferInitialSource = ref<'retail' | 'warehouse'>('retail')
+const showInventoryCheckModal = ref(false)
+const inventoryCheckInitialLocation = ref<'retail' | 'warehouse'>('retail')
 const editingBanner = ref<any>(null)
 const editingCategory = ref<any>(null)
 const editingProduct = ref<any>(null)
@@ -2551,6 +2563,34 @@ function handleProductsLocationChange(location: 'retail' | 'warehouse') {
 function openStockTransfer(location: 'retail' | 'warehouse') {
   stockTransferInitialSource.value = location
   showStockTransferModal.value = true
+}
+
+function openInventoryCheck(location: 'retail' | 'warehouse') {
+  inventoryCheckInitialLocation.value = location
+  showInventoryCheckModal.value = true
+}
+
+async function handleInventoryCheckSaved(result: {
+  check_number: number
+  diff_total: number
+  group: { name: string }
+}) {
+  // Остатки изменились — таблица должна показать свежие цифры без F5.
+  // Повторяем текущий запрос: та же страница, категория и поиск.
+  await adminStore.fetchProducts({
+    page: adminStore.productsPagination?.page || 1,
+    limit: adminStore.productsPagination?.limit || 10,
+    category: productsFilters.value.category || undefined,
+    search: productsFilters.value.search || undefined,
+    group: productsFilters.value.group || undefined,
+    location: productsFilters.value.location,
+  })
+  const verdict = result.diff_total > 0
+    ? `на ${result.diff_total} больше`
+    : result.diff_total < 0
+      ? `на ${Math.abs(result.diff_total)} меньше`
+      : 'без расхождений'
+  showToast(`Пересорт №${result.check_number} (${result.group.name}): ${verdict}`, 'success')
 }
 
 function handleStockTransferSaved(details: { number: number }) {

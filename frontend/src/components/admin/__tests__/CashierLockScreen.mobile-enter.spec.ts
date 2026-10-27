@@ -97,6 +97,25 @@ describe("CashierLockScreen: вход по паролю с мобильной к
     expect(wrapper.emitted("unlocked")).toBeUndefined();
   });
 
+  it("ключ срабатывает сам, без нажатия Enter: пауза в вводе отправляет форму", async () => {
+    vi.useFakeTimers();
+    try {
+      const wrapper = await mountLockScreen();
+      adminStore.isAuthenticated = true;
+
+      const input = wrapper.find("form input");
+      await input.setValue("998811");
+      // Ввод остановился — автосабмит через полсекунды сам проверяет ключ.
+      await vi.advanceTimersByTimeAsync(600);
+      await flushPromises();
+
+      expect(loginMock).toHaveBeenCalledWith({ username: "admin", password: "998811" });
+      expect(wrapper.emitted("unlocked")).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("неверный ключ не разблокирует экран и не оставляет мусор в поле", async () => {
     const wrapper = await mountLockScreen();
     loginMock.mockRejectedValue(new Error("unauthorized"));

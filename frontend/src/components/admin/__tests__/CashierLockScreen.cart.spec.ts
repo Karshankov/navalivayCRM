@@ -1,12 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
+import { reactive, ref } from "vue";
 import CashierLockScreen from "@/components/admin/CashierLockScreen.vue";
 
 const loginMock = vi.fn();
-const adminAuthenticated = { value: true };
+// Как в Pinia: стор обёрнут в reactive, поэтому ref внутри авто-распаковывается
+// при чтении store.isAuthenticated — и остаётся реактивным. Тест
+// «каталог грузится сам…» переворачивает флаг ПОСЛЕ монтирования.
+const adminAuthenticated = ref(true);
 
 vi.mock("@/stores/admin", () => ({
-  useAdminStore: () => ({ login: loginMock, isAuthenticated: adminAuthenticated.value }),
+  useAdminStore: () => reactive({ login: loginMock, isAuthenticated: adminAuthenticated }),
 }));
 
 const submitPosCheckMock = vi.fn();
@@ -21,7 +25,6 @@ vi.mock("@/stores/crm", () => ({
     fetchPendingPosSales: vi.fn().mockResolvedValue([]),
     createPosSale: vi.fn(),
     updatePosSale: vi.fn(),
-    startPosSession: vi.fn().mockResolvedValue(null),
     startPosSession: startPosSessionMock,
     fetchPosCatalog: fetchPosCatalogMock,
     submitPosCheck: submitPosCheckMock,
@@ -69,18 +72,27 @@ async function mountScreen(items = CATALOG) {
   return wrapper;
 }
 
-function tileButtons(wrapper: ReturnType<typeof mount>) {
-  return wrapper.findAll("button").filter((button) =>
-    button.text().includes("BYN") && button.attributes("disabled") === undefined,
-  );
-}
-
 function findTile(wrapper: ReturnType<typeof mount>, title: string) {
   return wrapper.findAll("button").find((button) => button.text().includes(title));
 }
 
 function totalText(wrapper: ReturnType<typeof mount>) {
   return wrapper.text().replace(/\s+/g, " ");
+}
+
+/** «Провести чек» открывает модалку кода: вводим код и отправляем. */
+async function submitWithCode(wrapper: ReturnType<typeof mount>, code = "5599") {
+  const submit = wrapper.findAll("button").find((b) => b.text().includes("Провести чек"))!;
+  await submit.trigger("click");
+  await flushPromises();
+  const codeInput = wrapper.find("#pos-confirm-code");
+  if (!codeInput.exists()) {
+    throw new Error("модалка кода подтверждения не открылась");
+  }
+  await codeInput.setValue(code);
+  await wrapper.findAll("button").find((b) => b.text() === "Провести")!.trigger("submit");
+  await flushPromises();
+  return submit;
 }
 
 describe("CashierLockScreen: каталог и чек", () => {
@@ -94,8 +106,8 @@ describe("CashierLockScreen: каталог и чек", () => {
     adminAuthenticated.value = true;
   });
 
-  it("показывает 4 товара и «Показать все» только когда их больше", async () => {
-    const many = Array.from({ length: 6 }, (_, index) => ({
+  it("изначально виден только первый ряд, «Показать все» разворачивает список", async () => {
+    const many = Array.from({ length: 30 }, (_, index) => ({
       ...CATALOG[0],
       id: `p_${index}`,
       product_id: `p_${index}`,
@@ -105,15 +117,58 @@ describe("CashierLockScreen: каталог и чек", () => {
 
     const text = totalText(wrapper);
     expect(text).toContain("Показать все");
-    expect(text).toContain("(6)");
-    // Первые четыре плитки на экране, остальные — после разворота.
+    expect(text).toContain("(30)");
+    // Первый ряд: 6 плиток, остальное — после «Показать все».
     expect(wrapper.text()).toContain("Товар 0");
-    expect(wrapper.text()).toContain("Товар 3");
-    expect(wrapper.text()).not.toContain("Товар 4");
+    expect(wrapper.text()).toContain("Товар 5");
+    expect(wrapper.text()).not.toContain("Товар 6");
 
     await wrapper.findAll("button").find((b) => b.text().includes("Показать все"))!.trigger("click");
     await flushPromises();
-    expect(wrapper.text()).toContain("Товар 5");
+    expect(wrapper.text()).toContain("Товар 29");
+  });
+
+  it("сетка каталога укладывает 6 плиток в ряд на большом экране", async () => {
+    const many = Array.from({ length: 6 }, (_, index) => ({
+      ...CATALOG[0],
+      id: `p_${index}`,
+      product_id: `p_${index}`,
+      title: `Товар ${index}`,
+    }));
+    const wrapper = await mountScreen(many);
+
+    // jsdom не считает CSS-сетку, поэтому проверяем класс контейнера:
+    // компактные плитки, 6 колонок на десктопе.
+    const grid = wrapper.find(".grid.grid-cols-2.sm\\:grid-cols-4.lg\\:grid-cols-6");
+    expect(grid.exists()).toBe(true);
+  });
+
+  it("каталог грузится при монтировании и после позднего подтверждения входа", async () => {
+    // Перезагрузка страницы с заблокированной панелью: экран кассы смонтирован
+    // до checkAuth. Кассовая кука может уже лежать в браузере — каталог
+    // пробуем загрузить сразу, без ожидания поиска или скана ключа.
+    adminAuthenticated.value = false;
+    fetchPosCatalogMock.mockClear();
+    fetchPosCatalogMock.mockResolvedValue({ items: CATALOG, has_more: false });
+    const wrapper = mount(CashierLockScreen, {
+      global: { stubs: { teleport: true, PosCustomerPanel: true } },
+    });
+    await flushPromises();
+
+    // Пробуем сразу при монтировании: товары видны и без поиска.
+    expect(fetchPosCatalogMock).toHaveBeenCalledTimes(1);
+    expect(wrapper.text()).toContain("Жидкость HUSKY");
+    const search = wrapper
+      .findAll('input[type="text"]')
+      .find((i) => (i.element as HTMLInputElement).placeholder.includes("Найти товар"));
+    expect((search!.element as HTMLInputElement).value).toBe("");
+
+    // Вход менеджера подтвердился позже — каталог перезагружается сам.
+    fetchPosCatalogMock.mockClear();
+    adminAuthenticated.value = true;
+    await flushPromises();
+    expect(fetchPosCatalogMock).toHaveBeenCalled();
+    wrapper.unmount();
   });
 
   it("не показывает «Показать все» для короткого списка", async () => {
@@ -205,13 +260,13 @@ describe("CashierLockScreen: каталог и чек", () => {
     await findTile(wrapper, "Одноразка PPWJ")!.trigger("click");
     await flushPromises();
 
-    const submit = wrapper.findAll("button").find((b) => b.text().includes("Провести чек"))!;
-    await submit.trigger("click");
-    await flushPromises();
+    const submit = await submitWithCode(wrapper);
 
     expect(submitPosCheckMock).toHaveBeenCalledTimes(1);
     const [payload, idempotencyKey] = submitPosCheckMock.mock.calls[0];
     expect(payload.payment_method).toBe("cash");
+    // Код подтверждения уходит в запрос: сервер без него чек не проведёт.
+    expect(payload.confirmation_code).toBe("5599");
     expect(payload.items).toEqual([
       {
         source: "catalog",
@@ -235,6 +290,51 @@ describe("CashierLockScreen: каталог и чек", () => {
     expect(wrapper.text()).toContain("Чек проведён");
   });
 
+  it("«Провести чек» сначала спрашивает код: без кода запрос не уходит", async () => {
+    const wrapper = await mountScreen();
+    await findTile(wrapper, "Жидкость HUSKY")!.trigger("click");
+    await flushPromises();
+
+    const submit = wrapper.findAll("button").find((b) => b.text().includes("Провести чек"))!;
+    await submit.trigger("click");
+    await flushPromises();
+
+    // Модалка открыта, код ещё не введён — чек не отправляется.
+    expect(wrapper.find("#pos-confirm-code").exists()).toBe(true);
+    expect(submitPosCheckMock).not.toHaveBeenCalled();
+
+    // Пустой код: кнопка «Провести» в модалке недоступна.
+    const confirmButton = wrapper.findAll("button").find((b) => b.text() === "Провести")!;
+    expect(confirmButton.attributes("disabled")).toBeDefined();
+  });
+
+  it("неверный код — чек не проводится, ошибка в модалке, кассир пробует снова", async () => {
+    submitPosCheckMock.mockRejectedValue(
+      Object.assign(new Error("confirmation_code_required"), {
+        code: "confirmation_code_required",
+        status: 403,
+      }),
+    );
+    const wrapper = await mountScreen();
+    await findTile(wrapper, "Жидкость HUSKY")!.trigger("click");
+    await flushPromises();
+
+    await submitWithCode(wrapper, "0000");
+    expect(submitPosCheckMock).toHaveBeenCalledTimes(1);
+
+    // Ошибка в модалке, чек на месте, модалка не закрылась.
+    expect(wrapper.text()).toContain("Неверный код подтверждения");
+    expect(wrapper.find("#pos-confirm-code").exists()).toBe(true);
+    expect(wrapper.text()).toContain("1 позиция");
+
+    // Второй раз — верный код, всё проводится.
+    submitPosCheckMock.mockResolvedValue({ id: "pos_2" });
+    await submitWithCode(wrapper, "5599");
+    expect(submitPosCheckMock).toHaveBeenCalledTimes(2);
+    expect(wrapper.text()).toContain("Чек проведён");
+    expect(wrapper.find("#pos-confirm-code").exists()).toBe(false);
+  });
+
   it("оплата картой передаётся в запрос", async () => {
     const wrapper = await mountScreen();
 
@@ -245,9 +345,7 @@ describe("CashierLockScreen: каталог и чек", () => {
     await cardButton.trigger("click");
     await flushPromises();
 
-    const submit = wrapper.findAll("button").find((b) => b.text().includes("Провести чек"))!;
-    await submit.trigger("click");
-    await flushPromises();
+    const submit = await submitWithCode(wrapper);
 
     expect(submitPosCheckMock.mock.calls[0][0].payment_method).toBe("card");
   });
@@ -264,9 +362,7 @@ describe("CashierLockScreen: каталог и чек", () => {
     await findTile(wrapper, "Жидкость HUSKY")!.trigger("click");
     await flushPromises();
 
-    const submit = wrapper.findAll("button").find((b) => b.text().includes("Провести чек"))!;
-    await submit.trigger("click");
-    await flushPromises();
+    const submit = await submitWithCode(wrapper);
 
     expect(wrapper.text()).toContain("Лимит оплаты картой на сегодня исчерпан");
     // Чек не пропал: позиция остаётся в корзине, можно выбрать наличные.
@@ -286,9 +382,7 @@ describe("CashierLockScreen: каталог и чек", () => {
     await findTile(wrapper, "Жидкость HUSKY")!.trigger("click");
     await flushPromises();
 
-    const submit = wrapper.findAll("button").find((b) => b.text().includes("Провести чек"))!;
-    await submit.trigger("click");
-    await flushPromises();
+    const submit = await submitWithCode(wrapper);
 
     expect(wrapper.text()).toContain("Недостаточно товара");
     expect(wrapper.text()).toContain("Жидкость HUSKY");
@@ -305,8 +399,9 @@ describe("CashierLockScreen: каталог и чек", () => {
     startPosSessionMock.mockResolvedValue({ ok: true, token: "pos-token", key_id: "posk_1", role: "pos" });
     const wrapper = await mountScreen();
 
-    // До сессии каталог не загружался.
-    expect(fetchPosCatalogMock).not.toHaveBeenCalled();
+    // Монтирование уже пробует каталог по кассовой куке (её нет — тихий 401):
+    // счётчик чистим, чтобы проверить загрузку именно после скана ключа.
+    fetchPosCatalogMock.mockClear();
 
     await wrapper.find("form input").setValue("pos-key-123");
     await wrapper.find("form").trigger("submit");
@@ -320,9 +415,10 @@ describe("CashierLockScreen: каталог и чек", () => {
     expect((wrapper.find("form input").element as HTMLInputElement).value).toBe("");
   });
 
-  it("неудачный ключ молча чистит поле и не трогает каталог", async () => {
+  it("неудачный ключ молча чистит поле и не дёргает каталог заново", async () => {
     adminAuthenticated.value = false;
     const wrapper = await mountScreen();
+    fetchPosCatalogMock.mockClear();
 
     await wrapper.find("form input").setValue("some-barcode-999");
     await wrapper.find("form").trigger("submit");
@@ -330,6 +426,8 @@ describe("CashierLockScreen: каталог и чек", () => {
 
     expect(wrapper.emitted("unlocked")).toBeUndefined();
     expect((wrapper.find("form input").element as HTMLInputElement).value).toBe("");
+    // Ключ не подошёл — новых запросов каталога нет.
+    expect(fetchPosCatalogMock).not.toHaveBeenCalled();
     // Никакого сообщения об ошибке: это «поиск ничего не нашёл».
     expect(wrapper.text()).not.toContain("Не удалось");
   });

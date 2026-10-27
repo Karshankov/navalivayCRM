@@ -52,6 +52,16 @@
         <ArrowsRightLeftIcon class="h-4 w-4" />
         <span>Перемещение</span>
       </button>
+      <button
+        type="button"
+        class="crm-ref-button crm-ref-button--gray"
+        data-test="inventory-check"
+        title="Пересчитать вкусы линейки и поправить остатки"
+        @click="$emit('inventory-check', location)"
+      >
+        <ClipboardDocumentCheckIcon class="h-4 w-4" />
+        <span>Пересорт</span>
+      </button>
       <div class="crm-ref-segment" role="group" aria-label="Точка">
         <button
           v-for="option in locationOptions"
@@ -1330,7 +1340,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch, onMounted, onUnmounted, nextTick } from 'vue'
-import { PlusIcon, FunnelIcon, XMarkIcon, MagnifyingGlassIcon, LockClosedIcon, ArrowsRightLeftIcon, ChevronDownIcon } from '@heroicons/vue/24/outline'
+import { PlusIcon, FunnelIcon, XMarkIcon, MagnifyingGlassIcon, LockClosedIcon, ArrowsRightLeftIcon, ChevronDownIcon, ClipboardDocumentCheckIcon } from '@heroicons/vue/24/outline'
 import { useAdminStore } from '@/stores/admin'
 import { useCrmStore } from '@/stores/crm'
 import { storeToRefs } from 'pinia'
@@ -1398,6 +1408,7 @@ const emit = defineEmits<{
   (e: 'filters', v: { search: string; category: string; group: string }): void
   (e: 'changeLocation', location: 'retail' | 'warehouse'): void
   (e: 'transfer', location: 'retail' | 'warehouse'): void
+  (e: 'inventory-check', location: 'retail' | 'warehouse'): void
   (e: 'batchDelete', ids: string[]): void
   (e: 'batchChangeCategory', ids: string[], categoryId: string): void
   (e: 'batchChangeGroup', ids: string[], payload: { categoryId: string; groupId: string | null }): void

@@ -1022,6 +1022,8 @@ export interface PosCheckInput {
   discount_percent?: number;
   customer_id?: string | null;
   notes?: string | null;
+  /** Код подтверждения смены: сервер без него чек не проведёт. */
+  confirmation_code?: string;
 }
 
 export interface VisitLog {
@@ -5584,10 +5586,22 @@ export const useCrmStore = defineStore("crm", () => {
     if (params.limit) query.append('limit', String(params.limit));
     if (params.offset) query.append('offset', String(params.offset));
     const qs = query.toString();
-    return fetchAPI<{ items: PosCatalogItem[]; has_more: boolean }>(
-      `/api/admin/pos/catalog${qs ? `?${qs}` : ''}`,
-      { headers: posHeaders() },
-    );
+    const url = `/api/admin/pos/catalog${qs ? `?${qs}` : ''}`;
+    try {
+      return await fetchAPI<{ items: PosCatalogItem[]; has_more: boolean }>(
+        url,
+        { headers: posHeaders() },
+      );
+    } catch (error) {
+      // Протухший админский токен из localStorage перекрывает кассовую куку
+      // (сервер смотрит Authorization раньше cookie): молча пробуем ещё раз
+      // без заголовка — кассовая сессия в куке остаётся валидной. Другие
+      // ошибки пробрасываем как есть.
+      if (!(error instanceof UnauthorizedError)) throw error;
+      const headers = posHeaders();
+      delete headers.Authorization;
+      return fetchAPI<{ items: PosCatalogItem[]; has_more: boolean }>(url, { headers });
+    }
   }
 
   async function fetchPosProducts(params: { search?: string; limit?: number; offset?: number } = {}) {

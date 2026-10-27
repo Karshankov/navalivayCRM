@@ -80,8 +80,8 @@
                   />
                 </div>
 
-                <div v-if="catalogLoading && visibleItems.length === 0" class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <div v-for="n in 4" :key="`skeleton-${n}`" class="rounded-2xl border border-[#edf1f8] bg-[#f8faff] h-[186px] animate-pulse"></div>
+                <div v-if="catalogLoading && visibleItems.length === 0" class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2">
+                  <div v-for="n in 6" :key="`skeleton-${n}`" class="rounded-xl border border-[#edf1f8] bg-[#f8faff] h-[186px] animate-pulse"></div>
                 </div>
 
                 <div v-else-if="visibleItems.length === 0" class="border border-dashed border-[#dce6f5] bg-[#fafcff] rounded-xl p-6 text-center text-[#8797b1] text-xs leading-relaxed">
@@ -95,27 +95,30 @@
                   </template>
                 </div>
 
-                <div v-else class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div v-else class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2">
                   <div
                     v-for="item in displayItems"
                     :key="`${item.source}-${item.id}`"
                     class="relative"
                   >
                   <!-- Кнопка правки лежит ВНЕ кнопки добавления: вложенные
-                       кнопки невалидны и на телефоне перехватывают нажатие. -->
+                       кнопки невалидны и на телефоне перехватывают нажатие.
+                       Визуально карандаш маленький, а зона нажатия шире (w-9
+                       с центрированной иконкой), чтобы палец не попадал
+                       в «добавить в чек» вместо правки. -->
                   <button
                     v-if="item.source === 'custom'"
                     type="button"
                     @click.stop="openProductModal(customProductFromItem(item))"
-                    class="absolute right-1.5 top-1.5 z-10 w-6 h-6 rounded-lg bg-white/95 border border-[#dbe7f8]  shadow-sm inline-flex items-center justify-center text-[11px] font-black text-[#3a527a] hover:bg-white"
+                    class="absolute -top-1.5 -right-1.5 z-10 w-9 h-9 rounded-lg flex items-center justify-center text-[#3a527a]"
                     :aria-label="`Изменить товар ${item.title}`"
                     title="Изменить товар"
-                  >✎</button>
+                  ><span class="w-5 h-5 rounded-md bg-white/95 border border-[#dbe7f8] shadow-sm inline-flex items-center justify-center text-[10px] font-black">✎</span></button>
                   <button
                     type="button"
                     @click="addToCart(item)"
                     :disabled="item.stock <= 0"
-                    class="w-full text-left rounded-2xl border border-[#e8eef8] bg-white overflow-hidden shadow-sm transition hover:border-[#b8d4ff] hover:shadow-[0_10px_24px_rgba(35,72,135,.12)] disabled:opacity-50 disabled:cursor-not-allowed"
+                    class="w-full text-left rounded-xl border border-[#e8eef8] bg-white overflow-hidden shadow-sm transition hover:border-[#b8d4ff] hover:shadow-[0_8px_18px_rgba(35,72,135,.12)] active:scale-[.98] disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <div class="relative aspect-square bg-[#f3f7ff] flex items-center justify-center overflow-hidden">
                       <img
@@ -132,19 +135,16 @@
                       >СВОЙ</span>
                       <span
                         v-if="item.stock <= 0"
-                        class="absolute inset-0 bg-white/70 flex items-center justify-center text-[10px] font-extrabold text-[#8797b1]"
+                        class="absolute inset-0 bg-white/70 flex items-center justify-center text-[9px] font-extrabold text-[#8797b1] text-center leading-tight px-1.5"
                       >НЕТ В НАЛИЧИИ</span>
                     </div>
-                    <div class="p-2.5">
+                    <div class="p-2">
                       <div class="text-[11px] font-extrabold text-[#102650] leading-snug line-clamp-2 min-h-[2.2em]">{{ item.title }}</div>
-                      <div class="flex items-baseline justify-between gap-1 mt-1.5">
-                        <span class="text-xs font-black text-[#102650]">{{ formatPrice(item.price) }} BYN</span>
-                        <span class="text-[10px] font-semibold text-[#8d9bb2]">×{{ item.stock }}</span>
+                      <div class="flex items-baseline justify-between gap-1 mt-1.5 min-w-0 overflow-hidden">
+                        <span class="text-[11px] font-black text-[#102650] truncate">{{ formatPrice(item.price) }}</span>
+                        <span class="text-[9.5px] font-semibold text-[#8d9bb2] shrink-0">×{{ item.stock }}</span>
                       </div>
-                      <div class="flex items-center justify-between mt-0.5">
-                        <span class="text-[9.5px] font-semibold text-[#9aa8bd]">{{ markupLabel(item) }}</span>
-                        <span class="text-[9.5px] font-semibold text-[#9aa8bd]">{{ item.source === 'custom' ? '' : (item.variant_name ? 'вкус' : '') }}</span>
-                      </div>
+                      <div class="text-[9px] font-semibold text-[#9aa8bd] leading-tight truncate mt-0.5" :title="markupLabel(item)">{{ markupLabel(item) }}</div>
                     </div>
                   </button>
                   </div>
@@ -313,7 +313,7 @@
 
                 <button
                   type="button"
-                  @click="submitSale"
+                  @click="openConfirmModal"
                   :disabled="!canSubmit || isSubmitting"
                   class="w-full h-[46px] bg-gradient-to-r from-[#08bce9] to-[#2163ff] text-white rounded-xl text-xs font-extrabold inline-flex items-center justify-center gap-2 shadow-[0_7px_18px_rgba(22,121,255,0.27)] transition hover:brightness-104 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
@@ -490,6 +490,53 @@
         </div>
       </Transition>
 
+      <!-- Подтверждение кодом перед проведением чека -->
+      <Transition name="fade">
+        <div
+          v-if="confirmModalOpen"
+          class="fixed inset-0 z-[120] flex items-center justify-center bg-[#0e204a]/40 p-4 backdrop-blur-sm"
+          v-safe-backdrop-close="closeConfirmModal"
+        >
+          <div class="bg-white rounded-[20px] p-6 w-full max-w-sm shadow-[0_25px_80px_rgba(13,36,80,0.27)]">
+            <h2 class="text-base font-black text-[#102650] mb-4">Код подтверждения</h2>
+            <form @submit.prevent="confirmAndSubmit">
+              <label class="block text-[11px] font-extrabold text-[#435777] mb-2" for="pos-confirm-code">
+                Код
+              </label>
+              <input
+                id="pos-confirm-code"
+                ref="confirmCodeInput"
+                v-model="confirmCodeValue"
+                type="password"
+                inputmode="numeric"
+                autocomplete="off"
+                autocapitalize="off"
+                spellcheck="false"
+                class="w-full h-[46px] border border-[#dfe7f3] bg-[#fbfcff] rounded-xl px-4 text-xs font-semibold tracking-[.3em] text-[#1b3157] outline-none shadow-sm transition focus:border-[#5b9aff] focus:ring-4 focus:ring-[#197aff]/10 focus:bg-white"
+                placeholder="••••"
+                :disabled="isSubmitting"
+              />
+              <div v-if="confirmError" class="mt-3 p-3 bg-red-50 border border-red-200 rounded-xl text-xs font-bold text-red-800">
+                {{ confirmError }}
+              </div>
+              <div class="flex justify-end gap-3 mt-4">
+                <button
+                  type="button"
+                  @click="closeConfirmModal"
+                  :disabled="isSubmitting"
+                  class="border border-[#e6edfb] bg-[#f0f5ff] text-[#3a527a] px-4.5 py-2.5 rounded-xl text-xs font-extrabold shadow-sm disabled:opacity-50"
+                >Отмена</button>
+                <button
+                  type="submit"
+                  :disabled="isSubmitting || !confirmCodeValue.trim()"
+                  class="bg-gradient-to-r from-[#08bce9] to-[#2163ff] text-white px-4.5 py-2.5 rounded-xl text-xs font-extrabold shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+                >{{ isSubmitting ? 'Проводим…' : 'Провести' }}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </Transition>
+
       <!-- Дозаполнение отложенного чека -->
       <Transition name="fade">
         <div
@@ -527,7 +574,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useAdminStore } from '@/stores/admin'
 import {
   useCrmStore,
@@ -569,7 +616,14 @@ const catalogItems = ref<PosCatalogItem[]>([])
 const catalogLoading = ref(false)
 const catalogSearch = ref('')
 const showAll = ref(false)
-const FIRST_SCREEN_TILES = 4
+// Первый экран: один ряд плиток (6 на десктопе). Дальше — «Показать все».
+const FIRST_SCREEN_TILES = 6
+
+// Подтверждение чека кодом смены
+const confirmModalOpen = ref(false)
+const confirmCodeValue = ref('')
+const confirmError = ref('')
+const confirmCodeInput = ref<HTMLInputElement>()
 
 // Корзина
 interface CartLine {
@@ -672,20 +726,30 @@ watch(catalogSearch, () => {
   }, 300)
 })
 
+let catalogRequestId = 0
+
 async function loadCatalog() {
+  // Триггеров у загрузки стало несколько (монтирование, подтверждение
+  // входа, поиск, пересчёт после продажи): поздний ответ старого запроса
+  // не должен затирать свежий — сравниваем номер запроса.
+  const requestId = ++catalogRequestId
   catalogLoading.value = true
   try {
     const result = await crmStore.fetchPosCatalog({
       search: catalogSearch.value.trim() || undefined,
       limit: 60,
     })
+    if (requestId !== catalogRequestId) return
     catalogItems.value = result.items
   } catch (error: any) {
+    if (requestId !== catalogRequestId) return
     // Каталог может не загрузиться из-за сети — не роняем экран кассы,
     // «свои» товары всё равно должны продаваться.
     catalogItems.value = []
   } finally {
-    catalogLoading.value = false
+    if (requestId === catalogRequestId) {
+      catalogLoading.value = false
+    }
   }
 }
 
@@ -805,6 +869,29 @@ function buildLineInputs(): PosCheckLineInput[] {
 
 let idempotencyKey = ''
 
+function openConfirmModal() {
+  if (!canSubmit.value || isSubmitting.value) return
+  confirmError.value = ''
+  confirmCodeValue.value = ''
+  confirmModalOpen.value = true
+  nextTick(() => {
+    confirmCodeInput.value?.focus()
+  })
+}
+
+function closeConfirmModal() {
+  if (isSubmitting.value) return
+  confirmModalOpen.value = false
+  confirmCodeValue.value = ''
+  confirmError.value = ''
+}
+
+/** Сабмит из модалки: код обязателен, пустой не отправляем вовсе. */
+async function confirmAndSubmit() {
+  if (!confirmCodeValue.value.trim() || isSubmitting.value) return
+  await submitSale()
+}
+
 async function submitSale() {
   if (!canSubmit.value || isSubmitting.value) return
 
@@ -825,6 +912,7 @@ async function submitSale() {
         payment_method: paymentMethod.value,
         discount_amount: checkDiscountValue.value,
         customer_id: selectedCustomer.value?.id ?? null,
+        confirmation_code: confirmCodeValue.value.trim(),
       },
       idempotencyKey,
     )
@@ -835,17 +923,32 @@ async function submitSale() {
     successMessage.value = 'Чек проведён!'
     idempotencyKey = ''
     selectedCustomer.value = null
+    confirmModalOpen.value = false
+    confirmCodeValue.value = ''
+    confirmError.value = ''
     await loadCatalog()
 
     setTimeout(() => {
       successMessage.value = ''
     }, 3000)
   } catch (error: any) {
+    // Ошибку кода показываем в самой модалке: чек на месте, кассир
+    // просто вводит код заново.
+    if (error?.code === 'confirmation_code_required') {
+      confirmError.value = describeCheckError(error)
+      confirmCodeValue.value = ''
+      nextTick(() => {
+        confirmCodeInput.value?.focus()
+      })
+      return
+    }
     errorMessage.value = describeCheckError(error)
     // Ключ обнуляем только при явной ошибке валидации: после сетевого сбоя
     // повтор должен попасть в тот же чек, а не создать новый.
     if (error?.status && error.status >= 400 && error.status < 500) {
       idempotencyKey = ''
+      confirmModalOpen.value = false
+      confirmCodeValue.value = ''
       await loadCatalog()
     }
   } finally {
@@ -879,6 +982,9 @@ function describeCheckError(error: any): string {
   }
   if (code === 'invalid_quantity' || code === 'invalid_discount') {
     return 'Проверьте количество и скидку в чеке.'
+  }
+  if (code === 'confirmation_code_required') {
+    return 'Неверный код подтверждения. Проверьте код смены и повторите.'
   }
   return error?.message || 'Не удалось провести чек. Попробуйте ещё раз.'
 }
@@ -1051,6 +1157,31 @@ async function handleSecretSubmit() {
   })
 }
 
+// Автосабмит поля штрихкода: клавиша Enter не нужна. Сканер «печатает» код
+// целиком и останавливается — пауза в вводе означает «строка закончена».
+// Дважды одну и ту же строку не проверяем: пока проверка идёт, повтор не нужен.
+let secretCheckTimer: ReturnType<typeof setTimeout> | null = null
+let secretChecking = false
+
+watch(secretInputValue, (value) => {
+  if (secretCheckTimer) clearTimeout(secretCheckTimer)
+  const query = value.trim()
+  if (!query) return
+  secretCheckTimer = setTimeout(async () => {
+    if (secretChecking) return
+    secretChecking = true
+    try {
+      await handleSecretSubmit()
+    } finally {
+      secretChecking = false
+    }
+  }, 500)
+})
+
+onUnmounted(() => {
+  if (secretCheckTimer) clearTimeout(secretCheckTimer)
+})
+
 // -------------------------------------------------------------- отложенные чеки
 
 function openCompletePendingModal(sale: PosSale | null) {
@@ -1104,17 +1235,34 @@ async function loadPendingSales() {
 }
 
 onMounted(async () => {
-  // Менеджер уже в CRM (экран после кнопки «Заблокировать»): его токен
-  // проходит в кассу как есть, отдельная сессия не нужна. Без входа каталог
-  // загрузится после первого скана ключа — до этого экран просто пустой,
-  // как и положено рабочему месту до начала смены.
+  // Каталог грузим всегда, а не только для вошедшего менеджера: кассовая
+  // сессия живёт в httpOnly-куке и переживает перезагрузку страницы. Без
+  // куки запрос молча вернёт 401 — экран останется пустым, как и положено
+  // рабочему месту до начала смены. Пробовать надо сразу, иначе после
+  // перезагрузки товары появлялись бы только после первого поиска.
   if (adminStore.isAuthenticated) {
     await Promise.all([loadCatalog(), loadPendingSales()])
+  } else {
+    // Менеджер не входил — грузим без await: если кассовая кука есть,
+    // товары появятся сами; если нет, тихий отказ ничего не ломает.
+    void Promise.all([loadCatalog(), loadPendingSales()])
   }
   nextTick(() => {
     secretInput.value?.focus()
   })
 })
+
+// Экран кассы монтируется раньше, чем checkAuth() подтверждает сохранённый
+// вход менеджера (перезагрузка страницы с заблокированной панелью): когда
+// вход подтвердится, перезагрузим каталог уже с админским токеном —
+// наценка и цены каталога приходят полными только для менеджера.
+watch(
+  () => adminStore.isAuthenticated,
+  async (authenticated) => {
+    if (!authenticated) return
+    await Promise.all([loadCatalog(), loadPendingSales()])
+  },
+)
 </script>
 
 <style scoped>

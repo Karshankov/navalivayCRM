@@ -50,6 +50,22 @@ const ALLOWED_IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gi
 
 // Сколько товаров показывать в сетке по умолчанию и каким может быть максимум.
 const POS_CATALOG_DEFAULT_LIMIT = 24;
+
+/**
+ * Код подтверждения чека: кассир вводит его в модалке перед проведением.
+ * Числа списывают деньги и остатки, поэтому проверка обязана жить на сервере —
+ * клиентский код виден каждому. Задаётся через POS_CHECK_CONFIRMATION_CODE,
+ * без переменной включается код по умолчанию.
+ */
+const POS_CHECK_CONFIRMATION_CODE = process.env.POS_CHECK_CONFIRMATION_CODE || '5599';
+
+function checkConfirmationCode(value) {
+  const provided = typeof value === 'string' ? value.trim() : '';
+  if (!provided) return false;
+  // Простое сравнение достаточно: код короткий и одноразово-вводимый,
+  // тайминг-атака по нему ничего не даёт.
+  return provided === POS_CHECK_CONFIRMATION_CODE;
+}
 const POS_CATALOG_MAX_LIMIT = 60;
 
 // Helper для генерации ID
@@ -1116,6 +1132,12 @@ posRouter.post('/api/admin/pos/sales/check', posAuthMiddleware, (req, res) => {
     const rawItems = Array.isArray(payload.items) ? payload.items : [];
     if (rawItems.length === 0) {
       return res.status(400).json({ error: 'items_required' });
+    }
+
+    // Код подтверждения обязателен: чек проводит деньги, одной кассовой
+    // сессии для этого мало — кассир подтверждает действие кодом смены.
+    if (!checkConfirmationCode(payload.confirmation_code ?? payload.confirmationCode)) {
+      return res.status(403).json({ error: 'confirmation_code_required' });
     }
 
     const paymentMethod = payload.payment_method === 'card' || payload.paymentMethod === 'card'

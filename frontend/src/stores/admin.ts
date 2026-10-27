@@ -48,6 +48,41 @@ export interface PosPublication {
   markup_percent: number | null
 }
 
+export interface InventoryCheckPreviewItem {
+  product_id: string
+  variant_id: string | null
+  title: string
+  variant_name: string | null
+  expected: number
+}
+
+export interface InventoryCheckResultItem {
+  id: string
+  product_id: string
+  variant_id: string | null
+  product_title: string
+  variant_name: string | null
+  expected_quantity: number
+  actual_quantity: number
+  diff: number
+}
+
+export interface InventoryCheckResult {
+  id: string
+  check_number: number
+  group: { id: string; name: string }
+  location: 'retail' | 'warehouse'
+  positions_count: number
+  counted_count: number
+  total_before: number
+  total_after: number
+  diff_total: number
+  created_by: string | null
+  notes: string | null
+  created_at: string
+  items: InventoryCheckResultItem[]
+}
+
 export interface ProductLink {
   label?: string
   url: string
@@ -709,6 +744,34 @@ export const useAdminStore = defineStore('admin', () => {
       console.error('Failed to fetch category:', err)
       return null
     }
+  }
+
+  // ---- Пересорт (инвентаризация линейки) --------------------------------
+
+  /** Вкусы линейки с числящимися остатками точки, включая нулевые. */
+  async function fetchInventoryCheckPreview(groupId: string, location: 'retail' | 'warehouse') {
+    return $fetch<{
+      group: { id: string; name: string }
+      location: 'retail' | 'warehouse'
+      items: InventoryCheckPreviewItem[]
+      total_expected: number
+    }>(`/api/admin/inventory-checks/preview?group=${encodeURIComponent(groupId)}&location=${location}`, {
+      headers: getAuthHeaders(),
+    })
+  }
+
+  /** Провести пересорт: остатки станут введёнными фактами. */
+  async function createInventoryCheck(payload: {
+    group_id: string
+    location: 'retail' | 'warehouse'
+    items: Array<{ product_id: string; variant_id: string | null; actual: number }>
+    notes?: string
+  }) {
+    return $fetch<InventoryCheckResult>('/api/admin/inventory-checks', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: payload,
+    })
   }
 
 async function createCategory(category: {
@@ -2092,6 +2155,8 @@ async function createCategory(category: {
 
     // Category methods
     fetchCategories,
+    fetchInventoryCheckPreview,
+    createInventoryCheck,
     fetchCategory,
     fetchCategoryImage,
     createCategory,

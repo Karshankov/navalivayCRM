@@ -3862,3 +3862,320 @@ adminRouter.post('/api/admin/settings', authMiddleware, (req, res) => {
     res.status(500).json({ error: 'failed', message: error.message });
   }
 });
+
+// =========================
+// ПЕРЕСОРТ (инвентаризация линейки)
+// =========================
+
+/**
+ * Пересорт не делает денежных проводок: менеджер приводит цифру остатка к
+ * факту. Недостача деньгами (себестоимостью) оформляется обычным Списанием,
+ * если владелец хочет увидеть её в финансах — здесь мы только правим остаток
+ * и записываем «было → стало» в журнал.
+ *
+ * Остаток правится абсолютным значением: кассир вводит «сколько есть»,
+ * а не «насколько изменить» — так же, как в кассовых своих товарах.
+ */
+
+function generateInventoryId(prefix) {
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function getNextInventoryCheckNumber() {
+  const row = db.prepare('SELECT MAX(check_number) as maxNum FROM inventory_checks').get();
+  return (row?.maxNum || 0) + 1;
+}
+
+function loadInventoryCheckGroup(groupId) {
+  const group = db.prepare('SELECT id, name FROM category_groups WHERE id = ?').get(groupId);
+  if (!group) {
+    const error = new Error('group_not_found');
+    error.status = 404;
+    throw error;
+  }
+  return group;
+}
+
+/**
+ * Товары линейки с остатками выбранной точки, включая нулевые: пересчёт
+ * важен именно по всем вкусам, иначе «нулевых не видно» и пересорт
+ * неполный. Товары с вариантами разворачиваются в строки по вариантам.
+ */
+function listInventoryGroupItems(groupId, location) {
+  const stockColumn = location === 'warehouse' ? 'warehouse_stock' : 'stock';
+  const rows = db.prepare(`
+    SELECT
+      p.id AS product_id,
+      p.title AS product_title,
+      p.has_variants AS has_variants,
+      COALESCE(p.${stockColumn}, 0) AS product_stock,
+      v.id AS variant_id,
+      v.name AS variant_name,
+      COALESCE(v.${stockColumn}, 0) AS variant_stock,
+      v.position AS variant_position
+    FROM products p
+    LEFT JOIN product_variants v ON v.product_id = p.id
+    WHERE p.groupId = ?
+    ORDER BY p.title COLLATE NOCASE ASC, v.position ASC, v.name COLLATE NOCASE ASC
+  `).all(groupId);
+
+  const items = [];
+  for (const row of rows) {
+    if (Number(row.has_variants) === 1) {
+      // Товар с вариантами: строка на каждый вариант. Вариант без id бывает
+      // только при LEFT JOIN-пустышке — такой товар в пересорт не попадает,
+      // он останется с тем остатком, который был.
+      if (!row.variant_id) continue;
+      items.push({
+        product_id: row.product_id,
+        variant_id: row.variant_id,
+        title: row.product_title,
+        variant_name: row.variant_name,
+        expected: Number(row.variant_stock) || 0,
+      });
+    } else {
+      // Лишняя строка от LEFT JOIN без вариантов — пропускаем.
+      if (row.variant_id) continue;
+      items.push({
+        product_id: row.product_id,
+        variant_id: null,
+        title: row.product_title,
+        variant_name: null,
+        expected: Number(row.product_stock) || 0,
+      });
+    }
+  }
+  return items;
+}
+
+/**
+ * Предпросмотр линейки перед пересортом: что числится на текущий момент.
+ */
+adminRouter.get('/api/admin/inventory-checks/preview', authMiddleware, (req, res) => {
+  try {
+    const groupId = String(req.query.group || '');
+    const location = req.query.location === 'warehouse' ? 'warehouse' : 'retail';
+    if (!groupId) {
+      return res.status(400).json({ error: 'group_required' });
+    }
+
+    const group = loadInventoryCheckGroup(groupId);
+    const items = listInventoryGroupItems(groupId, location);
+    const totalExpected = items.reduce((sum, item) => sum + item.expected, 0);
+
+    res.json({
+      group: { id: group.id, name: group.name },
+      location,
+      items,
+      total_expected: totalExpected,
+    });
+  } catch (error) {
+    console.error('[admin] Inventory preview error:', error);
+    if (error.message === 'group_not_found') {
+      return res.status(404).json({ error: 'group_not_found' });
+    }
+    res.status(500).json({ error: 'failed', message: error.message });
+  }
+});
+
+/**
+ * Провести пересорт: остатки становятся равными введённым фактам, шапка и
+ * позиции пишутся в журнал. Всё в одной транзакции — «полупроведённого»
+ * пересорта с поправленными остатками, но без журнала, быть не должно.
+ */
+adminRouter.post('/api/admin/inventory-checks', authMiddleware, (req, res) => {
+  try {
+    const groupId = String(req.body?.group_id || req.body?.groupId || '');
+    const location = req.body?.location === 'warehouse' ? 'warehouse' : 'retail';
+    const notes = typeof req.body?.notes === 'string' ? req.body.notes.trim().slice(0, 500) : '';
+    const payloadItems = Array.isArray(req.body?.items) ? req.body.items : [];
+
+    if (!groupId) {
+      return res.status(400).json({ error: 'group_required' });
+    }
+    if (payloadItems.length === 0) {
+      return res.status(400).json({ error: 'items_required' });
+    }
+
+    const group = loadInventoryCheckGroup(groupId);
+    const stockColumn = location === 'warehouse' ? 'warehouse_stock' : 'stock';
+
+    // Снимок «как числится» делаем в момент сохранения, а не из превью:
+    // между открытием модалки и нажатием «Сохранить» кто-то мог продать или
+    // принять товар, и журнал должен зафиксировать правду, а не копию
+    // устаревшего превью.
+    const currentItems = listInventoryGroupItems(groupId, location);
+    const currentByKey = new Map(currentItems.map((item) => [
+      item.variant_id ? `${item.product_id}:${item.variant_id}` : item.product_id,
+      item,
+    ]));
+
+    const id = generateInventoryId('inv');
+    const checkNumber = getNextInventoryCheckNumber();
+    const now = new Date().toISOString();
+    const createdBy = req.user?.u || req.user?.username || null;
+
+    const resolved = [];
+    for (const payloadItem of payloadItems) {
+      const productId = String(payloadItem?.product_id || payloadItem?.productId || '');
+      const variantId = payloadItem?.variant_id ?? payloadItem?.variantId ?? null;
+      const actualRaw = payloadItem?.actual ?? payloadItem?.actual_quantity;
+
+      if (!productId) {
+        throw Object.assign(new Error('invalid_item'), { status: 400 });
+      }
+      if (actualRaw === null || actualRaw === undefined || actualRaw === '') {
+        // Пустое поле = «не считал, не трогаю». Оно в журнал не попадает.
+        continue;
+      }
+      const actual = Number(actualRaw);
+      if (!Number.isInteger(actual) || actual < 0) {
+        throw Object.assign(new Error('invalid_quantity'), { status: 400, item: { title: payloadItem?.title } });
+      }
+
+      const key = variantId ? `${productId}:${variantId}` : productId;
+      const current = currentByKey.get(key);
+      if (!current) {
+        // Товар не из этой линейки (или вариант не этого товара): чужие
+        // остатки через пересорт менять нельзя.
+        throw Object.assign(new Error('item_not_in_group'), { status: 400 });
+      }
+
+      const expected = current.expected;
+      resolved.push({
+        product_id: productId,
+        variant_id: variantId ? String(variantId) : null,
+        product_title: current.title,
+        variant_name: current.variant_name,
+        expected_quantity: expected,
+        actual_quantity: actual,
+        diff: actual - expected,
+      });
+    }
+
+    if (resolved.length === 0) {
+      return res.status(400).json({ error: 'items_required' });
+    }
+
+    const totalBefore = resolved.reduce((sum, item) => sum + item.expected_quantity, 0);
+    const totalAfter = resolved.reduce((sum, item) => sum + item.actual_quantity, 0);
+    const diffTotal = totalAfter - totalBefore;
+
+    const tx = db.transaction(() => {
+      db.prepare(`
+        INSERT INTO inventory_checks (
+          id, check_number, group_id, group_name, location,
+          positions_count, counted_count, total_before, total_after, diff_total,
+          created_by, notes, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        id,
+        checkNumber,
+        group.id,
+        group.name,
+        location,
+        currentItems.length,
+        resolved.length,
+        totalBefore,
+        totalAfter,
+        diffTotal,
+        createdBy,
+        notes || null,
+        now,
+      );
+
+      const insertItem = db.prepare(`
+        INSERT INTO inventory_check_items (
+          id, check_id, product_id, variant_id, product_title, variant_name,
+          expected_quantity, actual_quantity, diff
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      for (const item of resolved) {
+        insertItem.run(
+          generateInventoryId('invi'),
+          id,
+          item.product_id,
+          item.variant_id,
+          item.product_title,
+          item.variant_name,
+          item.expected_quantity,
+          item.actual_quantity,
+          item.diff,
+        );
+
+        // Абсолютная правка: остаток становится тем, что ввёл кассир.
+        if (item.variant_id) {
+          const result = db.prepare(
+            `UPDATE product_variants SET ${stockColumn} = ? WHERE id = ? AND product_id = ?`,
+          ).run(item.actual_quantity, item.variant_id, item.product_id);
+          if (result.changes === 0) {
+            throw Object.assign(new Error('item_not_in_group'), { status: 400 });
+          }
+        } else {
+          const result = db.prepare(
+            `UPDATE products SET ${stockColumn} = ? WHERE id = ? AND groupId = ?`,
+          ).run(item.actual_quantity, item.product_id, group.id);
+          if (result.changes === 0) {
+            throw Object.assign(new Error('item_not_in_group'), { status: 400 });
+          }
+        }
+      }
+    });
+
+    tx();
+
+    const items = db.prepare(`
+      SELECT * FROM inventory_check_items WHERE check_id = ? ORDER BY rowid
+    `).all(id);
+
+    res.json({
+      id,
+      check_number: checkNumber,
+      group: { id: group.id, name: group.name },
+      location,
+      positions_count: currentItems.length,
+      counted_count: resolved.length,
+      total_before: totalBefore,
+      total_after: totalAfter,
+      diff_total: diffTotal,
+      created_by: createdBy,
+      notes: notes || null,
+      created_at: now,
+      items,
+    });
+  } catch (error) {
+    console.error('[admin] Inventory check error:', error);
+    if (error.message === 'group_not_found') {
+      return res.status(404).json({ error: 'group_not_found' });
+    }
+    if (['group_required', 'items_required', 'invalid_item', 'invalid_quantity', 'item_not_in_group'].includes(error.message)) {
+      return res.status(400).json({ error: error.message, item: error.item || undefined });
+    }
+    res.status(500).json({ error: 'failed', message: error.message });
+  }
+});
+
+/**
+ * История пересортом: последние сверху, по 50 за страницу.
+ */
+adminRouter.get('/api/admin/inventory-checks', authMiddleware, (req, res) => {
+  try {
+    const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200);
+    const offset = Math.max(Number(req.query.offset) || 0, 0);
+    const checks = db.prepare(`
+      SELECT id, check_number, group_id, group_name, location,
+        positions_count, counted_count, total_before, total_after, diff_total,
+        created_by, notes, created_at
+      FROM inventory_checks
+      ORDER BY created_at DESC, check_number DESC
+      LIMIT ? OFFSET ?
+    `).all(limit, offset);
+    const total = db.prepare('SELECT COUNT(*) as total FROM inventory_checks').get().total;
+    res.json({ checks, total, limit, offset });
+  } catch (error) {
+    console.error('[admin] Inventory list error:', error);
+    res.status(500).json({ error: 'failed', message: error.message });
+  }
+});
+

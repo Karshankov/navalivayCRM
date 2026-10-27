@@ -191,6 +191,7 @@ async function testCheckWithCatalogAndCustomProduct() {
     method: 'POST',
     headers: authHeaders(),
     body: JSON.stringify({
+      confirmation_code: '5599',
       payment_method: 'cash',
       items: [
         { source: 'catalog', product_id: productId, quantity: 2 },
@@ -218,6 +219,64 @@ async function testCheckWithCatalogAndCustomProduct() {
   assert.ok(check.data.transaction_id);
 }
 
+async function testConfirmationCodeIsEnforced() {
+  const categoryId = createCategory('Код подтверждения');
+  const groupId = createGroup(categoryId);
+  const productId = createProduct({
+    categoryId,
+    groupId,
+    title: 'Жидкость под кодом',
+    price: 16,
+    costPrice: 8,
+    stock: 10,
+  });
+  publishGroup(groupId, { fixed_price: 35 });
+
+  // Перед тестом фиксируем точку отсчёта: чеки от предыдущих тестов уже есть.
+  const salesBefore = salesCount();
+  const balanceBefore = getDefaultAccount().balance;
+
+  // Без кода чек не проводится, остатки не трогаются.
+  const noCode = await requestJson('/api/admin/pos/sales/check', {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({
+      items: [{ source: 'catalog', product_id: productId, quantity: 1 }],
+    }),
+  });
+  assert.equal(noCode.response.status, 403);
+  assert.equal(noCode.data.error, 'confirmation_code_required');
+  assert.equal(getProductStock(productId), 10);
+  assert.equal(salesCount(), salesBefore);
+
+  // Неверный код — то же самое.
+  const badCode = await requestJson('/api/admin/pos/sales/check', {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({
+      confirmation_code: '0000',
+      items: [{ source: 'catalog', product_id: productId, quantity: 1 }],
+    }),
+  });
+  assert.equal(badCode.response.status, 403);
+  assert.equal(badCode.data.error, 'confirmation_code_required');
+  assert.equal(salesCount(), salesBefore);
+
+  // Верный код — чек проходит, списание и деньги на месте.
+  const ok = await requestJson('/api/admin/pos/sales/check', {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({
+      confirmation_code: '5599',
+      items: [{ source: 'catalog', product_id: productId, quantity: 1 }],
+    }),
+  });
+  assert.equal(ok.response.status, 200, JSON.stringify(ok.data));
+  assert.equal(salesCount(), salesBefore + 1);
+  assert.equal(getProductStock(productId), 9);
+  assert.equal(getDefaultAccount().balance, balanceBefore + 35);
+}
+
 async function testCustomProductWithoutPublicationIsRejected() {
   const categoryId = createCategory('Неопубликованная');
   const productId = createProduct({
@@ -232,6 +291,7 @@ async function testCustomProductWithoutPublicationIsRejected() {
     method: 'POST',
     headers: authHeaders(),
     body: JSON.stringify({
+      confirmation_code: '5599',
       items: [{ source: 'catalog', product_id: productId, quantity: 1 }],
     }),
   });
@@ -260,6 +320,7 @@ async function testVariantPriceUsesPublicationAndDeductsVariantStock() {
     method: 'POST',
     headers: authHeaders(),
     body: JSON.stringify({
+      confirmation_code: '5599',
       items: [{ source: 'catalog', variant_id: variantId, quantity: 2 }],
     }),
   });
@@ -287,6 +348,7 @@ async function testInsufficientStockRollsBackEverything() {
     method: 'POST',
     headers: authHeaders(),
     body: JSON.stringify({
+      confirmation_code: '5599',
       items: [{ source: 'catalog', product_id: productId, quantity: 5 }],
     }),
   });
@@ -328,6 +390,7 @@ async function testSecondLineShortageUndoesFirstLine() {
     method: 'POST',
     headers: authHeaders(),
     body: JSON.stringify({
+      confirmation_code: '5599',
       items: [
         { source: 'catalog', product_id: plenty, quantity: 1 },
         { source: 'custom', pos_product_id: customA.id, quantity: 1 },
@@ -360,6 +423,7 @@ async function testCheckDiscountAndLineDiscount() {
     method: 'POST',
     headers: authHeaders(),
     body: JSON.stringify({
+      confirmation_code: '5599',
       discount_percent: 10,
       items: [
         { source: 'catalog', product_id: productId, quantity: 1, discount_amount: 10 },
@@ -390,6 +454,7 @@ async function testIdempotencyKeyPreventsDoubleCharge() {
 
   const key = `idem-${Date.now()}`;
   const payload = JSON.stringify({
+    confirmation_code: '5599',
     items: [{ source: 'catalog', product_id: productId, quantity: 1 }],
   });
 
@@ -441,6 +506,7 @@ async function testCardPaymentConsumesDailyLimit() {
     method: 'POST',
     headers: authHeaders(),
     body: JSON.stringify({
+      confirmation_code: '5599',
       payment_method: 'card',
       items: [{ source: 'custom', pos_product_id: custom.id, quantity: 1 }],
     }),
@@ -497,6 +563,7 @@ async function testCardOverDailyLimitIsRejected() {
     method: 'POST',
     headers: authHeaders(),
     body: JSON.stringify({
+      confirmation_code: '5599',
       payment_method: 'card',
       items: [{ source: 'custom', pos_product_id: custom.id, quantity: 1 }],
     }),
@@ -535,6 +602,7 @@ async function testDeleteSaleRestoresStockAndMoney() {
     method: 'POST',
     headers: authHeaders(),
     body: JSON.stringify({
+      confirmation_code: '5599',
       items: [
         { source: 'catalog', product_id: productId, quantity: 1 },
         { source: 'custom', pos_product_id: custom.id, quantity: 2 },
@@ -575,6 +643,7 @@ async function testDeleteCardSaleReversesCardOperation() {
     method: 'POST',
     headers: authHeaders(),
     body: JSON.stringify({
+      confirmation_code: '5599',
       payment_method: 'card',
       items: [{ source: 'custom', pos_product_id: custom.id, quantity: 1 }],
     }),
@@ -606,6 +675,7 @@ async function testEditingCompletedCheckIsForbidden() {
     method: 'POST',
     headers: authHeaders(),
     body: JSON.stringify({
+      confirmation_code: '5599',
       items: [{ source: 'custom', pos_product_id: custom.id, quantity: 1 }],
     }),
   });
@@ -634,6 +704,7 @@ async function testDeleteCustomProductInUseIsRejected() {
     method: 'POST',
     headers: authHeaders(),
     body: JSON.stringify({
+      confirmation_code: '5599',
       items: [{ source: 'custom', pos_product_id: custom.id, quantity: 1 }],
     }),
   });
@@ -744,6 +815,7 @@ async function testSaleIsCountedInFinancialStats() {
     method: 'POST',
     headers: authHeaders(),
     body: JSON.stringify({
+      confirmation_code: '5599',
       items: [{ source: 'custom', pos_product_id: custom.id, quantity: 1 }],
     }),
   });
@@ -776,6 +848,7 @@ async function testZeroQuantityIsRejected() {
     method: 'POST',
     headers: authHeaders(),
     body: JSON.stringify({
+      confirmation_code: '5599',
       items: [{ source: 'custom', pos_product_id: custom.id, quantity: 0 }],
     }),
   });
@@ -795,6 +868,7 @@ async function testClientCannotOverrideCatalogPrice() {
     method: 'POST',
     headers: authHeaders(),
     body: JSON.stringify({
+      confirmation_code: '5599',
       items: [{
         source: 'catalog',
         product_id: productId,
@@ -885,6 +959,7 @@ async function testPosSessionAuth() {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
+      confirmation_code: '5599',
       items: [{ source: 'catalog', product_id: product, quantity: 1 }],
       payment_method: 'cash',
     }),
@@ -896,6 +971,7 @@ async function testPosSessionAuth() {
 
 async function main() {
   await testCheckWithCatalogAndCustomProduct();
+  await testConfirmationCodeIsEnforced();
   await testCustomProductWithoutPublicationIsRejected();
   await testVariantPriceUsesPublicationAndDeductsVariantStock();
   await testInsufficientStockRollsBackEverything();
