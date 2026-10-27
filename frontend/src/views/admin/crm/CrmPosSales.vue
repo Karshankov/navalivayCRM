@@ -79,7 +79,9 @@
                 <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-600">№</th>
                 <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-600">Дата</th>
                 <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-600">Товар</th>
+                <th class="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-gray-600">Оплата</th>
                 <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-600">Цена</th>
+                <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-600">Скидка</th>
                 <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-600">Себестоимость</th>
                 <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-600">Прибыль</th>
                 <th class="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-gray-600">Статус</th>
@@ -88,12 +90,12 @@
             </thead>
             <tbody class="divide-y divide-gray-100">
               <tr v-if="loading" class="animate-pulse">
-                <td colspan="8" class="px-4 py-8 text-center text-gray-500">
+                <td colspan="10" class="px-4 py-8 text-center text-gray-500">
                   Загрузка...
                 </td>
               </tr>
               <tr v-else-if="sales.length === 0">
-                <td colspan="8" class="px-4 py-8 text-center text-gray-500">
+                <td colspan="10" class="px-4 py-8 text-center text-gray-500">
                   Нет продаж
                 </td>
               </tr>
@@ -109,10 +111,70 @@
                   {{ formatDateTime(sale.created_at) }}
                 </td>
                 <td class="px-4 py-3 text-sm text-gray-900">
-                  {{ sale.product_name }}
+                  <div class="flex items-start gap-1.5">
+                    <button
+                      v-if="hasItems(sale)"
+                      type="button"
+                      class="mt-0.5 rounded p-0.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700"
+                      :aria-label="isExpanded(sale) ? 'Свернуть состав' : 'Показать состав'"
+                      @click="toggleItems(sale)"
+                    >
+                      <ChevronRightIcon
+                        class="h-4 w-4 transition-transform"
+                        :class="{ 'rotate-90': isExpanded(sale) }"
+                      />
+                    </button>
+                    <div class="min-w-0">
+                      <p class="truncate">{{ sale.product_name }}</p>
+                      <p v-if="itemsCount(sale) > 0" class="text-xs text-gray-500">
+                        {{ itemsCount(sale) }}
+                        {{ pluralize(itemsCount(sale), 'позиция', 'позиции', 'позиций') }}
+                      </p>
+                    </div>
+                  </div>
+                  <div v-if="isExpanded(sale) && sale.items" class="mt-2 space-y-1 rounded-lg bg-gray-50 p-2">
+                    <div
+                      v-for="item in sale.items"
+                      :key="item.id"
+                      class="flex items-center justify-between gap-3 text-xs"
+                    >
+                      <span class="min-w-0 truncate text-gray-700">
+                        {{ item.title }}
+                        <span class="text-gray-400">×{{ item.quantity }}</span>
+                        <span
+                          v-if="item.source === 'custom'"
+                          class="ml-1 rounded bg-blue-100 px-1 py-0.5 text-[10px] font-semibold text-blue-700"
+                        >свой</span>
+                      </span>
+                      <span class="shrink-0 text-right text-gray-600">
+                        <span v-if="item.discount_amount > 0" class="mr-1 text-amber-600">
+                          −{{ formatCurrency(item.discount_amount) }}
+                        </span>
+                        {{ formatCurrency(item.line_total) }}
+                      </span>
+                    </div>
+                  </div>
+                </td>
+                <td class="px-4 py-3 text-center">
+                  <span
+                    class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium"
+                    :class="
+                      sale.payment_method === 'card'
+                        ? 'bg-indigo-100 text-indigo-800'
+                        : 'bg-emerald-100 text-emerald-800'
+                    "
+                  >
+                    {{ sale.payment_method === 'card' ? 'Карта' : 'Наличные' }}
+                  </span>
                 </td>
                 <td class="px-4 py-3 text-right text-sm font-medium text-gray-900">
                   {{ formatCurrency(sale.price) }}
+                </td>
+                <td class="px-4 py-3 text-right text-sm">
+                  <span v-if="saleDiscount(sale) > 0" class="text-amber-600">
+                    −{{ formatCurrency(saleDiscount(sale)) }}
+                  </span>
+                  <span v-else class="text-gray-400">-</span>
                 </td>
                 <td class="px-4 py-3 text-right text-sm">
                   <span v-if="sale.cost_price !== null" class="text-gray-600">
@@ -352,7 +414,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
-import { LockClosedIcon, PencilIcon, TrashIcon } from '@heroicons/vue/24/outline'
+import { ChevronRightIcon, LockClosedIcon, PencilIcon, TrashIcon } from '@heroicons/vue/24/outline'
 import AdminModal from '@/components/AdminModal.vue'
 import { useCrmStore, type PosSale } from '@/stores/crm'
 import CrmProfitPasswordField from '@/components/crm/CrmProfitPasswordField.vue'
@@ -398,6 +460,70 @@ const deletingSale = ref<PosSale | null>(null)
 const isDeleting = ref(false)
 
 const totalPages = computed(() => Math.ceil(total.value / pageSize))
+
+// Состав чека подгружается лениво: список продаж не должен тянуть все позиции.
+const itemsBySale = reactive<Record<string, PosSale['items']>>({})
+const expandedSaleIds = ref<string[]>([])
+const loadingItems = ref<string[]>([])
+
+function hasItems(sale: PosSale): boolean {
+  // У чеков старого формата позиций нет вовсе — раскрывать нечего.
+  const count = itemsCount(sale)
+  if (count > 0) return true
+  // Новый чек со списанным остатком: позиции есть, но могли ещё не
+  // подгрузиться — кнопку раскрытия показываем, счётчик до загрузки не пишем.
+  return sale.stock_deducted === 1
+}
+
+/** Сколько позиций чека уже известно (загружено или пришло в списке). */
+function itemsCount(sale: PosSale): number {
+  if (Array.isArray(sale.items)) return sale.items.length
+  const cached = itemsBySale[sale.id]
+  return Array.isArray(cached) ? cached.length : 0
+}
+
+function isExpanded(sale: PosSale): boolean {
+  return expandedSaleIds.value.includes(sale.id)
+}
+
+async function toggleItems(sale: PosSale) {
+  if (isExpanded(sale)) {
+    expandedSaleIds.value = expandedSaleIds.value.filter((id) => id !== sale.id)
+    return
+  }
+
+  if (!Array.isArray(sale.items) && !itemsBySale[sale.id] && !loadingItems.value.includes(sale.id)) {
+    loadingItems.value = [...loadingItems.value, sale.id]
+    try {
+      const items = await crmStore.fetchPosSaleItems(sale.id)
+      itemsBySale[sale.id] = items
+      sale.items = items
+    } catch (error) {
+      console.error('[CrmPosSales] Failed to load check items', error)
+    } finally {
+      loadingItems.value = loadingItems.value.filter((id) => id !== sale.id)
+    }
+  }
+
+  expandedSaleIds.value = [...expandedSaleIds.value, sale.id]
+}
+
+function saleDiscount(sale: PosSale): number {
+  if (typeof sale.subtotal === 'number' && sale.subtotal > sale.price) {
+    return Math.max(0, Math.round((sale.subtotal - sale.price) * 100) / 100)
+  }
+  const items = sale.items ?? itemsBySale[sale.id] ?? []
+  const lineDiscount = items.reduce((sum, item) => sum + (Number(item.discount_amount) || 0), 0)
+  return Math.round(lineDiscount * 100) / 100
+}
+
+function pluralize(count: number, one: string, few: string, many: string): string {
+  const mod10 = count % 10
+  const mod100 = count % 100
+  if (mod10 === 1 && mod100 !== 11) return one
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return few
+  return many
+}
 
 function formatCurrency(value: number | null): string {
   if (value === null) return '-'

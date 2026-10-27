@@ -577,6 +577,79 @@ export function addManualCardOperation({ amountMinor, note = null, actorUsername
 }
 
 /**
+ * Проверить, влезает ли сумма в свободный остаток общего дневного лимита.
+ *
+ * Ручные карточные операции менеджер вводит осознанно, и они разрешены сверх
+ * лимита. Касса — другое дело: продавец за прилавком не должен молча «пробивать»
+ * сверх лимита, иначе дневной лимит перестаёт защищать и расходится с витриной.
+ * Поэтому здесь жёсткая проверка и понятный отказ с остатком.
+ *
+ * @returns {{ ok: true, snapshot: object } | { ok: false, reason: string, snapshot: object, exceededByMinor: number }}
+ */
+export function checkManualCardFits(amountMinor, referenceDate = new Date()) {
+  const snapshot = getCardLimitSnapshot(referenceDate);
+  const amount = Number(amountMinor);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return { ok: false, reason: 'invalid_amount', snapshot, exceededByMinor: 0 };
+  }
+  if (amount > snapshot.remaining_today_minor) {
+    return {
+      ok: false,
+      reason: 'card_limit_exceeded',
+      snapshot,
+      exceededByMinor: amount - snapshot.remaining_today_minor,
+    };
+  }
+  return { ok: true, snapshot };
+}
+
+/**
+ * Кассовая карта: операция без заказа и без клиента, привязанная к чеку.
+ * Персональная пауза клиента не расходуется — пассажир у кассы её не имеет.
+ */
+export function addPosCardOperation({
+  posSaleId,
+  amountMinor,
+  note = null,
+  actorUsername = null,
+  referenceDate = new Date(),
+}) {
+  if (!posSaleId) throw new Error('invalid_pos_sale_id');
+  const businessDate = cardBusinessDateKey(referenceDate);
+  const id = `card_pos_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+  db.prepare(`
+    INSERT INTO card_payment_operations (
+      id, operation_type, operation_status, amount_minor, business_date,
+      note, actor_username, pos_sale_id, issued_at
+    ) VALUES (?, 'manual', 'spent', ?, ?, ?, ?, ?, ?)
+  `).run(
+    id,
+    amountMinor,
+    businessDate,
+    note,
+    actorUsername,
+    posSaleId,
+    referenceDate.toISOString(),
+  );
+  return id;
+}
+
+export function reversePosCardOperation(posSaleId, referenceDate = new Date()) {
+  if (!posSaleId) return false;
+  const operation = db.prepare(`
+    SELECT id FROM card_payment_operations
+    WHERE pos_sale_id = ? AND operation_status = 'spent'
+  `).get(posSaleId);
+  if (!operation) return false;
+  db.prepare(`
+    UPDATE card_payment_operations
+    SET operation_status = 'reversed', reversed_at = ?
+    WHERE pos_sale_id = ? AND operation_status = 'spent'
+  `).run(referenceDate.toISOString(), posSaleId);
+  return true;
+}
+
+/**
  * Применить тариф к аккаунту: обновляет оба лимита и запоминает тариф.
  * null tariffId = сброс на стандартные лимиты (250/45 BYN).
  */

@@ -2,10 +2,14 @@ import { defineStore } from "pinia";
 import { ref, computed, shallowRef } from "vue";
 import { isKanbanBoardOrder } from "@/utils/crm-kanban-board";
 import { STAFF_EVENT_LABELS } from "@/utils/staffEvents";
+import { msUntilNextRestockRefresh } from "@/utils/restockSchedule";
 
 const API_BASE = "/api/admin/crm";
 let inMemoryStaffToken = "";
 let inMemoryShiftToken = "";
+// Кассовый токен живёт только в памяти страницы: экран кассы не имеет
+// админского входа, и перезагрузка планшета просто попросит ключ заново.
+let inMemoryPosToken = "";
 let staffUnauthorizedHandler: (() => void) | null = null;
 
 export type StaffRole = "manager" | "employee";
@@ -941,6 +945,83 @@ export interface PosSale {
   customer_telegram_username?: string | null;
   created_at: string;
   completed_at: string | null;
+  // Чек, проведённый через кассу многострочным путём (add_pos_checks).
+  // У старых однотоварных чеков эти поля дефолтные, а items пустой.
+  subtotal?: number;
+  discount_percent?: number;
+  payment_method?: 'cash' | 'card';
+  stock_deducted?: number;
+  items?: PosSaleItem[];
+}
+
+/** Позиция чека кассы: либо товар каталога, либо «свой» товар с плюсика. */
+export interface PosSaleItem {
+  id: string;
+  sale_id: string;
+  source: 'catalog' | 'custom';
+  product_id: string | null;
+  variant_id: string | null;
+  pos_product_id: string | null;
+  title: string;
+  variant_name: string | null;
+  unit_price: number;
+  catalog_price: number | null;
+  cost_price: number;
+  quantity: number;
+  discount_amount: number;
+  line_total: number;
+  line_cost: number;
+}
+
+/** «Свой» товар, заведённый прямо на экране кассы. */
+export interface PosProduct {
+  id: string;
+  title: string;
+  cost_price: number;
+  retail_price: number;
+  quantity: number;
+  image_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Карточка товара в сетке кассы — каталог или собственный товар. */
+export interface PosCatalogItem {
+  id: string;
+  source: 'catalog' | 'custom';
+  product_id?: string | null;
+  variant_id?: string | null;
+  pos_product_id?: string | null;
+  title: string;
+  base_title?: string | null;
+  variant_name?: string | null;
+  price: number;
+  retail_price: number;
+  price_reason: 'fixed' | 'markup' | 'retail' | 'custom' | string;
+  cost_price: number;
+  stock: number;
+  category_name?: string | null;
+  group_name?: string | null;
+  image_url: string | null;
+}
+
+export interface PosCheckLineInput {
+  source: 'catalog' | 'custom';
+  product_id?: string | null;
+  variant_id?: string | null;
+  pos_product_id?: string | null;
+  quantity: number;
+  discount_amount?: number;
+  discount_percent?: number;
+}
+
+export interface PosCheckInput {
+  items: PosCheckLineInput[];
+  payment_method: 'cash' | 'card';
+  discount_amount?: number;
+  discount_percent?: number;
+  customer_id?: string | null;
+  notes?: string | null;
 }
 
 export interface VisitLog {
@@ -1032,6 +1113,69 @@ export interface LowStockFlavor {
 }
 
 /**
+ * Кандидат на пополнение полки: в рознице 0 шт, на складе есть запас.
+ * Бэк: GET /api/admin/crm/restock-candidates.
+ *
+ * Одна позиция — либо товар без вариантов (variantId = null), либо отдельный
+ * вкус/цвет товара с вариантами. `draftTransferNumber` заполнен, если позиция
+ * уже лежит в черновике перемещения склад → розница: вторую заявку на неё
+ * заводить не нужно.
+ */
+export interface RestockCandidateItem {
+  key: string;
+  productId: string;
+  variantId: string | null;
+  productTitle: string;
+  variantName: string | null;
+  displayName: string;
+  groupId: string | null;
+  groupName: string;
+  categoryName: string | null;
+  retailStock: number;
+  warehouseStock: number;
+  draftTransferId: string | null;
+  draftTransferNumber: number | null;
+}
+
+export interface RestockCandidateGroup {
+  id: string | null;
+  name: string;
+  categoryName: string | null;
+  itemCount: number;
+  items: RestockCandidateItem[];
+}
+
+export interface RestockCandidatesTotals {
+  itemCount: number;
+  groupCount: number;
+  draftItemCount: number;
+  /** Сколько из позиций — отдельные вкусы/цвета (остальные — товары без вариантов). */
+  variantCount?: number;
+}
+
+export interface RestockCandidatesPayload {
+  threshold: number;
+  /** Порог срабатывания значка: сколько позиций минимум должно накопиться. */
+  minVariants?: number;
+  /** Достигнут ли порог — значок показывается только при true. */
+  triggered?: boolean;
+  groups: RestockCandidateGroup[];
+  totals: RestockCandidatesTotals;
+}
+
+export interface RestockCandidatesSummary {
+  hasAny: boolean;
+  itemCount: number;
+  groupCount: number;
+  draftItemCount: number;
+  variantCount?: number;
+  /** Порог срабатывания значка (настройка `restock_min_variants`). */
+  minVariants?: number;
+  /** true — позиций достаточно, значок виден менеджеру. */
+  triggered?: boolean;
+}
+
+/**
  * Причина паузы линейки — соответствует PAUSE_REASONS на бэке
  * (server/utils/low-stock-groups.js).
  */
@@ -1108,6 +1252,29 @@ function staffHeaders(
     headers["X-Shift-Token"] = inMemoryShiftToken;
   }
   return headers;
+}
+
+/**
+ * Заголовки кассовых запросов. Приоритет — админский токен: когда менеджер
+ * уже в CRM (CrmPosSales и т.п.), кассовый не нужен. На заблокированном
+ * экране админского токена нет, и тогда идёт кассовый.
+ */
+function posHeaders(): Record<string, string> {
+  const headers = staffHeaders();
+  if (!headers.Authorization && inMemoryPosToken) {
+    headers.Authorization = `Bearer ${inMemoryPosToken}`;
+  }
+  return headers;
+}
+
+/** Сохранить кассовый токен, выданный POST /api/admin/pos/session. */
+function setPosSessionToken(token: string) {
+  inMemoryPosToken = token;
+}
+
+/** Сбросить кассовую сессию (например, при явном 401 от кассы). */
+function clearPosSessionToken() {
+  inMemoryPosToken = "";
 }
 
 function clearStoredStaffAccess() {
@@ -2208,6 +2375,34 @@ export const useCrmStore = defineStore("crm", () => {
       void pollOrderSummary();
       fetchLowStockSummary().catch(() => {});
     }, POLLING_INTERVAL_MS);
+    scheduleRestockDailyRefresh();
+  }
+
+  /**
+   * Значок «заканчивается в рознице, есть на складе» пересчитывается не по
+   * общему 15-секундному тику, а раз в сутки в 9:00: список нужен для контроля
+   * пополнения, а не для реакции в реальном времени, и лишние тяжёлые запросы
+   * только грузят базу. После действий с перемещениями вызывается
+   * `refreshRestockState()`, поэтому цифра не ждёт утра.
+   */
+  let restockDailyTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function stopRestockDailyRefresh() {
+    if (restockDailyTimer) {
+      clearTimeout(restockDailyTimer);
+      restockDailyTimer = null;
+    }
+  }
+
+  function scheduleRestockDailyRefresh() {
+    stopRestockDailyRefresh();
+    const delay = msUntilNextRestockRefresh();
+    // setTimeout не умеет спать дольше ~24.8 суток — суточный интервал безопасен.
+    restockDailyTimer = setTimeout(() => {
+      restockDailyTimer = null;
+      fetchRestockSummary().catch(() => {});
+      scheduleRestockDailyRefresh();
+    }, delay);
   }
 
   function stopPolling() {
@@ -2215,6 +2410,7 @@ export const useCrmStore = defineStore("crm", () => {
       clearInterval(pollingTimer);
       pollingTimer = null;
     }
+    stopRestockDailyRefresh();
   }
 
   function markOrderAsSeen(orderId: string) {
@@ -5326,6 +5522,138 @@ export const useCrmStore = defineStore("crm", () => {
     pendingPosSales.value = pendingPosSales.value.filter((s) => s.id !== id);
   }
 
+  // ---- Касса: каталог с наценкой и «свои» товары -------------------------
+
+  /**
+   * Открыть кассовую сессию ключом с экрана блокировки.
+   *
+   * Неверный ключ ведёт себя как «поиск ничего не нашёл»: экран кассы чистит
+   * поле и не показывает никаких сообщений про вход.
+   */
+  async function startPosSession(key: string) {
+    const response = await fetch('/api/admin/pos/session', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      return null;
+    }
+    if (payload.token) {
+      setPosSessionToken(payload.token);
+    }
+    return payload as { ok: boolean; token: string; key_id: string; role: string };
+  }
+
+  /**
+   * Провести чек кассы с несколькими позициями.
+   *
+   * `idempotencyKey` защищает от двойного нажатия «Провести»: два одинаковых
+   * запроса создают один чек, а не два списания со склада.
+   */
+  async function submitPosCheck(data: PosCheckInput, idempotencyKey?: string) {
+    const headers = posHeaders();
+    if (idempotencyKey) headers['Idempotency-Key'] = idempotencyKey;
+    const sale = await fetchAPI<PosSale>('/api/admin/pos/sales/check', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(data),
+    });
+    posSales.value.unshift(sale);
+    return sale;
+  }
+
+  async function fetchPosSaleItems(saleId: string) {
+    const data = await fetchAPI<{ items: PosSaleItem[] }>(
+      `/api/admin/pos/sales/${saleId}/items`,
+    );
+    return data.items;
+  }
+
+  async function fetchPosCatalog(params: {
+    search?: string;
+    source?: 'all' | 'catalog' | 'custom';
+    limit?: number;
+    offset?: number;
+  } = {}) {
+    const query = new URLSearchParams();
+    if (params.search) query.append('search', params.search);
+    if (params.source) query.append('source', params.source);
+    if (params.limit) query.append('limit', String(params.limit));
+    if (params.offset) query.append('offset', String(params.offset));
+    const qs = query.toString();
+    return fetchAPI<{ items: PosCatalogItem[]; has_more: boolean }>(
+      `/api/admin/pos/catalog${qs ? `?${qs}` : ''}`,
+      { headers: posHeaders() },
+    );
+  }
+
+  async function fetchPosProducts(params: { search?: string; limit?: number; offset?: number } = {}) {
+    const query = new URLSearchParams();
+    if (params.search) query.append('search', params.search);
+    if (params.limit) query.append('limit', String(params.limit));
+    if (params.offset) query.append('offset', String(params.offset));
+    const qs = query.toString();
+    return fetchAPI<{ items: PosProduct[]; total: number }>(
+      `/api/admin/pos/products${qs ? `?${qs}` : ''}`,
+      { headers: posHeaders() },
+    );
+  }
+
+  async function createPosProduct(data: {
+    title: string;
+    cost_price: number;
+    retail_price: number;
+    quantity: number;
+    image_url?: string | null;
+  }) {
+    return fetchAPI<PosProduct>('/api/admin/pos/products', {
+      method: 'POST',
+      headers: posHeaders(),
+      body: JSON.stringify(data),
+    });
+  }
+
+  async function updatePosProduct(
+    id: string,
+    data: Partial<{ title: string; cost_price: number; retail_price: number; quantity: number; image_url: string | null }>,
+  ) {
+    return fetchAPI<PosProduct>(`/api/admin/pos/products/${id}`, {
+      method: 'PATCH',
+      headers: posHeaders(),
+      body: JSON.stringify(data),
+    });
+  }
+
+  async function deletePosProduct(id: string) {
+    await fetchAPI(`/api/admin/pos/products/${id}`, { method: 'DELETE', headers: posHeaders() });
+  }
+
+  /**
+   * Фото «своего» товара. Экран кассы открыт без входа в CRM, поэтому
+   * обычная админская загрузка здесь недоступна — нужен multipart на
+   * кассовый эндпоинт.
+   */
+  async function uploadPosProductImage(file: File) {
+    const body = new FormData();
+    body.append('file', file);
+    const response = await fetch('/api/admin/pos/upload', {
+      method: 'POST',
+      credentials: 'include',
+      headers: posHeaders(),
+      body,
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const error = new Error(payload.error || 'upload_failed') as Error & { code?: string };
+      error.code = payload.error;
+      throw error;
+    }
+    return payload.url as string;
+  }
+
   // Promo Codes
   const promoCodes = ref<PromoCode[]>([]);
   const promoCodesLoading = ref(false);
@@ -5560,6 +5888,167 @@ export const useCrmStore = defineStore("crm", () => {
     });
     // После снятия паузы линейка может снова появиться — перечитываем список.
     await fetchLowStockGroups();
+  }
+
+  /**
+   * Пополнение полки со склада: позиции, которых в рознице нет (0 шт), а на
+   * складе есть запас. Значок «!» на экране заказов живёт на summary, а полный
+   * список запрашивается только когда менеджер открыл окно.
+   */
+  const restockGroups = ref<RestockCandidateGroup[]>([]);
+  const restockTotals = ref<RestockCandidatesTotals>({
+    itemCount: 0,
+    groupCount: 0,
+    draftItemCount: 0,
+  });
+  const restockThreshold = ref(0);
+  const restockCandidatesLoading = ref(false);
+  const restockItemCount = ref(0);
+  const restockGroupCount = ref(0);
+  const restockDraftItemCount = ref(0);
+  const restockVariantCount = ref(0);
+  /**
+   * Порог срабатывания: сколько позиций минимум должно накопиться, чтобы значок
+   * вообще появился. Настраивается менеджером в окне списка и хранится на бэке.
+   */
+  const restockMinVariants = ref(0);
+  const restockTriggered = ref(false);
+  const restockSettingsSaving = ref(false);
+  const restockSettingsError = ref<string | null>(null);
+  /**
+   * Значок зовёт к работе, которую ещё никто не взял в заявку: позиции в
+   * черновиках уже пристроены. Иначе счётчик не уменьшится после созданной
+   * заявки, и менеджер решит, что действие не сработало.
+   */
+  const restockFreeItemCount = computed(() =>
+    Math.max(0, restockItemCount.value - restockDraftItemCount.value),
+  );
+  /**
+   * Значок показываем только когда достигнут порог: менеджер сам задал, сколько
+   * позиций для него достаточно, чтобы не отвлекаться на единичные случаи.
+   */
+  const restockHasAny = computed(
+    () => restockTriggered.value && restockFreeItemCount.value > 0,
+  );
+
+  /**
+   * Числа из списка живут отдельно от сводки: окно показывает ровно тот снимок,
+   * который пришёл вместе со строками, и опрос не переписывает его шапку.
+   */
+  function applyRestockSummary(totals: Partial<RestockCandidatesTotals> | null | undefined) {
+    restockItemCount.value = Number(totals?.itemCount ?? 0);
+    restockGroupCount.value = Number(totals?.groupCount ?? 0);
+    restockDraftItemCount.value = Number(totals?.draftItemCount ?? 0);
+    if (totals?.variantCount != null) {
+      restockVariantCount.value = Number(totals.variantCount);
+    }
+  }
+
+  /** Общие поля срабатывания приходят и в сводке, и в полном списке. */
+  function applyRestockTrigger(data: {
+    minVariants?: number;
+    triggered?: boolean;
+  } | null | undefined) {
+    if (data?.minVariants != null) {
+      restockMinVariants.value = Number(data.minVariants);
+    }
+    if (data?.triggered != null) {
+      restockTriggered.value = Boolean(data.triggered);
+    }
+  }
+
+  /**
+   * Сохранение порога. Возвращает null при успехе и текст ошибки при сбое,
+   * чтобы окно показало её рядом с полем, а не в глобальном тосте.
+   */
+  async function saveRestockMinVariants(value: number): Promise<string | null> {
+    restockSettingsSaving.value = true;
+    restockSettingsError.value = null;
+    try {
+      const response = await fetch(`${API_BASE}/restock-candidates/settings`, {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ minVariants: value }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        const message =
+          typeof data?.message === 'string' && data.message
+            ? data.message
+            : 'Не удалось сохранить порог';
+        restockSettingsError.value = message;
+        return message;
+      }
+      restockMinVariants.value = Number(data?.minVariants ?? value);
+      applyRestockSummary(data?.summary);
+      applyRestockTrigger(data?.summary);
+      return null;
+    } catch {
+      const message = 'Не удалось сохранить порог';
+      restockSettingsError.value = message;
+      return message;
+    } finally {
+      restockSettingsSaving.value = false;
+    }
+  }
+
+  async function fetchRestockCandidates() {
+    restockCandidatesLoading.value = true;
+    try {
+      const data = await fetchAPI<RestockCandidatesPayload>(
+        `${API_BASE}/restock-candidates`,
+      );
+      restockGroups.value = Array.isArray(data?.groups) ? data.groups : [];
+      restockThreshold.value = Number(data?.threshold ?? 0);
+      applyRestockTrigger(data);
+      const totals: RestockCandidatesTotals = {
+        itemCount: Number(data?.totals?.itemCount ?? 0),
+        groupCount: Number(data?.totals?.groupCount ?? 0),
+        draftItemCount: Number(data?.totals?.draftItemCount ?? 0),
+        variantCount: Number(data?.totals?.variantCount ?? 0),
+      };
+      restockTotals.value = totals;
+      // Список считается по тем же правилам, поэтому и значок обновляем сразу:
+      // отдельный запрос сводки после открытия окна не нужен.
+      applyRestockSummary(totals);
+      return restockGroups.value;
+    } finally {
+      restockCandidatesLoading.value = false;
+    }
+  }
+
+  /**
+   * Тихая проверка для значка, как и у индикатора низких остатков: сбой опроса
+   * не должен ломать экран заказов, поэтому остаёмся на последних известных
+   * числах и ничего не пишем в консоль. Заметная ошибка появится при открытии
+   * списка — там запрос явный и её видно менеджеру.
+   */
+  async function fetchRestockSummary() {
+    try {
+      const data = await fetchAPI<RestockCandidatesSummary>(
+        `${API_BASE}/restock-candidates/summary`,
+      );
+      applyRestockSummary({
+        itemCount: Number(data?.itemCount ?? 0),
+        groupCount: Number(data?.groupCount ?? 0),
+        draftItemCount: Number(data?.draftItemCount ?? 0),
+        variantCount: Number(data?.variantCount ?? 0),
+      });
+      applyRestockTrigger(data);
+      return data;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * После сохранения, оприходования или отмены заявки меняется только сводка:
+   * остатки трогает лишь оприходование. Сам список перечитывается при
+   * следующем открытии окна — так он всегда свежий и без лишнего запроса.
+   */
+  async function refreshRestockState() {
+    await fetchRestockSummary();
   }
 
   async function searchCrmProducts(
@@ -6068,6 +6557,15 @@ export const useCrmStore = defineStore("crm", () => {
     createPosSale,
     updatePosSale,
     deletePosSale,
+    startPosSession,
+    submitPosCheck,
+    fetchPosSaleItems,
+    fetchPosCatalog,
+    fetchPosProducts,
+    createPosProduct,
+    updatePosProduct,
+    deletePosProduct,
+    uploadPosProductImage,
 
     // Promo Codes
     promoCodes,
@@ -6105,6 +6603,26 @@ export const useCrmStore = defineStore("crm", () => {
     fetchLowStockGroupFlavors,
     pauseLowStockGroup,
     resumeLowStockGroup,
+
+    // Пополнение полки со склада — значок «!» на экране заказов
+    restockGroups,
+    restockTotals,
+    restockThreshold,
+    restockCandidatesLoading,
+    restockItemCount,
+    restockGroupCount,
+    restockDraftItemCount,
+    restockFreeItemCount,
+    restockHasAny,
+    restockVariantCount,
+    restockMinVariants,
+    restockTriggered,
+    restockSettingsSaving,
+    restockSettingsError,
+    saveRestockMinVariants,
+    fetchRestockCandidates,
+    fetchRestockSummary,
+    refreshRestockState,
 
     searchCrmProducts,
     generateOrderMessage,

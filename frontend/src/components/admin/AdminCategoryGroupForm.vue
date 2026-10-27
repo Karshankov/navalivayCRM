@@ -88,6 +88,12 @@
       </span>
     </label>
 
+    <PosPublicationField
+      :model-value="posPublication"
+      scope="group"
+      @update:model-value="posPublication = $event"
+    />
+
     <div
       class="rounded-2xl border p-4 transition"
       :class="form.discountEnabled
@@ -422,6 +428,7 @@
 
 <script setup lang="ts">
 import { reactive, ref, watch, computed } from 'vue'
+import PosPublicationField, { type PosPublicationValue } from './PosPublicationField.vue'
 
 /** Срок плашки по умолчанию, столько же стоит на сервере. */
 /** Цена скидки: пустое поле и мусор означают «скидки нет». */
@@ -485,7 +492,7 @@ const props = withDefaults(defineProps<{ editingGroup?: CategoryGroup | null; is
 })
 
 const emit = defineEmits<{
-  (e: 'submit', payload: { name: string; coverImage?: string | null; hideEmpty?: boolean; parentId?: string | null; metaLabel?: string | null; metaValue?: string | null; minStockThreshold?: number | null; totalControl?: boolean; isNew?: boolean; newDays?: number; discount?: { price: number | null; untilDate: string | null }; wholesalePrices?: Record<string, number | null>; waiveDescription?: boolean; waiveMinStock?: boolean; waiveWholesale?: boolean; waiveStrengthTier?: boolean; strengthTier?: string | null }): void
+  (e: 'submit', payload: { name: string; coverImage?: string | null; hideEmpty?: boolean; parentId?: string | null; metaLabel?: string | null; metaValue?: string | null; minStockThreshold?: number | null; totalControl?: boolean; isNew?: boolean; newDays?: number; discount?: { price: number | null; untilDate: string | null }; wholesalePrices?: Record<string, number | null>; waiveDescription?: boolean; waiveMinStock?: boolean; waiveWholesale?: boolean; waiveStrengthTier?: boolean; strengthTier?: string | null; posPublication?: PosPublicationValue }): void
   (e: 'cancel'): void
 }>()
 
@@ -521,6 +528,9 @@ const uploadPreview = ref('')
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const uploadedFileName = ref('')
 const wholesalePriceInputs = reactive<Record<string, string>>({})
+// Публикация на кассу. Держим отдельно от reactive-формы: это необязательный
+// блок, и его пустое значение не должно попадать в payload как «снять».
+const posPublication = ref<PosPublicationValue | null>(null)
 
 const defaultWholesaleTiers: WholesaleTier[] = [
   { id: 'wt_100', code: '25', label: 'Опт от 25 позиций', minOrderAmount: 100, minQuantity: 25, sortOrder: 25 },
@@ -602,6 +612,7 @@ watch(
       form.waiveWholesale = Boolean(group.waiveWholesale)
       form.waiveStrengthTier = Boolean(group.waiveStrengthTier)
       form.strengthTier = group.strengthTier || ''
+      posPublication.value = (group as any).pos_publication ?? null
       syncWholesalePriceInputs(group)
       if ((group.coverImage || '').startsWith('data:')) {
         coverMode.value = 'file'
@@ -629,6 +640,7 @@ watch(
       form.waiveWholesale = false
       form.waiveStrengthTier = false
       form.strengthTier = ''
+      posPublication.value = null
       syncWholesalePriceInputs(null)
       coverMode.value = 'url'
       uploadPreview.value = ''
@@ -758,6 +770,7 @@ function onSubmit() {
     waiveWholesale: form.waiveWholesale,
     waiveStrengthTier: form.waiveStrengthTier,
     strengthTier: form.strengthTier ? form.strengthTier : null,
+    posPublication: posPublication.value ?? undefined,
   })
 }
 

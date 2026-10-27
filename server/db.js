@@ -45,6 +45,7 @@ import { migrateUserbotEntities } from './migrations/add_userbot_entities.js';
 import { migrateCustomerDeletedAt } from './migrations/add_customer_deleted_at.js';
 import { migratePosSales } from './migrations/add_pos_sales.js';
 import { migratePosSaleTransactionLink } from './migrations/add_pos_sale_transaction_link.js';
+import { migratePosChecks } from './migrations/add_pos_checks.js';
 import { migrateManagerActionFields } from './migrations/add_manager_action_fields.js';
 import { migrateCustomerPhoto } from './migrations/add_customer_photo.js';
 import { migratePromoCodes } from './migrations/add_promo_codes.js';
@@ -238,6 +239,9 @@ export function initDb() {
   migrateCashPacingTables();
   migrateCardPaymentLimits();
   migrateCardPaymentTariffLimits();
+  // Касса добавляет card_payment_operations.pos_sale_id, поэтому идёт после
+  // миграций карточных лимитов — иначе таблицы ещё нет.
+  migratePosChecks();
   migrateWholesalePricing();
   migrateWholesaleQuantityTiers();
   migrateCrmPerformanceIndexes();

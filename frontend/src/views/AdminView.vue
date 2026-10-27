@@ -2683,6 +2683,7 @@ async function handleCategoryFormSubmit(formData: any) {
       hide_empty: formData.hideEmpty || false,
       cover_image: formData.coverImage ?? null,
       storefront_filters_profile: formData.storefrontFiltersProfile ?? 'none',
+      pos_publication: formData.posPublication ?? undefined,
     }
 
     if (editingCategory.value) {
@@ -2694,6 +2695,7 @@ async function handleCategoryFormSubmit(formData: any) {
         hideEmpty: formData.hideEmpty || false,
         coverImage: formData.coverImage ?? null,
         storefrontFiltersProfile: formData.storefrontFiltersProfile ?? 'none',
+        posPublication: formData.posPublication ?? undefined,
       })
       showToast('Категория создана', 'success')
     }
@@ -2873,7 +2875,7 @@ async function reloadProductsAfterDiscount() {
   })
 }
 
-async function handleGroupFormSubmit(payload: { name: string; slug?: string; coverImage?: string | null; hideEmpty?: boolean; parentId?: string | null; metaLabel?: string | null; metaValue?: string | null; minStockThreshold?: number | null; totalControl?: boolean; isNew?: boolean; newDays?: number; discount?: { price: number | null; untilDate: string | null }; wholesalePrices?: Record<string, number | null>; waiveDescription?: boolean; waiveMinStock?: boolean; waiveWholesale?: boolean; waiveStrengthTier?: boolean; strengthTier?: string | null }) {
+async function handleGroupFormSubmit(payload: { name: string; slug?: string; coverImage?: string | null; hideEmpty?: boolean; parentId?: string | null; metaLabel?: string | null; metaValue?: string | null; minStockThreshold?: number | null; totalControl?: boolean; isNew?: boolean; newDays?: number; discount?: { price: number | null; untilDate: string | null }; wholesalePrices?: Record<string, number | null>; waiveDescription?: boolean; waiveMinStock?: boolean; waiveWholesale?: boolean; waiveStrengthTier?: boolean; strengthTier?: string | null; posPublication?: any }) {
   const categoryId = groupFormCategoryId.value || activeGroupCategory.value?.id || null
   if (!categoryId) {
     showToast('Сначала выберите категорию', 'error')
@@ -2909,6 +2911,7 @@ async function handleGroupFormSubmit(payload: { name: string; slug?: string; cov
         waiveWholesale: payload.waiveWholesale,
         waiveStrengthTier: payload.waiveStrengthTier,
         strengthTier: payload.strengthTier ?? null,
+        posPublication: payload.posPublication,
       })
       showToast('Линейка обновлена', 'success')
     } else {
@@ -2931,6 +2934,7 @@ async function handleGroupFormSubmit(payload: { name: string; slug?: string; cov
         waiveWholesale: payload.waiveWholesale,
         waiveStrengthTier: payload.waiveStrengthTier,
         strengthTier: payload.strengthTier ?? null,
+        posPublication: payload.posPublication,
       })
       showToast('Линейка создана', 'success')
     }

@@ -157,6 +157,13 @@
       </label>
     </div>
 
+    <!-- Публикация на кассу -->
+    <PosPublicationField
+      :model-value="posPublication"
+      scope="category"
+      @update:model-value="posPublication = $event"
+    />
+
     <!-- Действия -->
     <div class="flex justify-end space-x-3 pt-4">
       <button
@@ -179,6 +186,7 @@
 <script setup lang="ts">
 import { watch, computed, ref } from 'vue'
 import { useForm } from 'vee-validate'
+import PosPublicationField, { type PosPublicationValue } from './PosPublicationField.vue'
 
 interface Category {
   id?: string
@@ -188,6 +196,7 @@ interface Category {
   cover_image?: string | null
   storefront_filters_profile?: 'none' | 'liquids' | 'snus_plates'
   storefrontFiltersProfile?: 'none' | 'liquids' | 'snus_plates'
+  pos_publication?: PosPublicationValue | null
 }
 
 interface Props {
@@ -205,7 +214,12 @@ const props = withDefaults(defineProps<Props>(), {
 const currentCategory = computed(() => props.editingCategory ?? props.category ?? null)
 
 const emit = defineEmits<{
-  submit: [category: Pick<Category, 'name'> & { hideEmpty?: boolean; coverImage?: string | null; storefrontFiltersProfile?: 'none' | 'liquids' | 'snus_plates' }]
+  submit: [category: Pick<Category, 'name'> & {
+    hideEmpty?: boolean
+    coverImage?: string | null
+    storefrontFiltersProfile?: 'none' | 'liquids' | 'snus_plates'
+    posPublication?: PosPublicationValue
+  }]
   cancel: []
 }>()
 
@@ -235,6 +249,10 @@ const [name, nameAttrs] = defineField('name')
 const [hideEmpty, hideEmptyAttrs] = defineField('hideEmpty')
 const [coverImage, coverImageAttrs] = defineField('coverImage')
 const [storefrontFiltersProfile] = defineField('storefrontFiltersProfile')
+
+// Настройка «Показывать на кассе» хранится отдельно от vee-validate:
+// это необязательный блок, и его отсутствие не должно ломать основную форму.
+const posPublication = ref<PosPublicationValue | null>(null)
 
 const coverMode = ref<'url' | 'file'>('url')
 const uploadPreview = ref<string>('')
@@ -270,7 +288,9 @@ watch(currentCategory, (newCategory: Category | null) => {
       uploadPreview.value = ''
     }
     uploadedFileName.value = ''
+    posPublication.value = newCategory.pos_publication ?? null
   } else {
+    posPublication.value = null
     resetForm({ values: { name: '', hideEmpty: false, coverImage: '' } })
     coverMode.value = 'url'
     uploadPreview.value = ''
@@ -285,6 +305,7 @@ const onSubmit = handleSubmit((values) => {
     hideEmpty: values.hideEmpty,
     coverImage: values.coverImage?.trim() ? values.coverImage.trim() : null,
     storefrontFiltersProfile: values.storefrontFiltersProfile || 'none',
+    posPublication: posPublication.value ?? undefined,
   })
 })
 

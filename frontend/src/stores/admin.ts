@@ -34,6 +34,18 @@ export interface Category {
   displayMode?: 'default' | 'liquid' | 'visual'
   storefront_filters_profile?: 'none' | 'liquids' | 'snus_plates'
   storefrontFiltersProfile?: 'none' | 'liquids' | 'snus_plates'
+  pos_publication?: PosPublication | null
+}
+
+/**
+ * Публикация категории или линейки на заблокированный экран кассы.
+ * `published: false` снимает публикацию и очищает цену.
+ */
+export interface PosPublication {
+  published: boolean
+  fixed_price: number | null
+  markup_amount: number | null
+  markup_percent: number | null
 }
 
 export interface ProductLink {
@@ -128,6 +140,9 @@ export interface CategoryGroup {
   waiveWholesale?: boolean
   waiveStrengthTier?: boolean
   strengthTier?: string | null
+  pos_publication?: PosPublication | null
+  /** То же значение в camelCase: так его отдаёт форма линейки. */
+  posPublication?: PosPublication | null
   createdAt?: string
   updatedAt?: string
   productCount?: number
@@ -696,7 +711,13 @@ export const useAdminStore = defineStore('admin', () => {
     }
   }
 
-async function createCategory(category: { name: string; hideEmpty?: boolean; coverImage?: string | null; storefrontFiltersProfile?: 'none' | 'liquids' | 'snus_plates' }) {
+async function createCategory(category: {
+    name: string
+    hideEmpty?: boolean
+    coverImage?: string | null
+    storefrontFiltersProfile?: 'none' | 'liquids' | 'snus_plates'
+    posPublication?: PosPublication
+  }) {
     try {
       isLoading.value = true
       error.value = null
@@ -709,6 +730,7 @@ async function createCategory(category: { name: string; hideEmpty?: boolean; cov
           hide_empty: category.hideEmpty || false,
           cover_image: category.coverImage ?? null,
           storefront_filters_profile: category.storefrontFiltersProfile ?? 'none',
+          pos_publication: category.posPublication ?? undefined,
         }
       })
 
@@ -729,7 +751,8 @@ async function createCategory(category: { name: string; hideEmpty?: boolean; cov
           hide_empty: response.hide_empty,
           cover_image: response.cover_image ?? null,
           display_mode: displayModeValue,
-          displayMode: displayModeValue
+          displayMode: displayModeValue,
+          pos_publication: response.pos_publication ?? null
         }
         
         return newCategory
@@ -754,6 +777,9 @@ async function createCategory(category: { name: string; hideEmpty?: boolean; cov
       const payload: Record<string, unknown> = { ...updates }
       if (updates.hide_empty !== undefined && typeof updates.hide_empty === 'boolean') {
         payload.hide_empty = updates.hide_empty
+      }
+      if (updates.pos_publication !== undefined) {
+        payload.pos_publication = updates.pos_publication
       }
       if (updates.cover_image !== undefined) {
         payload.cover_image = updates.cover_image
@@ -1036,7 +1062,7 @@ async function createCategory(category: { name: string; hideEmpty?: boolean; cov
     }
   }
 
-  async function createCategoryGroup(payload: { categoryId: string; name: string; slug?: string; coverImage?: string | null; hideEmpty?: boolean; parentId?: string | null; metaLabel?: string | null; metaValue?: string | null; minStockThreshold?: number | null; totalControl?: boolean; isNew?: boolean; newDays?: number; wholesalePrices?: Record<string, number | null>; waiveDescription?: boolean; waiveMinStock?: boolean; waiveWholesale?: boolean; waiveStrengthTier?: boolean; strengthTier?: string | null }) {
+  async function createCategoryGroup(payload: { categoryId: string; name: string; slug?: string; coverImage?: string | null; hideEmpty?: boolean; parentId?: string | null; metaLabel?: string | null; metaValue?: string | null; minStockThreshold?: number | null; totalControl?: boolean; isNew?: boolean; newDays?: number; wholesalePrices?: Record<string, number | null>; waiveDescription?: boolean; waiveMinStock?: boolean; waiveWholesale?: boolean; waiveStrengthTier?: boolean; strengthTier?: string | null; posPublication?: PosPublication }) {
     try {
       isLoading.value = true
       error.value = null
@@ -1063,6 +1089,7 @@ async function createCategory(category: { name: string; hideEmpty?: boolean; cov
           waiveWholesale: payload.waiveWholesale ?? false,
           waiveStrengthTier: payload.waiveStrengthTier ?? false,
           strengthTier: payload.strengthTier ?? null,
+          pos_publication: payload.posPublication ?? undefined,
         }
       })
 
@@ -1089,6 +1116,7 @@ async function createCategory(category: { name: string; hideEmpty?: boolean; cov
         waiveWholesale: Boolean(response.waiveWholesale ?? response.waive_wholesale),
         waiveStrengthTier: Boolean(response.waiveStrengthTier ?? response.waive_strength_tier),
         strengthTier: response.strengthTier ?? response.strength_tier ?? null,
+        pos_publication: response.pos_publication ?? response.posPublication ?? null,
         createdAt: response.createdAt,
         updatedAt: response.updatedAt,
         productCount: response.productCount ?? 0,
@@ -1150,6 +1178,7 @@ async function createCategory(category: { name: string; hideEmpty?: boolean; cov
       if ('waiveWholesale' in updates) body.waiveWholesale = updates.waiveWholesale
       if ('waiveStrengthTier' in updates) body.waiveStrengthTier = updates.waiveStrengthTier
       if ('strengthTier' in updates) body.strengthTier = updates.strengthTier ?? null
+      if ('posPublication' in updates) body.pos_publication = updates.posPublication ?? undefined
 
       const response = await $fetch<Record<string, any>>(`/api/admin/category-groups/${id}`, {
         method: 'PUT',
@@ -1199,6 +1228,7 @@ async function createCategory(category: { name: string; hideEmpty?: boolean; cov
         waiveWholesale: Boolean(response.waiveWholesale ?? response.waive_wholesale ?? existing?.waiveWholesale),
         waiveStrengthTier: Boolean(response.waiveStrengthTier ?? response.waive_strength_tier ?? existing?.waiveStrengthTier),
         strengthTier: response.strengthTier ?? response.strength_tier ?? existing?.strengthTier ?? null,
+        pos_publication: response.pos_publication ?? response.posPublication ?? existing?.pos_publication ?? null,
       }
 
       if (idx !== -1) {

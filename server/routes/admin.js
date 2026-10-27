@@ -35,6 +35,7 @@ import {
   saveGroupWholesalePrices,
 } from '../wholesale-service.js';
 import { syncGroupParking, syncParkingFromFlattened } from '../utils/group-parking.js';
+import { invalidateRestockCache } from '../utils/restock-candidates.js';
 import { searchProductsForAdmin, searchProductsForCrm, syncProductSearchIndex } from '../services/product-search-service.js';
 import { resolveFirstImageThumbnail } from '../services/image-thumbnail-service.js';
 import {
@@ -60,6 +61,10 @@ import {
 import {
   enqueueInternalNotificationForGroup,
 } from '../utils/internal-notifications.js';
+// Публикация категории/линейки на заблокированный экран кассы живёт в
+// pos-модуле: там же её читает каталог кассы. Цена и наценка считаются по
+// одному правилу — не двумя копиями.
+import { attachPosPublications, savePosPublication } from './pos.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -231,8 +236,11 @@ function enrichAdminCategoryGroups(groups) {
   const priceMapByGroup = getBulkGroupWholesalePrices(groupIds);
   const costStatsByGroup = getBulkGroupAverageCostStats(groupIds);
   const wholesaleTiers = buildWholesaleTiersPayload();
+  // Публикация на кассу возвращается вместе со списком, иначе менеджер не
+  // увидит, что линейка уже выставлена на заблокированный экран.
+  const withPublications = attachPosPublications('group', normalizedGroups);
 
-  return normalizedGroups.map((group) => {
+  return withPublications.map((group) => {
     const groupId = String(group.id || '');
     const costStats = costStatsByGroup.get(groupId) || null;
     return {
@@ -255,7 +263,7 @@ function enrichAdminCategoryGroup(group) {
   const costStats = getGroupAverageCostStats(group.id);
   const wholesaleTiers = buildWholesaleTiersPayload();
   return {
-    ...group,
+    ...attachPosPublications('group', [group])[0],
     discount: getDiscountRecord('group', group.id),
     wholesale_prices: getGroupWholesalePrices(group.id),
     average_cost_auto: costStats.averageCostAuto,
@@ -1670,6 +1678,21 @@ function inventoryActor(req) {
   return String(req.user?.u || req.user?.username || 'admin');
 }
 
+/**
+ * Любое изменение перемещений меняет состав кандидатов на пополнение полки
+ * (создали заявку / оприходовали / отменили). Сбрасываем суточный кэш значка,
+ * чтобы цифра была верной сразу, а не ждала 9:00.
+ */
+adminRouter.use('/api/admin/inventory/transfers', (req, res, next) => {
+  if (req.method === 'GET') return next();
+  res.on('finish', () => {
+    if (res.statusCode >= 200 && res.statusCode < 300) {
+      invalidateRestockCache();
+    }
+  });
+  next();
+});
+
 adminRouter.get('/api/admin/inventory/transfers', authMiddleware, (req, res) => {
   const page = Math.max(Number.parseInt(req.query.page, 10) || 1, 1);
   const limit = Math.min(Math.max(Number.parseInt(req.query.limit, 10) || 30, 1), 100);
@@ -2239,7 +2262,7 @@ adminRouter.get('/api/admin/categories', authMiddleware, (req, res) => {
       GROUP BY c.id, c.slug, c.name, c.[order], c.hide_empty, c.display_mode, c.storefront_filters_profile
       ORDER BY c.[order] ASC, c.name ASC
     `).all();
-    res.json(rows);
+    res.json(attachPosPublications('category', rows));
   } catch (e) {
     res.status(500).json({ error: 'failed', details: String(e) });
   }
@@ -2271,10 +2294,10 @@ adminRouter.get('/api/admin/categories/:id', authMiddleware, (req, res) => {
   
   const productCount = db.prepare('SELECT COUNT(*) as cnt FROM products WHERE categoryId = ?').get(id)?.cnt || 0;
   
-  res.json({
+  res.json(attachPosPublications('category', [{
     ...row,
     productCount: Number(productCount)
-  });
+  }])[0]);
 });
 
 // Banners CRUD
@@ -2468,7 +2491,18 @@ adminRouter.post('/api/admin/categories', authMiddleware, async (req, res) => {
     const coverImageValue = rawCoverImage ? await convertImageToWebP(rawCoverImage) : null;
     db.prepare('INSERT INTO categories (id, slug, name, [order], hide_empty, cover_image, display_mode, storefront_filters_profile) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
       .run(id, slug, name, finalOrder, hideEmptyValue, coverImageValue, displayModeValue, storefrontFiltersProfileValue);
-    res.json({
+    if (req.body?.pos_publication !== undefined || req.body?.posPublication !== undefined) {
+      try {
+        savePosPublication('category', id, req.body.pos_publication ?? req.body.posPublication);
+      } catch (publicationError) {
+        if (String(publicationError.message).startsWith('invalid_')) {
+          db.prepare('DELETE FROM categories WHERE id = ?').run(id);
+          return res.status(400).json({ error: publicationError.message });
+        }
+        throw publicationError;
+      }
+    }
+    res.json(attachPosPublications('category', [{
       ok: true,
       id,
       slug,
@@ -2478,7 +2512,7 @@ adminRouter.post('/api/admin/categories', authMiddleware, async (req, res) => {
       cover_image: coverImageValue,
       display_mode: displayModeValue,
       storefront_filters_profile: storefrontFiltersProfileValue,
-    });
+    }])[0]);
   } catch (e) {
     console.error('[admin] Category creation failed:', e.message);
     res.status(400).json({ error: 'insert_failed', message: e.message, details: String(e) });
@@ -2601,8 +2635,18 @@ adminRouter.put('/api/admin/categories/:id', authMiddleware, async (req, res) =>
       .run(next.name, next.slug, next.order, next.hide_empty, next.cover_image, next.display_mode, next.storefront_filters_profile, id);
     console.log('[admin] Update result:', updateResult);
     console.log('[admin] Update completed successfully');
+    if (req.body?.pos_publication !== undefined || req.body?.posPublication !== undefined) {
+      try {
+        savePosPublication('category', id, req.body.pos_publication ?? req.body.posPublication);
+      } catch (publicationError) {
+        if (String(publicationError.message).startsWith('invalid_')) {
+          return res.status(400).json({ error: publicationError.message });
+        }
+        throw publicationError;
+      }
+    }
     refreshProductSearchIndex('category update');
-    res.json({ id, ...next });
+    res.json(attachPosPublications('category', [{ id, ...next }])[0]);
   } catch (e) {
     console.error('[admin] Category update error:', e);
     console.error('[admin] Error stack:', e.stack);
@@ -3126,12 +3170,19 @@ adminRouter.post('/api/admin/category-groups', authMiddleware, async (req, res) 
       );
 
       saveGroupWholesalePrices(newId, wholesalePrices ?? wholesale_prices ?? {});
+
+      if (req.body?.pos_publication !== undefined || req.body?.posPublication !== undefined) {
+        savePosPublication('group', newId, req.body.pos_publication ?? req.body.posPublication);
+      }
     });
 
     tx();
   } catch (error) {
     if (error?.code === 'invalid_wholesale_price') {
       return res.status(400).json({ error: 'invalid_wholesale_price', message: error.message });
+    }
+    if (String(error?.message || '').startsWith('invalid_')) {
+      return res.status(400).json({ error: error.message });
     }
     console.error('[admin] Failed to create category group:', error);
     return res.status(500).json({ error: 'create_failed', message: error.message });
@@ -3500,12 +3551,20 @@ adminRouter.put('/api/admin/category-groups/:id', authMiddleware, async (req, re
       if (wholesalePricesProvided) {
         saveGroupWholesalePrices(id, wholesalePrices ?? wholesale_prices ?? {});
       }
+
+      if (req.body?.pos_publication !== undefined || req.body?.posPublication !== undefined) {
+        savePosPublication('group', id, req.body.pos_publication ?? req.body.posPublication);
+      }
     });
 
     tx();
   } catch (error) {
     if (error?.code === 'invalid_wholesale_price') {
       return res.status(400).json({ error: 'invalid_wholesale_price', message: error.message });
+    }
+    if (String(error?.message || '').startsWith('invalid_')) {
+      // Ошибки настройки кассовой цены: незаполненное поле не должно давать 500.
+      return res.status(400).json({ error: error.message });
     }
     console.error('[admin] Failed to update category group:', error);
     return res.status(500).json({ error: 'update_failed', message: error.message });
