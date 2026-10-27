@@ -520,7 +520,29 @@ interface StockTransfer {
   }>
 }
 
-const props = defineProps<{ isOpen: boolean; initialSource?: Location }>()
+/**
+ * Готовая позиция для новой заявки. Нужна экрану заказов: он открывает форму
+ * перемещения сразу с товарами, которых не осталось в рознице, но есть запас
+ * на складе, — набирать их поиском заново не нужно.
+ */
+interface TransferSeedItem {
+  productId: string
+  variantId: string | null
+  title: string
+  categoryName?: string | null
+  groupName?: string | null
+  image?: string | null
+  /** Доступно в источнике (для направления склад → розница это склад). */
+  available: number
+  quantity: number
+}
+
+const props = defineProps<{
+  isOpen: boolean
+  initialSource?: Location
+  initialItems?: TransferSeedItem[]
+  openInCreate?: boolean
+}>()
 const emit = defineEmits<{
   (event: 'close'): void
   (event: 'saved', details: { number: number }): void
@@ -932,8 +954,71 @@ function openCreate() {
   failedImageIds.value = new Set()
   resetForm()
   view.value = 'create'
-  void loadItems()
+  const itemsLoaded = loadItems()
   void loadGroups()
+  return itemsLoaded
+}
+
+/**
+ * Разложить готовые позиции в форму. Приходят с экрана заказов из списка
+ * «заканчивается в рознице, есть на складе», поэтому искать их в левой панели
+ * заново не нужно. Дубли отбрасываем: сервер такую заявку не примет.
+ */
+function seedSelectedItems(seeds: TransferSeedItem[] | undefined) {
+  if (!seeds?.length) return
+  const seen = new Set<string>()
+  const next: SelectedItem[] = []
+  for (const seed of seeds) {
+    const productId = String(seed?.productId || '').trim()
+    if (!productId) continue
+    const variantId = seed.variantId ? String(seed.variantId) : null
+    const key = `${productId}:${variantId || ''}`
+    if (seen.has(key)) continue
+    // Остаток перепроверяет сервер, здесь только не даём ввести заведомо
+    // больше, чем лежит в источнике.
+    const available = Math.max(0, Math.floor(Number(seed.available || 0)))
+    if (available <= 0) continue
+    const quantity = Math.min(Math.max(Math.floor(Number(seed.quantity || 1)), 1), available)
+    seen.add(key)
+    next.push({
+      key,
+      productId,
+      variantId,
+      title: seed.title,
+      categoryName: seed.categoryName || null,
+      groupName: seed.groupName || null,
+      image: seed.image || null,
+      available,
+      quantity,
+    })
+  }
+  selectedItems.value = next
+}
+
+/**
+ * Сверка остатков с только что загруженным списком. Колонка «есть на складе»
+ * могла быть получена на пару секунд раньше, а остаток за это время изменился.
+ * Без сверки форма показала бы завышенный максимум, сервер отклонил бы заявку
+ * целиком, и повторная отправка падала бы так же.
+ */
+function reconcileSeededAvailability() {
+  if (!selectedItems.value.length) return
+  for (const result of results.value) {
+    const existing = selectedItem(result)
+    if (!existing) continue
+    const fresh = Math.max(0, Math.floor(Number(result.available_stock || 0)))
+    existing.available = fresh
+    // Больше свежего остатка перемещать нельзя: подрезаем количество.
+    existing.quantity = Math.min(Math.max(existing.quantity, 1), Math.max(fresh, 1))
+  }
+}
+
+/** Открыть форму сразу с составом, без списка перемещений. */
+function openCreateFromSeed() {
+  const itemsLoaded = openCreate()
+  seedSelectedItems(props.initialItems)
+  // Остатки сверяем только когда список действительно пришёл.
+  void itemsLoaded.then(reconcileSeededAvailability).catch(() => {})
 }
 
 /**
@@ -1341,6 +1426,12 @@ watch(() => props.isOpen, (open) => {
   failedImageIds.value = new Set()
   loadMoreError.value = ''
   resetForm()
+  // Экран заказов открывает форму сразу, минуя список перемещений. Пустой
+  // состав — это тоже форма, просто без готовых позиций.
+  if (props.openInCreate) {
+    openCreateFromSeed()
+    return
+  }
   void loadTransfers()
 })
 

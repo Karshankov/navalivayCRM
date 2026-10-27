@@ -18,7 +18,32 @@
         </template>
       </StaffShiftBar>
       <div class="crm-orders-heading">
-        <h1 class="crm-orders-title">Заказы</h1>
+        <div class="crm-orders-title-row">
+          <h1 class="crm-orders-title">Заказы</h1>
+          <!--
+            Значок «заканчивается в рознице, есть на складе»: маленькая кнопка с
+            «!» и счётчиком. Показывает только то, что ещё не взято в заявку —
+            иначе после создания заявки число не менялось бы и выглядело бы,
+            будто действие не сработало.
+          -->
+          <button
+            v-if="restockHasAny"
+            type="button"
+            class="crm-restock-flag"
+            data-test="orders-restock-flag"
+            aria-haspopup="dialog"
+            :aria-expanded="restockModalOpen"
+            :aria-label="restockFlagTitle"
+            :title="restockFlagTitle"
+            @click="openRestockModal"
+          >
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+              <path stroke-linecap="round" d="M12 6.5v7.5" />
+              <circle cx="12" cy="17.6" r="1.1" fill="currentColor" stroke="none" />
+            </svg>
+            <span class="crm-restock-flag-count" aria-hidden="true">{{ restockFlagCount }}</span>
+          </button>
+        </div>
         <div class="crm-orders-search">
           <input
             v-model="searchQuery"
@@ -1681,6 +1706,37 @@
       </div>
     </AdminModal>
 
+    <!-- «Заканчивается в рознице, есть на складе»: список и быстрый переход
+         к перемещению. Окна не открываются одновременно — фокус-ловушки
+         HeadlessUI конфликтуют. -->
+    <RestockSuggestionsModal
+      :isOpen="restockModalOpen"
+      :groups="restockGroups"
+      :totals="restockTotals"
+      :threshold="restockThreshold"
+      :minVariants="restockMinVariants"
+      :settingsSaving="restockSettingsSaving"
+      :settingsError="restockSettingsError"
+      :loading="restockCandidatesLoading"
+      :errorText="restockError"
+      @close="closeRestockModal"
+      @retry="loadRestockCandidates"
+      @transfer="handleRestockTransfer"
+      @open-transfers="openTransfersList"
+      @update-min-variants="handleRestockMinVariantsUpdate"
+    />
+
+    <AdminStockTransferModal
+      :isOpen="transferModalOpen"
+      :initialSource="transferInitialSource"
+      :initialItems="transferSeeds"
+      :openInCreate="transferOpenInCreate"
+      @close="handleTransferClose"
+      @saved="handleTransferSaved"
+      @completed="handleTransferCompleted"
+      @cancelled="handleTransferCancelled"
+    />
+
     <p class="crm-orders-icon-credit">Uicons by <a href="https://www.flaticon.com/uicons" target="_blank" rel="noopener noreferrer">Flaticon</a></p>
 
     <!-- In-app Toast Notification (Safari fallback) -->
@@ -1757,6 +1813,10 @@ import { buildAutoNotifyToast } from "@/utils/auto-notify-message";
 import CrmProfitPasswordField from "@/components/crm/CrmProfitPasswordField.vue";
 import StaffShiftBar from "@/components/admin/staff/StaffShiftBar.vue";
 import CardPaymentsModal from "@/components/admin/crm/CardPaymentsModal.vue";
+import RestockSuggestionsModal, {
+  type RestockTransferRequestItem,
+} from "@/components/admin/crm/RestockSuggestionsModal.vue";
+import AdminStockTransferModal from "@/components/admin/AdminStockTransferModal.vue";
 import { getBusinessDateParts } from "@/utils/businessTime";
 
 /** Отдаёт клик браузеру сразу — меньше [Violation] 'click' handler took Nms */
@@ -1778,6 +1838,18 @@ const {
   deliveredPagination,
   pickupCells,
   loadingPickupCells,
+  restockGroups,
+  restockTotals,
+  restockThreshold,
+  restockCandidatesLoading,
+  restockItemCount,
+  restockGroupCount,
+  restockDraftItemCount,
+  restockFreeItemCount,
+  restockHasAny,
+  restockMinVariants,
+  restockSettingsSaving,
+  restockSettingsError,
 } = storeToRefs(crmStore);
 
 const router = useRouter();
@@ -1822,6 +1894,157 @@ function openReviews() {
   crmStore.markDrawAsSeen();
   moreDropdownOpen.value = false;
   router.push("/admin/crm/reviews");
+}
+
+/**
+ * «Заканчивается в рознице, есть на складе»: значок в заголовке, список позиций
+ * и быстрый переход к заявке на перемещение.
+ */
+type TransferSeed = {
+  productId: string;
+  variantId: string | null;
+  title: string;
+  categoryName?: string | null;
+  groupName?: string | null;
+  available: number;
+  quantity: number;
+};
+
+const restockModalOpen = ref(false);
+const restockError = ref<string | null>(null);
+const transferModalOpen = ref(false);
+const transferOpenInCreate = ref(false);
+const transferInitialSource = ref<"warehouse" | "retail">("warehouse");
+const transferSeeds = ref<TransferSeed[]>([]);
+// Пришли в перемещение из окна «заканчивается в рознице»: если менеджер
+// передумал и закрыл форму, возвращаем его к списку, а не на доску заказов.
+const restockFlowActive = ref(false);
+
+const restockFlagCount = computed(() =>
+  restockFreeItemCount.value > 99 ? "99+" : String(restockFreeItemCount.value),
+);
+
+/**
+ * Подпись для значка. «в 1 линейках» — не опечатка в коде, а причина, по
+ * которой склонения считаются, а не склеиваются строкой.
+ */
+const restockFlagTitle = computed(() => {
+  const items = restockFreeItemCount.value;
+  const groups = restockGroupCount.value;
+  const groupWord = groups % 10 === 1 && groups % 100 !== 11 ? "линейке" : "линейках";
+  const drafts = restockDraftItemCount.value;
+  const draftNote = drafts > 0
+    ? ` Ещё ${drafts} поз. уже в ${drafts % 10 === 1 && drafts % 100 !== 11 ? "заявке" : "заявках"}.`
+    : "";
+  // Порог > 0 стоит показать: иначе непонятно, почему значок пропал при
+  // непустом списке.
+  const limit = restockMinVariants.value;
+  const thresholdNote = limit > 0
+    ? ` Порог показа: ${limit} поз.`
+    : "";
+  return `Заканчивается в рознице: ${items} поз. в ${groups} ${groupWord}. Есть запас на складе — можно переместить.${draftNote}${thresholdNote}`;
+});
+
+
+/**
+ * Смена порога показа значка. Ошибку показываем в самом окне: она относится
+ * к конкретному полю, а не ко всему экрану заказов.
+ */
+async function handleRestockMinVariantsUpdate(value: number) {
+  await crmStore.saveRestockMinVariants(value);
+}
+
+async function loadRestockCandidates() {
+  restockError.value = null;
+  try {
+    await crmStore.fetchRestockCandidates();
+  } catch (error) {
+    console.error("[orders] Failed to load restock candidates", error);
+    restockError.value = "Не удалось загрузить список. Попробуйте ещё раз.";
+  }
+}
+
+function openRestockModal() {
+  moreDropdownOpen.value = false;
+  settingsDropdownOpen.value = false;
+  restockError.value = null;
+  restockFlowActive.value = true;
+  restockModalOpen.value = true;
+  // Остатки могли измениться с прошлого раза — список всегда свежий.
+  void loadRestockCandidates();
+}
+
+function closeRestockModal() {
+  restockModalOpen.value = false;
+  restockFlowActive.value = false;
+}
+
+/** Позиции выбраны в окне списка → открываем форму перемещения уже с составом. */
+function handleRestockTransfer(payload: { items: RestockTransferRequestItem[] }) {
+  const seeds = payload.items
+    .filter((item) => item.quantity > 0)
+    .map((item) => ({
+      productId: item.productId,
+      variantId: item.variantId,
+      title: item.displayName,
+      categoryName: item.categoryName,
+      groupName: item.groupName,
+      available: item.warehouseStock,
+      quantity: item.quantity,
+    }));
+  if (!seeds.length) return;
+  // Две модалки HeadlessUI одновременно конфликтуют ловушками фокуса.
+  restockModalOpen.value = false;
+  transferSeeds.value = seeds;
+  transferInitialSource.value = "warehouse";
+  transferOpenInCreate.value = true;
+  transferModalOpen.value = true;
+}
+
+/** Второй вход: посмотреть все перемещения, включая незакрытые черновики. */
+function openTransfersList() {
+  restockModalOpen.value = false;
+  restockFlowActive.value = false;
+  transferSeeds.value = [];
+  transferInitialSource.value = "warehouse";
+  transferOpenInCreate.value = false;
+  transferModalOpen.value = true;
+}
+
+function handleTransferClose() {
+  transferModalOpen.value = false;
+  transferSeeds.value = [];
+  transferOpenInCreate.value = false;
+  // Форму открыли из списка «заканчивается в рознице», но передумали:
+  // возвращаем к списку, чтобы введённые количества не пришлось набирать заново.
+  if (restockFlowActive.value) {
+    restockModalOpen.value = true;
+    void loadRestockCandidates();
+    return;
+  }
+  restockFlowActive.value = false;
+}
+
+function handleTransferSaved(details: { number: number }) {
+  showOrderToast({
+    kind: "success",
+    message: `Заявка №${details.number} сохранена. Остатки пока не изменились.`,
+  });
+  // Позиции из заявки больше не «свободны» — обновляем число на значке.
+  void crmStore.refreshRestockState();
+}
+
+function handleTransferCompleted(details: { quantity: number; destination: "retail" | "warehouse" }) {
+  showOrderToast({
+    kind: "success",
+    message: `Перемещено ${details.quantity} шт ${details.destination === "warehouse" ? "на склад" : "в розницу"}`,
+  });
+  void crmStore.refreshRestockState();
+}
+
+function handleTransferCancelled(details: { number: number }) {
+  showOrderToast({ kind: "success", message: `Заявка №${details.number} отменена` });
+  void crmStore.refreshRestockState();
 }
 
 const showCreateModal = ref(false);
@@ -3450,6 +3673,9 @@ onMounted(async () => {
   userbotStatusTimer = setInterval(() => {
     void refreshUserbotStatus();
   }, 30_000);
+  // Значок «заканчивается в рознице»: общий опрос уже тикает, но первый ответ
+  // не должен ждать 15 секунд.
+  void crmStore.fetchRestockSummary();
   await refreshOrders({ skipNotify: true, trigger: 'initial', showBoardLoader: true });
   void loadPickupCells();
   if (cashAccounts.value.length === 0) {
@@ -3533,6 +3759,8 @@ function handleClickOutside(event: MouseEvent) {
 function handleVisibilityChange() {
   if (document.visibilityState !== 'visible') return;
   void refreshToolbarCardLimit();
+  // Значок пополнения пересчитывается раз в сутки в 9:00 (и после действий
+  // с перемещениями), поэтому переключение вкладок его не перезапрашивает.
   if (!autoRefreshEnabled.value) return;
   void refreshOrders({ skipNotify: true });
 }

@@ -84,7 +84,46 @@
 .crm-orders-page section[aria-label="Смена сотрудника"] > div:first-child > div:last-child > button.bg-gradient-to-r { background: var(--crm-reference-primary); color: white; box-shadow: 0 8px 16px #148cff30; }
 /* Heading, search and toolbar */
 .crm-orders-heading { display: flex; align-items: center; gap: 26px; margin: 32px 0 18px; }
+.crm-orders-title-row { display: flex; align-items: center; gap: 12px; flex-shrink: 0; min-width: 0; }
 .crm-orders-title { flex-shrink: 0; margin: 0; font-size: 37px; font-weight: 700; letter-spacing: -.04em; line-height: normal; color: #081b4b; }
+
+/*
+  Значок «заканчивается в рознице, есть на складе».
+  Небольшая круглая кнопка с «!» и счётчиком. Пульсирующее кольцо привлекает
+  взгляд, но не мигает: одна мягкая волна раз в 2.4 секунды.
+*/
+.crm-restock-flag {
+  position: relative; display: inline-flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; flex-shrink: 0; padding: 0; border: none; border-radius: 50%;
+  background: linear-gradient(115deg, #ffb020, #ff7a1a); color: white; cursor: pointer;
+  box-shadow: 0 8px 16px #ff9a1f45; transition: transform .16s ease, box-shadow .16s ease;
+}
+.crm-restock-flag > svg { width: 19px; height: 19px; }
+.crm-restock-flag::after {
+  content: ''; position: absolute; inset: -2px; border-radius: 50%;
+  border: 2px solid #ff9a1f; opacity: 0; pointer-events: none;
+  /* Волна привлекает взгляд, но не мигает весь день: 6 циклов ≈ 14 секунд. */
+  animation: crm-restock-pulse 2.4s ease-out 6;
+}
+.crm-restock-flag:hover { transform: translateY(-1px); box-shadow: 0 10px 20px #ff9a1f5c; }
+.crm-restock-flag:active { transform: translateY(0); }
+.crm-restock-flag:focus-visible { outline: 2px solid #0958ff; outline-offset: 3px; }
+.crm-restock-flag-count {
+  position: absolute; top: -4px; right: -6px; z-index: 1; display: inline-flex; align-items: center; justify-content: center;
+  min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px;
+  background: #fa104f; color: white; font-size: 10px; font-weight: 800; line-height: 1;
+  box-shadow: 0 2px 6px #fa104f59;
+}
+@keyframes crm-restock-pulse {
+  0% { opacity: .65; transform: scale(.92); }
+  70% { opacity: 0; transform: scale(1.35); }
+  100% { opacity: 0; transform: scale(1.35); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .crm-restock-flag::after { animation: none; }
+  .crm-restock-flag { transition: none; }
+  .crm-restock-flag:hover { transform: none; }
+}
 .crm-orders-search { position: relative; flex: 1; min-width: 0; max-width: 680px; }
 .crm-orders-search-input { display: block; width: 100%; padding: 15px 18px 15px 40px; border: 1px solid #eaf0f9; border-radius: 12px; background: white; color: #081b4b; font: inherit; font-size: 13px; line-height: normal; caret-color: #0958ff; }
 .crm-orders-search-input::placeholder { color: #9ba8c0; opacity: 1; }
@@ -161,6 +200,9 @@
   .crm-orders-layout .admin-layout-main { padding: 13px 13px 84px; }
   .crm-orders-heading { display: block; }
   .crm-orders-title { font-size: 30px; }
+  /* В заголовке значок остаётся рядом с названием, а не отдельной строкой. */
+  .crm-orders-title-row { margin-bottom: 14px; }
+  .crm-restock-flag { width: 32px; height: 32px; }
   .crm-orders-search { margin-top: 15px; }
   .crm-orders-toolbar-spacer { display: none; }
   .crm-orders-toolbar { align-items: stretch; }

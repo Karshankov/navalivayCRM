@@ -69,6 +69,13 @@ import {
   resumeGroup,
 } from '../utils/low-stock-groups.js';
 import {
+  computeRestockCandidates,
+  getRestockCandidatesSummary,
+  invalidateRestockCache,
+  setRestockMinVariants,
+  RESTOCK_MIN_VARIANTS_MAX,
+} from '../utils/restock-candidates.js';
+import {
   listAllAgreements,
   createAgreement,
   updateAgreement,
@@ -1191,6 +1198,46 @@ crmRouter.get('/api/admin/crm/low-stock-groups/:groupId/flavors', authMiddleware
     }
     console.error('[crm] List low-stock group flavors error:', err);
     res.status(500).json({ error: 'failed', message: err.message });
+  }
+});
+
+/**
+ * Кандидаты на пополнение полки: в рознице 0–2 шт, на складе есть запас.
+ * Используется значком «!» на экране заказов.
+ */
+crmRouter.get('/api/admin/crm/restock-candidates', authMiddleware, (req, res) => {
+  try {
+    res.json(computeRestockCandidates());
+  } catch (error) {
+    console.error('[crm] Restock candidates error:', error);
+    res.status(500).json({ error: 'failed', message: error.message });
+  }
+});
+
+// Lightweight-проверка для значка: только числа, без списка позиций.
+crmRouter.get('/api/admin/crm/restock-candidates/summary', authMiddleware, (req, res) => {
+  try {
+    res.json(getRestockCandidatesSummary());
+  } catch (error) {
+    console.error('[crm] Restock candidates summary error:', error);
+    res.status(500).json({ error: 'failed', message: error.message });
+  }
+});
+
+// Порог срабатывания значка: сколько вкусов минимум должно закончиться.
+crmRouter.put('/api/admin/crm/restock-candidates/settings', authMiddleware, (req, res) => {
+  try {
+    const minVariants = setRestockMinVariants(req.body?.minVariants);
+    res.json({ ok: true, minVariants, summary: getRestockCandidatesSummary() });
+  } catch (error) {
+    if (error.code === 'invalid_restock_min_variants') {
+      return res.status(400).json({
+        error: 'invalid_restock_min_variants',
+        message: `Порог должен быть целым числом от 0 до ${RESTOCK_MIN_VARIANTS_MAX}.`,
+      });
+    }
+    console.error('[crm] Restock settings error:', error);
+    res.status(500).json({ error: 'failed', message: error.message });
   }
 });
 
