@@ -145,7 +145,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 /**
  * Модель — HTML-строка (может быть null). Синхронизация аккуратная:
@@ -162,6 +162,34 @@ const emit = defineEmits<{
 
 const editorEl = ref<HTMLElement | null>(null)
 const imageInput = ref<HTMLInputElement | null>(null)
+
+/**
+ * Сохранённое выделение: клики по тулбару и window.prompt сбивают каретку
+ * в Safari/Telegram WebApp. Держим Range и восстанавливаем перед execCommand —
+ * иначе форматирование применялось не к выделенному тексту.
+ */
+let savedRange: Range | null = null
+
+function saveSelection() {
+  const sel = window.getSelection()
+  if (!sel || sel.rangeCount === 0) return
+  const range = sel.getRangeAt(0)
+  if (editorEl.value?.contains(range.commonAncestorContainer)) {
+    savedRange = range.cloneRange()
+  }
+}
+
+function restoreSelection() {
+  if (!savedRange || !editorEl.value) return
+  const sel = window.getSelection()
+  if (!sel) return
+  sel.removeAllRanges()
+  try {
+    sel.addRange(savedRange)
+  } catch {
+    // Range устарел (DOM перестроен) — оставляем текущую каретку.
+  }
+}
 
 const inlineTools = [
   { cmd: 'bold', title: 'Жирный (Ctrl+B)', label: 'Ж', mono: false },
@@ -183,6 +211,7 @@ const alignTools = [
 
 function exec(cmd: string, value?: string) {
   editorEl.value?.focus()
+  restoreSelection()
   document.execCommand(cmd, false, value)
   syncValue()
 }
@@ -193,12 +222,14 @@ function exec(cmd: string, value?: string) {
  * сервер оставляет только white-listed содержимое.
  */
 function insertPromoBlock() {
+  saveSelection()
   const code = window.prompt('Промокод (только код, например CATSWILL10):', '')
   if (!code || !code.trim()) return
   const label = window.prompt('Подпись под промокодом (необязательно):', 'Нажмите, чтобы скопировать') || ''
   const safeCode = code.trim().replace(/"/g, '&quot;').replace(/</g, '&lt;')
   const html = `<div data-promo="${code.trim().replace(/"/g, '&quot;')}"><b>${safeCode}</b>${label ? ` — ${label.replace(/</g, '&lt;')}` : ''}</div><p><br></p>`
   editorEl.value?.focus()
+  restoreSelection()
   document.execCommand('insertHTML', false, html)
   syncValue()
 }
@@ -292,14 +323,16 @@ function resizeSelectedImage(percent: number) {
 }
 
 function insertLink() {
+  saveSelection()
   const selection = window.getSelection()
-  const selected = selection?.toString() || ''
+  const selected = savedRange?.toString() || selection?.toString() || ''
   const url = window.prompt(
     selected ? `Ссылка для «${selected.slice(0, 40)}»` : 'Адрес ссылки',
     'https://',
   )
   if (!url || url === 'https://') return
   editorEl.value?.focus()
+  restoreSelection()
   document.execCommand('createLink', false, url)
   syncValue()
 }
@@ -326,6 +359,7 @@ async function onImageFile(event: Event) {
       reader.readAsDataURL(file)
     })
     editorEl.value?.focus()
+    restoreSelection()
     document.execCommand('insertImage', false, dataUrl)
     syncValue()
   } catch {
@@ -366,10 +400,20 @@ watch(() => props.modelValue, (value) => {
   }
 })
 
+function onDocumentSelectionChange() {
+  saveSelection()
+}
+
 onMounted(() => {
   if (editorEl.value) {
     editorEl.value.innerHTML = props.modelValue || ''
   }
+  // Выделение меняется при наборе/кликах в поле — запоминаем каждый раз.
+  document.addEventListener('selectionchange', onDocumentSelectionChange)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('selectionchange', onDocumentSelectionChange)
 })
 </script>
 
