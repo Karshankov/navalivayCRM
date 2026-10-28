@@ -25,12 +25,12 @@ const ALLOWED_TAGS = new Set([
 const ALLOWED_ATTRS = {
   a: new Set(['href', 'title']),
   img: new Set(['src', 'alt', 'width', 'height', 'style']),
-  div: new Set(['data-promo']),
+  div: new Set(['data-promo', 'style', 'align']),
   span: new Set(['style']),
-  p: new Set(['style']),
-  h2: new Set(['style']),
-  h3: new Set(['style']),
-  h4: new Set(['style']),
+  p: new Set(['style', 'align']),
+  h2: new Set(['style', 'align']),
+  h3: new Set(['style', 'align']),
+  h4: new Set(['style', 'align']),
   li: new Set(['style']),
   blockquote: new Set(['style']),
 };
@@ -130,6 +130,15 @@ export async function sanitizeDetailHtml(html) {
         if (name === 'style') {
           const safe = sanitizeStyle(value);
           if (safe) attrs.push(`style="${safe}"`);
+          continue;
+        }
+        // Легаси-выравнивание от execCommand в части браузеров: <p align="center">.
+        if (name === 'align' && ['left', 'center', 'right', 'justify'].includes(String(value).toLowerCase())) {
+          const align = String(value).toLowerCase();
+          // Если style уже несёт text-align — не дублируем.
+          if (!attrs.some((a) => a.startsWith('style="') && a.includes('text-align'))) {
+            attrs.push(`style="text-align: ${align}"`);
+          }
           continue;
         }
         if (name === 'data-promo' && tag === 'div') {

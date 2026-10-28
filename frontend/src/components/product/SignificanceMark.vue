@@ -435,7 +435,8 @@ onUnmounted(() => {
   line-height: 1.55;
 }
 
-.sig-mark-sheet__text :deep(p) {
+.sig-mark-sheet__text :deep(p),
+.sig-mark-sheet__text :deep(div) {
   margin: 0 0 10px;
 }
 

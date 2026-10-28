@@ -220,6 +220,19 @@ async function testCrud() {
   assert.equal(richDetail.response.status, 200);
   assert.ok(String(richDetail.data.detailBody).includes('data-promo="CATSWILL10"'));
 
+  // Выравнивание сохраняется во всех форматах: style, div, легаси align.
+  const alignBody = '<p style="text-align: center">центр</p><div style="text-align: right">право</div><p align="center">легаси</p>';
+  const aligned = await createMark({
+    title: 'Выравнивание',
+    detailBody: alignBody,
+    detailTitle: null, detailButtonText: null, detailUrl: null,
+  });
+  assert.ok(String(aligned.detailBody).includes('text-align: center'), aligned.detailBody);
+  assert.ok(String(aligned.detailBody).includes('text-align: right'), aligned.detailBody);
+  // Легаси align конвертируется в style, атрибут не остаётся.
+  assert.ok(!String(aligned.detailBody).includes(' align='), aligned.detailBody);
+  assert.equal(String(aligned.detailBody).match(/text-align: center/g).length, 2);
+
   // Иконка-строка без data:image — тоже invalid.
   const badIcon2 = await requestJson('/api/admin/significance-marks', {
     method: 'POST',

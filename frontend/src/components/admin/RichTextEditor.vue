@@ -358,8 +358,10 @@ function onInput() {
 // Внешняя смена (открытие другой пометки) — перезаливаем контент.
 watch(() => props.modelValue, (value) => {
   if (!editorEl.value) return
-  const current = readEditor()
-  if (current !== (value ?? null)) {
+  // Сравниваем побайтово: перезаливаем только при внешней смене модели
+  // (открыли другую пометку). Собственные эмиты не должны перерисовывать
+  // поле — иначе форматирование «слетало» сразу после применения.
+  if ((editorEl.value.innerHTML || '') !== (value ?? '')) {
     editorEl.value.innerHTML = value || ''
   }
 })
