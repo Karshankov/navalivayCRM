@@ -63,6 +63,12 @@
       </div>
     </div>
 
+    <!-- Пометка значимости: под шапкой линейки, вне кликабельного заголовка —
+        своя кнопка «Подробнее» не сворачивает линейку. -->
+    <div v-if="mark" class="liquid-line-mark-wrapper">
+      <SignificanceMark :mark="mark" />
+    </div>
+
     <Transition
       :css="false"
       @before-enter="onBeforeEnter"
@@ -313,6 +319,8 @@ import { computed, onBeforeUnmount, onMounted, ref, watch, nextTick } from "vue"
 import NewLineupBadge from "@/components/product/NewLineupBadge.vue";
 import GroupReviewsModal from "@/components/reviews/GroupReviewsModal.vue";
 import ReviewRatingLink from "@/components/reviews/ReviewRatingLink.vue";
+import SignificanceMark from "@/components/product/SignificanceMark.vue";
+import type { ProductMark } from "@/stores/catalog";
 import { useCustomerOrders } from "@/composables/useCustomerOrders";
 import {
   isParentGroupLine,
@@ -363,6 +371,8 @@ const props = defineProps<{
   metaLabel?: string | null;
   metaValue?: string | null;
   topRank?: number | null;
+  /** Пометка значимости линейки: ярлык в строке, рядом с отзывами. */
+  mark?: ProductMark | null;
 }>();
 
 const emit = defineEmits<{
@@ -2048,5 +2058,11 @@ function closeColorPreview() {
   .liquid-flavor-actions {
     gap: 4px;
   }
+}
+
+/* Пометка значимости: под шапкой линейки. Карточка уже даёт боковой
+   отступ 16px — добавляем только вертикальный, чтобы блок не слипался. */
+.liquid-line-mark-wrapper {
+  margin-top: 10px;
 }
 </style>

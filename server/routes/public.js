@@ -76,6 +76,7 @@ import {
 } from "../utils/referral-authorization.js";
 import { getBusinessPeriodRange } from "../utils/business-time.js";
 import { queryTopSalesGroups } from "../utils/top-sales-groups.js";
+import { getPublicMarksByGroupIds, getPublicMarkByCode } from "../utils/significance-marks.js";
 import {
   applyDiscountToPrice,
   loadActiveDiscounts,
@@ -953,6 +954,10 @@ publicRouter.get("/api/categories", (req, res) => {
     groupCountRows.map((row) => [row.groupId, row.total]),
   );
 
+  // Пометки значимости: одна выборка на все группы страницы. В узел попадает
+  // только краткая форма — тексты сообщений клиенту наружу не уходят.
+  const marksByGroupId = getPublicMarksByGroupIds(groupsRaw.map((group) => group.id));
+
   const nodes = groupsRaw.map((group) => ({
     id: group.id,
     categoryId: group.categoryId,
@@ -960,6 +965,7 @@ publicRouter.get("/api/categories", (req, res) => {
     name: group.name,
     order: group["order"],
     hasCoverImage: group.hasCoverImage === 1,
+    mark: marksByGroupId.get(String(group.id)) || null,
     // Готовый адрес обложки: витрина ставит его прямо в <img>, и картинку
     // тянет сам браузер — лениво, параллельно и с кэшем.
     coverImage: group.hasCoverImage === 1 ? `/api/category-groups/${group.id}/cover` : null,
@@ -1021,6 +1027,7 @@ publicRouter.get("/api/categories", (req, res) => {
         metaLabel: node.metaLabel || null,
         metaValue: node.metaValue || null,
         strengthTier: node.strengthTier || null,
+        mark: node.mark || null,
         // Линейка без остатка на витрину вообще не попадает, поэтому «кончился
         // товар, плашка снимается» отрабатывает само.
         isNew: node.isNew && node.totalProductCount > 0,
@@ -1445,6 +1452,11 @@ publicRouter.get("/api/products", (req, res) => {
   // Оптовым покупателям скидки каталога не показываем: у них своя цена.
   const activeDiscounts = wholesaleContext?.tier ? null : loadActiveDiscounts();
 
+  // Пометки значимости линеек: одна выборка на страницу товаров.
+  const marksByGroupIdForProducts = getPublicMarksByGroupIds(
+    products.map((p) => p.groupId).filter(Boolean),
+  );
+
   const enriched = products
     .map((p) => {
       const stockValue = typeof p.stock === "number" ? p.stock : null;
@@ -1485,6 +1497,7 @@ publicRouter.get("/api/products", (req, res) => {
         excludedFromWholesaleMin: p.groupId
           ? Number(p.excludedFromWholesaleMin || 0) === 1
           : true,
+        mark: p.groupId ? marksByGroupIdForProducts.get(String(p.groupId)) || null : null,
       };
 
       if (p.hasVariants) {
@@ -1644,6 +1657,10 @@ publicRouter.get("/api/product/:id", (req, res) => {
     excludedFromWholesaleMin: p.groupId
       ? Number(p.excludedFromWholesaleMin || 0) === 1
       : true,
+    // Пометка значимости линейки товара: карточка показывает блок с ней.
+    mark: p.groupId
+      ? getPublicMarksByGroupIds([p.groupId]).get(String(p.groupId)) || null
+      : null,
   };
 
   if (p.hasVariants) {
@@ -1704,6 +1721,16 @@ publicRouter.get("/api/product/:id", (req, res) => {
   }
 
   res.json(result);
+});
+
+// Текст «Подробнее» пометки значимости: витрина берёт его для модалки,
+// когда у пометки не задана внешняя ссылка. Публично — только активные.
+publicRouter.get("/api/significance-marks/:code/detail", (req, res) => {
+  const mark = getPublicMarkByCode(req.params.code);
+  if (!mark) {
+    return res.status(404).json({ error: "not_found" });
+  }
+  res.json(mark);
 });
 
 publicRouter.get("/api/cross-sells", (req, res) => {

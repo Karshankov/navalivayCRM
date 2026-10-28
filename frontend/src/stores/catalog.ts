@@ -2,11 +2,27 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { useWholesaleStore } from './wholesale'
 
+/** Пометка значимости линейки: блок в карточке товара + сообщение после выдачи. */
+export interface ProductMark {
+  code: string
+  title: string
+  description: string | null
+  /** Иконка пометки: загруженная картинка (data-URL WebP). */
+  icon: string
+  color: string
+  detailTitle: string | null
+  /** Признак, что есть текст «Подробнее» внутри мини-аппа. */
+  detailBody: boolean
+  detailButtonText: string | null
+  detailUrl: string | null
+}
+
 export interface CategoryGroup {
   id: string
   slug: string
   name: string
   order: number
+  mark?: ProductMark | null
   coverImage?: string | null
   hasCoverImage?: boolean
   productCount: number
@@ -95,6 +111,8 @@ export interface Product {
   wholesaleMinQuantity?: number | null
   /** Товар не приближает корзину к оптовому минимуму (прямые товары — всегда). */
   excludedFromWholesaleMin?: boolean
+  /** Пометка значимости линейки товара. */
+  mark?: ProductMark | null
 }
 
 export interface Banner {
@@ -375,7 +393,9 @@ export const useCatalogStore = defineStore('catalog', () => {
               metaValue: group.metaValue ?? group.meta_value ?? null,
               strengthTier: group.strengthTier ?? group.strength_tier ?? null,
               isNew: Boolean(group.isNew),
-              newSince: group.newSince ?? null
+              newSince: group.newSince ?? null,
+              // Пометка значимости линейки: блок в каталоге и карточке товара.
+              mark: group.mark ?? null
             }))
           : []
       }))

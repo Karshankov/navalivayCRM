@@ -70,6 +70,32 @@ describe("GroupLineItem", () => {
     return wrapper;
   }
 
+  it("shows full significance mark block under the group header", async () => {
+    const mark = {
+      code: "social",
+      title: "Социально значимый товар",
+      description: null,
+      icon: "data:image/png;base64,small",
+      color: "#15803d",
+      detailTitle: null,
+      detailBody: false,
+      detailButtonText: null,
+      detailUrl: null,
+    };
+    const wrapper = await mountLine({ ...baseNode, mark });
+
+    // Полный блок живёт под шапкой, вне кнопки-заголовка.
+    const block = wrapper.find(".group-line-mark-wrapper");
+    expect(block.exists()).toBe(true);
+    // Блок отрисован компонентом SignificanceMark.
+    expect(block.text()).toContain("Социально значимый товар");
+    expect(block.find("img").attributes("src")).toBe(mark.icon);
+    // Не внутри кликабельного заголовка: своя кнопка не сворачивает линейку.
+    expect(block.element.closest(".group-line-header")).toBeNull();
+    // Блок не дублируется внутри инфо-строки.
+    expect(wrapper.find(".group-line-info .group-line-mark-wrapper").exists()).toBe(false);
+  });
+
   it("shows neutral parent hint on group rows with children and no direct reviews", async () => {
     const wrapper = await mountLine({
       ...baseNode,

@@ -368,6 +368,7 @@ import LiquidLineTree from "@/components/product/liquid/LiquidLineTree.vue";
 import { arrangeLineups } from "@/utils/lineupOrder";
 import ToastNotification from "@/components/ToastNotification.vue";
 import GroupLineItem from "@/components/product/GroupLineItem.vue";
+import type { ProductMark } from "@/stores/catalog";
 import CategoryFilterBar from "@/components/product/CategoryFilterBar.vue";
 import SingleProductCard from "@/components/product/SingleProductCard.vue";
 import { useProductCardLayout } from "@/composables/useProductCardLayout";
@@ -608,6 +609,7 @@ type LiquidGroup = {
   strengthTier?: string | null;
   isNew?: boolean;
   newSince?: string | null;
+  mark?: ProductMark | null;
   children: LiquidGroup[];
 };
 
@@ -720,6 +722,7 @@ const liquidStructure = computed(() => {
         strengthTier: group.strengthTier ?? null,
         isNew: group.isNew ?? false,
         newSince: group.newSince ?? null,
+        mark: group.mark ?? null,
         children: [],
       });
     });

@@ -25,6 +25,14 @@ import {
 } from '../utils/dashboard-access.js';
 import { convertImageToWebP } from '../utils/imageUtils.js';
 import {
+  validateSignificanceMarkPayload,
+  createSignificanceMark,
+  updateSignificanceMark,
+  deleteSignificanceMark,
+  listSignificanceMarks,
+  getSignificanceMark,
+} from '../utils/significance-marks.js';
+import {
   buildWholesaleLinkPath,
   getActiveWholesaleTiers,
   getBulkGroupAverageCostStats,
@@ -2764,6 +2772,7 @@ adminRouter.get('/api/admin/category-groups', authMiddleware, (req, res) => {
       g.waive_wholesale,
       g.strength_tier,
       g.waive_strength_tier,
+      g.significance_mark_id,
       g.createdAt,
       g.updatedAt,
       COUNT(p.id) AS productCount,
@@ -2776,7 +2785,7 @@ adminRouter.get('/api/admin/category-groups', authMiddleware, (req, res) => {
     FROM category_groups g
     LEFT JOIN products p ON p.groupId = g.id
     ${whereClause}
-    GROUP BY g.id, g.categoryId, g.slug, g.name, g.[order], g.hide_empty, g.parent_group_id, g.meta_label, g.meta_value, g.empty_since, g.parked_order, g.min_stock_threshold, g.total_control, g.new_since, g.new_until, g.waive_description, g.waive_min_stock, g.waive_wholesale, g.strength_tier, g.waive_strength_tier, g.createdAt, g.updatedAt
+    GROUP BY g.id, g.categoryId, g.slug, g.name, g.[order], g.hide_empty, g.parent_group_id, g.meta_label, g.meta_value, g.empty_since, g.parked_order, g.min_stock_threshold, g.total_control, g.new_since, g.new_until, g.waive_description, g.waive_min_stock, g.waive_wholesale, g.strength_tier, g.waive_strength_tier, g.significance_mark_id, g.createdAt, g.updatedAt
     ORDER BY g.categoryId ASC, g.[order] ASC, g.name ASC
   `).all(...params);
 
@@ -2955,6 +2964,7 @@ adminRouter.get('/api/admin/category-groups/:id', authMiddleware, (req, res) => 
       CASE WHEN g.new_until > DATETIME('now') THEN 1 ELSE 0 END AS is_new,
       CAST(julianday(g.new_until) - julianday(g.new_since) AS INTEGER) AS new_days_total,
       CAST(CEIL(julianday(g.new_until) - julianday('now')) AS INTEGER) AS new_days_left,
+      g.significance_mark_id,
       g.createdAt,
       g.updatedAt
     FROM category_groups g
@@ -3120,6 +3130,18 @@ adminRouter.post('/api/admin/category-groups', authMiddleware, async (req, res) 
   // Конвертируем изображение в WebP
   const coverImageValue = coverImage ? await convertImageToWebP(coverImage) : null;
 
+  // Пометка значимости при создании: необязательное поле, null = без пометки.
+  const rawMarkId = req.body?.significanceMarkId ?? req.body?.significance_mark_id ?? null;
+  let resolvedMarkId = null;
+  if (rawMarkId) {
+    const markRow = db.prepare('SELECT id FROM significance_marks WHERE id = ?')
+      .get(String(rawMarkId));
+    if (!markRow) {
+      return res.status(400).json({ error: 'invalid_significance_mark' });
+    }
+    resolvedMarkId = markRow.id;
+  }
+
   // Минимальный порог стока: число > 0, иначе NULL.
   const rawThreshold = minStockThreshold ?? min_stock_threshold ?? null;
   const resolvedThreshold = (() => {
@@ -3137,11 +3159,12 @@ adminRouter.post('/api/admin/category-groups', authMiddleware, async (req, res) 
           total_control,
           waive_description, waive_min_stock, waive_wholesale,
           strength_tier, waive_strength_tier,
+          significance_mark_id,
           new_since, new_until,
           createdAt, updatedAt
         )
         VALUES (
-          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
           CASE WHEN ? IS NULL THEN NULL ELSE DATETIME('now') END,
           CASE WHEN ? IS NULL THEN NULL ELSE DATETIME('now', ?) END,
           DATETIME('now'), DATETIME('now')
@@ -3164,6 +3187,7 @@ adminRouter.post('/api/admin/category-groups', authMiddleware, async (req, res) 
         resolvedWaiveWholesale,
         resolvedStrengthTier,
         resolvedWaiveStrengthTier,
+        resolvedMarkId,
         newBadgeDays,
         newBadgeDays,
         newBadgeDays === null ? null : `+${newBadgeDays} days`,
@@ -3212,13 +3236,14 @@ adminRouter.post('/api/admin/category-groups', authMiddleware, async (req, res) 
       g.waive_wholesale,
       g.strength_tier,
       g.waive_strength_tier,
+      g.significance_mark_id,
       g.createdAt,
       g.updatedAt,
       COUNT(p.id) AS productCount
     FROM category_groups g
     LEFT JOIN products p ON p.groupId = g.id
     WHERE g.id = ?
-    GROUP BY g.id, g.categoryId, g.slug, g.name, g.cover_image, g.[order], g.hide_empty, g.parent_group_id, g.meta_label, g.meta_value, g.min_stock_threshold, g.total_control, g.new_since, g.new_until, g.waive_description, g.waive_min_stock, g.waive_wholesale, g.strength_tier, g.waive_strength_tier, g.createdAt, g.updatedAt
+    GROUP BY g.id, g.categoryId, g.slug, g.name, g.cover_image, g.[order], g.hide_empty, g.parent_group_id, g.meta_label, g.meta_value, g.min_stock_threshold, g.total_control, g.new_since, g.new_until, g.waive_description, g.waive_min_stock, g.waive_wholesale, g.strength_tier, g.waive_strength_tier, g.significance_mark_id, g.createdAt, g.updatedAt
   `).get(newId);
 
   if (!result) {
@@ -3492,6 +3517,25 @@ adminRouter.put('/api/admin/category-groups/:id', authMiddleware, async (req, re
     return Number.isFinite(n) && n > 0 ? Math.trunc(n) : null;
   })();
 
+  // Пометка значимости: как у остальных полей — только явная передача ключа
+  // (включая null для снятия), иначе текущее значение не трогаем.
+  const significanceMarkProvided =
+    'significanceMarkId' in (req.body || {}) || 'significance_mark_id' in (req.body || {});
+  let nextSignificanceMarkId = current.significance_mark_id ?? null;
+  if (significanceMarkProvided) {
+    const rawMarkId = req.body.significanceMarkId ?? req.body.significance_mark_id;
+    if (!rawMarkId) {
+      nextSignificanceMarkId = null;
+    } else {
+      const markRow = db.prepare('SELECT id FROM significance_marks WHERE id = ?')
+        .get(String(rawMarkId));
+      if (!markRow) {
+        return res.status(400).json({ error: 'invalid_significance_mark' });
+      }
+      nextSignificanceMarkId = markRow.id;
+    }
+  }
+
   try {
     const tx = db.transaction(() => {
       db.prepare(`
@@ -3501,6 +3545,7 @@ adminRouter.put('/api/admin/category-groups/:id', authMiddleware, async (req, re
             total_control = ?,
             waive_description = ?, waive_min_stock = ?, waive_wholesale = ?,
             strength_tier = ?, waive_strength_tier = ?,
+            significance_mark_id = ?,
             updatedAt = DATETIME('now')
         WHERE id = ?
       `).run(
@@ -3519,6 +3564,7 @@ adminRouter.put('/api/admin/category-groups/:id', authMiddleware, async (req, re
         nextWaiveWholesale,
         nextStrengthTier,
         nextWaiveStrengthTier,
+        nextSignificanceMarkId,
         id,
       );
 
@@ -3594,13 +3640,14 @@ adminRouter.put('/api/admin/category-groups/:id', authMiddleware, async (req, re
       g.waive_wholesale,
       g.strength_tier,
       g.waive_strength_tier,
+      g.significance_mark_id,
       g.createdAt,
       g.updatedAt,
       COUNT(p.id) AS productCount
     FROM category_groups g
     LEFT JOIN products p ON p.groupId = g.id
     WHERE g.id = ?
-    GROUP BY g.id, g.categoryId, g.slug, g.name, g.cover_image, g.[order], g.hide_empty, g.parent_group_id, g.meta_label, g.meta_value, g.min_stock_threshold, g.total_control, g.new_since, g.new_until, g.waive_description, g.waive_min_stock, g.waive_wholesale, g.strength_tier, g.waive_strength_tier, g.createdAt, g.updatedAt
+    GROUP BY g.id, g.categoryId, g.slug, g.name, g.cover_image, g.[order], g.hide_empty, g.parent_group_id, g.meta_label, g.meta_value, g.min_stock_threshold, g.total_control, g.new_since, g.new_until, g.waive_description, g.waive_min_stock, g.waive_wholesale, g.strength_tier, g.waive_strength_tier, g.significance_mark_id, g.createdAt, g.updatedAt
   `).get(id);
 
   if (!updated) {
@@ -4179,3 +4226,67 @@ adminRouter.get('/api/admin/inventory-checks', authMiddleware, (req, res) => {
   }
 });
 
+// ========================= Пометки значимости линеек =========================
+
+adminRouter.get('/api/admin/significance-marks', authMiddleware, (req, res) => {
+  try {
+    res.json({ items: listSignificanceMarks({ includeInactive: true }) });
+  } catch (error) {
+    console.error('[admin] Significance marks list error:', error);
+    res.status(500).json({ error: 'failed', message: error.message });
+  }
+});
+
+adminRouter.post('/api/admin/significance-marks', authMiddleware, async (req, res) => {
+  try {
+    // Иконка — загруженная картинка: конвертируем в WebP, как обложки.
+    if (req.body?.icon) {
+      req.body.icon = await convertImageToWebP(req.body.icon);
+    }
+    const payload = await validateSignificanceMarkPayload(req.body);
+    const mark = createSignificanceMark(payload);
+    res.status(201).json(mark);
+  } catch (error) {
+    if (error.status === 400) {
+      return res.status(400).json({ error: error.message });
+    }
+    console.error('[admin] Significance mark create error:', error);
+    res.status(500).json({ error: 'failed', message: error.message });
+  }
+});
+
+adminRouter.put('/api/admin/significance-marks/:id', authMiddleware, async (req, res) => {
+  try {
+    const existing = getSignificanceMark(req.params.id);
+    if (!existing) {
+      return res.status(404).json({ error: 'not_found' });
+    }
+    // Новая иконка приходит как data-URL — конвертируем; уже сохранённая
+    // WebP-иконка проходит convertImageToWebP без изменений.
+    if (req.body?.icon) {
+      req.body.icon = await convertImageToWebP(req.body.icon);
+    }
+    const payload = await validateSignificanceMarkPayload(req.body, { partial: true });
+    const mark = updateSignificanceMark(req.params.id, payload);
+    res.json(mark);
+  } catch (error) {
+    if (error.status === 400) {
+      return res.status(400).json({ error: error.message });
+    }
+    console.error('[admin] Significance mark update error:', error);
+    res.status(500).json({ error: 'failed', message: error.message });
+  }
+});
+
+adminRouter.delete('/api/admin/significance-marks/:id', authMiddleware, (req, res) => {
+  try {
+    const deleted = deleteSignificanceMark(req.params.id);
+    if (!deleted) {
+      return res.status(404).json({ error: 'not_found' });
+    }
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('[admin] Significance mark delete error:', error);
+    res.status(500).json({ error: 'failed', message: error.message });
+  }
+});

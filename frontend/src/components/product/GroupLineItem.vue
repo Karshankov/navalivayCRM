@@ -59,6 +59,12 @@
       </span>
     </button>
 
+    <!-- Пометка значимости: под шапкой линейки, вне кнопки-заголовка —
+        своя кнопка «Подробнее» не сворачивает линейку. -->
+    <div v-if="node.mark" class="group-line-mark-wrapper">
+      <SignificanceMark :mark="node.mark" />
+    </div>
+
     <Transition
       :css="false"
       @before-enter="onBeforeEnter"
@@ -124,6 +130,7 @@ import {
 } from "vue";
 import GroupReviewsModal from "@/components/reviews/GroupReviewsModal.vue";
 import ReviewRatingLink from "@/components/reviews/ReviewRatingLink.vue";
+import SignificanceMark from "@/components/product/SignificanceMark.vue";
 import {
   isParentGroupLine,
   shouldShowGroupReviewSummary,
@@ -154,6 +161,7 @@ interface GroupNode {
   metaValue?: string | null;
   isNew?: boolean;
   newSince?: string | null;
+  mark?: import("@/stores/catalog").ProductMark | null;
   children: GroupNode[];
   products: Product[];
 }
@@ -175,6 +183,7 @@ const emit = defineEmits<{
 
 const catalogStore = useCatalogStore();
 const { fetchGroupReviewSummary } = useCustomerOrders();
+
 const bodyWrapper = ref<HTMLElement | null>(null);
 const reviewCount = ref(0);
 const averageRating = ref<number | null>(null);
@@ -824,5 +833,11 @@ onBeforeUnmount(() => {
     width: 11px;
     height: 11px;
   }
+}
+
+/* Пометка значимости: под шапкой линейки. Карточка уже даёт боковой
+   отступ 16px — добавляем только вертикальный, чтобы блок не слипался. */
+.group-line-mark-wrapper {
+  margin-top: 10px;
 }
 </style>

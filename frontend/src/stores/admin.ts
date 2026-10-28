@@ -151,6 +151,27 @@ export interface WholesaleLink {
   missingGroupCount: number
 }
 
+/** Пометка значимости линейки: ярлык + блок в мини-аппе + сообщение после выдачи. */
+export interface SignificanceMark {
+  id: string
+  code: string
+  title: string
+  description: string | null
+  /** Заметка для менеджеров: различать одинаковые пометки. Клиенту не видна. */
+  adminNote: string | null
+  icon: string
+  color: string
+  detailTitle: string | null
+  detailBody: string | null
+  detailButtonText: string | null
+  detailUrl: string | null
+  notifyText: string | null
+  active: boolean
+  sortOrder: number
+  createdAt?: string
+  updatedAt?: string
+}
+
 export interface CategoryGroup {
   id: string
   categoryId: string
@@ -175,6 +196,7 @@ export interface CategoryGroup {
   waiveWholesale?: boolean
   waiveStrengthTier?: boolean
   strengthTier?: string | null
+  significanceMarkId?: string | null
   pos_publication?: PosPublication | null
   /** То же значение в camelCase: так его отдаёт форма линейки. */
   posPublication?: PosPublication | null
@@ -267,6 +289,8 @@ export const useAdminStore = defineStore('admin', () => {
   const currentProduct = ref<Product | null>(null)
   const categoryGroups = ref<CategoryGroup[]>([])
   const availableProductGroups = ref<Array<{ id: string; name: string; categoryId: string; hasStock?: number }>>([])
+  // Пометки значимости линеек: настраиваются в Настройках, ставятся в форме линейки.
+  const significanceMarks = ref<SignificanceMark[]>([])
   const categoryCrossSells = ref<Record<string, Product[]>>({})
   const wholesaleLinks = ref<WholesaleLink[]>([])
   const settings = ref<Record<string, string>>({})
@@ -774,6 +798,84 @@ export const useAdminStore = defineStore('admin', () => {
     })
   }
 
+  // ---- Пометки значимости линеек ------------------------------------------
+
+  /** Список пометок: для формы линейки и секции настроек. */
+  async function fetchSignificanceMarks() {
+    const response = await $fetch<{ items: SignificanceMark[] }>('/api/admin/significance-marks', {
+      headers: getAuthHeaders(),
+    })
+    significanceMarks.value = response.items
+    return response.items
+  }
+
+  async function createSignificanceMark(payload: {
+    title: string
+    description?: string | null
+    adminNote?: string | null
+    icon: string
+    color: string
+    detailTitle?: string | null
+    detailBody?: string | null
+    detailButtonText?: string | null
+    detailUrl?: string | null
+    notifyText?: string | null
+    active?: boolean
+    sortOrder?: number
+  }) {
+    const created = await $fetch<SignificanceMark>('/api/admin/significance-marks', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: payload,
+    })
+    significanceMarks.value = [...significanceMarks.value, created]
+      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+    return created
+  }
+
+  async function updateSignificanceMark(id: string, payload: Partial<{
+    title: string
+    description: string | null
+    adminNote?: string | null
+    icon: string
+    color: string
+    detailTitle: string | null
+    detailBody: string | null
+    detailButtonText: string | null
+    detailUrl: string | null
+    notifyText: string | null
+    active: boolean
+    sortOrder: number
+  }>) {
+    const updated = await $fetch<SignificanceMark>(`/api/admin/significance-marks/${id}`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: payload,
+    })
+    const idx = significanceMarks.value.findIndex((mark) => mark.id === id)
+    if (idx !== -1) {
+      significanceMarks.value = [
+        ...significanceMarks.value.slice(0, idx),
+        updated,
+        ...significanceMarks.value.slice(idx + 1),
+      ]
+    }
+    return updated
+  }
+
+  async function deleteSignificanceMark(id: string) {
+    await $fetch(`/api/admin/significance-marks/${id}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    })
+    significanceMarks.value = significanceMarks.value.filter((mark) => mark.id !== id)
+    // Пометка снята со всех линеек на сервере (ON DELETE SET NULL) —
+    // отражаем это и в локальном состоянии.
+    categoryGroups.value = categoryGroups.value.map((group) =>
+      group.significanceMarkId === id ? { ...group, significanceMarkId: null } : group,
+    )
+  }
+
 async function createCategory(category: {
     name: string
     hideEmpty?: boolean
@@ -996,6 +1098,7 @@ async function createCategory(category: {
         waiveWholesale: Boolean(group.waiveWholesale ?? group.waive_wholesale),
         waiveStrengthTier: Boolean(group.waiveStrengthTier ?? group.waive_strength_tier),
         strengthTier: group.strengthTier ?? group.strength_tier ?? null,
+        significanceMarkId: group.significance_mark_id ?? null,
       })) as CategoryGroup[]
 
       if (categoryId) {
@@ -1125,7 +1228,7 @@ async function createCategory(category: {
     }
   }
 
-  async function createCategoryGroup(payload: { categoryId: string; name: string; slug?: string; coverImage?: string | null; hideEmpty?: boolean; parentId?: string | null; metaLabel?: string | null; metaValue?: string | null; minStockThreshold?: number | null; totalControl?: boolean; isNew?: boolean; newDays?: number; wholesalePrices?: Record<string, number | null>; waiveDescription?: boolean; waiveMinStock?: boolean; waiveWholesale?: boolean; waiveStrengthTier?: boolean; strengthTier?: string | null; posPublication?: PosPublication }) {
+  async function createCategoryGroup(payload: { categoryId: string; name: string; slug?: string; coverImage?: string | null; hideEmpty?: boolean; parentId?: string | null; metaLabel?: string | null; metaValue?: string | null; minStockThreshold?: number | null; totalControl?: boolean; isNew?: boolean; newDays?: number; wholesalePrices?: Record<string, number | null>; waiveDescription?: boolean; waiveMinStock?: boolean; waiveWholesale?: boolean; waiveStrengthTier?: boolean; strengthTier?: string | null; significanceMarkId?: string | null; posPublication?: PosPublication }) {
     try {
       isLoading.value = true
       error.value = null
@@ -1152,6 +1255,7 @@ async function createCategory(category: {
           waiveWholesale: payload.waiveWholesale ?? false,
           waiveStrengthTier: payload.waiveStrengthTier ?? false,
           strengthTier: payload.strengthTier ?? null,
+          significanceMarkId: payload.significanceMarkId ?? null,
           pos_publication: payload.posPublication ?? undefined,
         }
       })
@@ -1179,6 +1283,7 @@ async function createCategory(category: {
         waiveWholesale: Boolean(response.waiveWholesale ?? response.waive_wholesale),
         waiveStrengthTier: Boolean(response.waiveStrengthTier ?? response.waive_strength_tier),
         strengthTier: response.strengthTier ?? response.strength_tier ?? null,
+        significanceMarkId: response.significance_mark_id ?? null,
         pos_publication: response.pos_publication ?? response.posPublication ?? null,
         createdAt: response.createdAt,
         updatedAt: response.updatedAt,
@@ -1242,6 +1347,8 @@ async function createCategory(category: {
       if ('waiveStrengthTier' in updates) body.waiveStrengthTier = updates.waiveStrengthTier
       if ('strengthTier' in updates) body.strengthTier = updates.strengthTier ?? null
       if ('posPublication' in updates) body.pos_publication = updates.posPublication ?? undefined
+      // Пометка значимости: ключ только при намеренном изменении (вкл. null — снять).
+      if ('significanceMarkId' in updates) body.significanceMarkId = updates.significanceMarkId ?? null
 
       const response = await $fetch<Record<string, any>>(`/api/admin/category-groups/${id}`, {
         method: 'PUT',
@@ -1291,6 +1398,11 @@ async function createCategory(category: {
         waiveWholesale: Boolean(response.waiveWholesale ?? response.waive_wholesale ?? existing?.waiveWholesale),
         waiveStrengthTier: Boolean(response.waiveStrengthTier ?? response.waive_strength_tier ?? existing?.waiveStrengthTier),
         strengthTier: response.strengthTier ?? response.strength_tier ?? existing?.strengthTier ?? null,
+        // Пометка могла быть снята на сервере в другой сессии (FK SET NULL):
+        // отличаем «поля нет в ответе» от «поля нет, потому что снята».
+        significanceMarkId: 'significance_mark_id' in response
+          ? response.significance_mark_id ?? null
+          : existing?.significanceMarkId ?? null,
         pos_publication: response.pos_publication ?? response.posPublication ?? existing?.pos_publication ?? null,
       }
 
@@ -2156,6 +2268,11 @@ async function createCategory(category: {
     // Category methods
     fetchCategories,
     fetchInventoryCheckPreview,
+    significanceMarks,
+    fetchSignificanceMarks,
+    createSignificanceMark,
+    updateSignificanceMark,
+    deleteSignificanceMark,
     createInventoryCheck,
     fetchCategory,
     fetchCategoryImage,

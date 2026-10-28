@@ -73,6 +73,11 @@
             @slide-change="currentSlide = $event"
           />
 
+          <!-- Пометка значимости линейки -->
+          <div v-if="product.mark" class="px-4 pt-4">
+            <SignificanceMark :mark="product.mark" />
+          </div>
+
           <!-- Variants Selector Mobile -->
           <div v-if="hasVariants && availableVariants.length" class="px-4 py-4 bg-white border-b border-gray-100">
             <h3 class="text-sm font-medium text-gray-700 mb-3">Выберите цвет: {{ selectedVariant?.name }}</h3>
@@ -240,6 +245,9 @@
                   <h1 class="text-4xl font-display font-medium text-brand-dark mb-4 leading-tight">
                     {{ product.title }}
                   </h1>
+
+                  <!-- Пометка значимости линейки -->
+                  <SignificanceMark v-if="product.mark" :mark="product.mark" class="mb-6" />
 
                   <!-- Category -->
                   <div class="mb-6 flex flex-wrap items-center gap-2">
@@ -448,6 +456,7 @@ import { useWholesaleStore } from '@/stores/wholesale'
 
 // Import new components
 import ProductHero from '@/components/product/ProductHero.vue'
+import SignificanceMark from '@/components/product/SignificanceMark.vue'
 import ProductInfo from '@/components/product/ProductInfo.vue'
 import PurchaseModal from '@/components/PurchaseModal.vue'
 

@@ -23,6 +23,7 @@ import { remindersRouter } from './routes/reminders.js';
 import { archiveOldDeliveredOrders, scheduleArchiving } from './cleanup-delivered-orders.js';
 import { scheduleReviewMonthlyDraw } from './utils/schedule-review-monthly-draw.js';
 import { startAutoNotifyRetryWorker } from './utils/auto-notify-retry.js';
+import { startSignificanceNotifyWorker } from './utils/significance-notify.js';
 import { startReferralWelcomeNotificationWorker } from './utils/referral-welcome-notify.js';
 import { startInternalNotificationWorker } from './utils/internal-notification-worker.js';
 import { startSalaryReminderScheduler } from './utils/salary-reminder-scheduler.js';
@@ -103,6 +104,8 @@ scheduleReviewMonthlyDraw();
 
 // Повтор авто-уведомлений при временной недоступности userbot
 startAutoNotifyRetryWorker();
+// Отложенные сообщения по пометкам значимости (10 минут после выдачи).
+startSignificanceNotifyWorker();
 startReferralWelcomeNotificationWorker();
 startInternalNotificationWorker(db);
 startSalaryReminderScheduler(db);

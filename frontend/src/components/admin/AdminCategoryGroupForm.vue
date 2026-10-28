@@ -51,6 +51,62 @@
       <p class="mt-1 text-xs text-gray-500">Показывается на витрине как единая строка</p>
     </div>
 
+    <!-- Пометка значимости: настраивается в Настройках, здесь только выбор. -->
+    <div v-if="marksLoading" class="space-y-2">
+      <label class="block text-sm font-medium text-gray-700 mb-2">Пометка значимости</label>
+      <p class="text-xs text-gray-400">Загружаем список пометок…</p>
+    </div>
+    <div v-else-if="selectableMarks.length" class="space-y-2">
+      <label class="block text-sm font-medium text-gray-700 mb-2">Пометка значимости</label>
+      <div class="flex flex-col gap-2">
+        <label
+          class="flex cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 text-sm transition"
+          :class="!form.significanceMarkId
+            ? 'border-brand-dark bg-brand-dark/5 text-gray-900'
+            : 'border-gray-200 text-gray-700 hover:border-gray-300'"
+        >
+          <input
+            v-model="form.significanceMarkId"
+            type="radio"
+            value=""
+            class="text-brand-dark focus:ring-brand-dark/30"
+          />
+          <span>Без пометки</span>
+        </label>
+        <label
+          v-for="mark in selectableMarks"
+          :key="mark.id"
+          class="flex cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 text-sm transition"
+          :class="form.significanceMarkId === mark.id
+            ? 'border-brand-dark bg-brand-dark/5 text-gray-900'
+            : 'border-gray-200 text-gray-700 hover:border-gray-300'"
+        >
+          <input
+            v-model="form.significanceMarkId"
+            type="radio"
+            :value="mark.id"
+            class="text-brand-dark focus:ring-brand-dark/30"
+          />
+          <span
+            class="h-3.5 w-3.5 shrink-0 rounded-full"
+            :style="{ background: mark.color }"
+            aria-hidden="true"
+          />
+          <span class="min-w-0 flex-1 truncate">{{ mark.title }}</span>
+          <span
+            v-if="mark.adminNote"
+            class="ml-1 shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700"
+          >
+            {{ mark.adminNote }}
+          </span>
+        </label>
+      </div>
+      <p class="text-xs text-gray-500">
+        Блок с иконкой и описанием появится в карточке товара в мини-аппе; после выдачи заказа
+        клиент получит сообщение этой пометки.
+      </p>
+    </div>
+
     <div>
       <label class="block text-sm font-medium text-gray-700 mb-2">Минимальный остаток</label>
       <input
@@ -429,6 +485,7 @@
 <script setup lang="ts">
 import { reactive, ref, watch, computed } from 'vue'
 import PosPublicationField, { type PosPublicationValue } from './PosPublicationField.vue'
+import { useAdminStore, type SignificanceMark } from '@/stores/admin'
 
 /** Срок плашки по умолчанию, столько же стоит на сервере. */
 /** Цена скидки: пустое поле и мусор означают «скидки нет». */
@@ -466,6 +523,7 @@ interface CategoryGroup {
   waiveWholesale?: boolean
   waiveStrengthTier?: boolean
   strengthTier?: string | null
+  significanceMarkId?: string | null
   depth?: number
   averageCostAuto?: number | null
   directProductCount?: number
@@ -492,9 +550,65 @@ const props = withDefaults(defineProps<{ editingGroup?: CategoryGroup | null; is
 })
 
 const emit = defineEmits<{
-  (e: 'submit', payload: { name: string; coverImage?: string | null; hideEmpty?: boolean; parentId?: string | null; metaLabel?: string | null; metaValue?: string | null; minStockThreshold?: number | null; totalControl?: boolean; isNew?: boolean; newDays?: number; discount?: { price: number | null; untilDate: string | null }; wholesalePrices?: Record<string, number | null>; waiveDescription?: boolean; waiveMinStock?: boolean; waiveWholesale?: boolean; waiveStrengthTier?: boolean; strengthTier?: string | null; posPublication?: PosPublicationValue }): void
+  (e: 'submit', payload: { name: string; coverImage?: string | null; hideEmpty?: boolean; parentId?: string | null; metaLabel?: string | null; metaValue?: string | null; minStockThreshold?: number | null; totalControl?: boolean; isNew?: boolean; newDays?: number; discount?: { price: number | null; untilDate: string | null }; wholesalePrices?: Record<string, number | null>; waiveDescription?: boolean; waiveMinStock?: boolean; waiveWholesale?: boolean; waiveStrengthTier?: boolean; strengthTier?: string | null; significanceMarkId?: string | null; posPublication?: PosPublicationValue }): void
   (e: 'cancel'): void
 }>()
+
+const adminStore = useAdminStore()
+
+const significanceMarks = computed<SignificanceMark[]>(() => adminStore.significanceMarks)
+// Пометки нужны форме сразу, а грузятся они в Настройках: если список пуст —
+// подтягиваем молча (в списке может не быть выключенных пометок — ниже
+// добавляем текущую вручную).
+const marksLoading = ref(false)
+if (!significanceMarks.value.length) {
+  marksLoading.value = true
+  void adminStore.fetchSignificanceMarks()
+    .catch(() => {})
+    .finally(() => { marksLoading.value = false })
+}
+
+/**
+ * Список для селекта: активные пометки + текущая пометка линейки, даже если
+ * она выключена или удалена из Настроек — иначе radio «ничего не выбрано»
+ * молча отправил бы серверу старый id.
+ */
+const selectableMarks = computed<SignificanceMark[]>(() => {
+  const active = significanceMarks.value.filter((mark) => mark.active)
+  const currentId = form.significanceMarkId
+  if (!currentId) return active
+  const exists = active.some((mark) => mark.id === currentId)
+  if (exists) return active
+  const current = significanceMarks.value.find((mark) => mark.id === currentId)
+  if (current) {
+    return [
+      ...active,
+      { ...current, active: false },
+    ]
+  }
+  // Пометка удалена в другой сессии: показываем заглушку, чтобы пользователь
+  // видел, что она ещё «висит», и мог снять её явно.
+  if (!props.editingGroup) return active
+  return [
+    ...active,
+    {
+      id: currentId,
+      code: '',
+      title: 'Пометка недоступна (удалена)',
+      description: null,
+      adminNote: null,
+      icon: 'heart',
+      color: '#9ca3af',
+      detailTitle: null,
+      detailBody: null,
+      detailButtonText: null,
+      detailUrl: null,
+      notifyText: null,
+      active: false,
+      sortOrder: 0,
+    },
+  ]
+})
 
 const form = reactive({
   name: '',
@@ -503,6 +617,7 @@ const form = reactive({
   parentId: '',
   metaValue: '',
   minStockThreshold: '',
+  significanceMarkId: '',
   totalControl: false,
   isNew: false,
   newDays: '30',
@@ -612,6 +727,7 @@ watch(
       form.waiveWholesale = Boolean(group.waiveWholesale)
       form.waiveStrengthTier = Boolean(group.waiveStrengthTier)
       form.strengthTier = group.strengthTier || ''
+      form.significanceMarkId = group.significanceMarkId || ''
       posPublication.value = (group as any).pos_publication ?? null
       syncWholesalePriceInputs(group)
       if ((group.coverImage || '').startsWith('data:')) {
@@ -640,6 +756,7 @@ watch(
       form.waiveWholesale = false
       form.waiveStrengthTier = false
       form.strengthTier = ''
+      form.significanceMarkId = ''
       posPublication.value = null
       syncWholesalePriceInputs(null)
       coverMode.value = 'url'
@@ -770,6 +887,7 @@ function onSubmit() {
     waiveWholesale: form.waiveWholesale,
     waiveStrengthTier: form.waiveStrengthTier,
     strengthTier: form.strengthTier ? form.strengthTier : null,
+    significanceMarkId: form.significanceMarkId || null,
     posPublication: posPublication.value ?? undefined,
   })
 }

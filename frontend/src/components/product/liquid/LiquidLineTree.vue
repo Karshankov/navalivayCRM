@@ -12,6 +12,7 @@
       :is-new="group.isNew ?? false"
       :meta-label="group.metaLabel ?? null"
       :meta-value="group.metaValue ?? null"
+      :mark="group.mark ?? null"
       :subgroups="group.children"
       :expanded="isExpanded"
       :top-rank="topRank"
@@ -62,7 +63,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref } from "vue";
 import LiquidLineCard from "./LiquidLineCard.vue";
-import type { Product } from "@/stores/catalog";
+import type { Product, ProductMark } from "@/stores/catalog";
 
 interface LiquidGroup {
   id: string;
@@ -79,6 +80,7 @@ interface LiquidGroup {
   strengthTier?: string | null;
   isNew?: boolean;
   newSince?: string | null;
+  mark?: ProductMark | null;
   children: LiquidGroup[];
 }
 

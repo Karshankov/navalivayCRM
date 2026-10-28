@@ -47,6 +47,7 @@ import { migratePosSales } from './migrations/add_pos_sales.js';
 import { migratePosSaleTransactionLink } from './migrations/add_pos_sale_transaction_link.js';
 import { migratePosChecks } from './migrations/add_pos_checks.js';
 import { migrateInventoryChecks } from './migrations/add_inventory_checks.js';
+import { migrateSignificanceMarks } from './migrations/add_significance_marks.js';
 import { migrateManagerActionFields } from './migrations/add_manager_action_fields.js';
 import { migrateCustomerPhoto } from './migrations/add_customer_photo.js';
 import { migratePromoCodes } from './migrations/add_promo_codes.js';
@@ -246,6 +247,9 @@ export function initDb() {
   // Пересорт линейки: правит остатки без денежных проводок, история в
   // inventory_checks. Зависит только от products/product_variants.
   migrateInventoryChecks();
+  // Пометки значимости линеек и очередь сообщений после выдачи. Зависит от
+  // category_groups; очередь от orders/order_items на уровне запросов.
+  migrateSignificanceMarks();
   migrateWholesalePricing();
   migrateWholesaleQuantityTiers();
   migrateCrmPerformanceIndexes();

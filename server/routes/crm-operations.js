@@ -30,6 +30,10 @@ import {
   autoNotifyForStatusChange,
   autoNotifyOrderAcceptedAfterRecipientWarmup,
 } from "../utils/auto-notify.js";
+import {
+  scheduleSignificanceNotifications,
+  cancelPendingSignificanceNotifications,
+} from "../utils/significance-notify.js";
 import { buildCrmOrderPollSummary } from "../utils/crm-order-polling.js";
 import { buildCrmOrdersSearch } from "../utils/crm-order-search.js";
 import {
@@ -2112,6 +2116,18 @@ crmOperationsRouter.patch(
           }).catch((notifyErr) => {
             console.error("[crm] deferred auto-notify error:", notifyErr);
           });
+          // Пометки значимости: выдача заказа ставит отложенные сообщения,
+          // откат из выданных — отменяет их. Ошибки планирования не должны
+          // ломать авто-уведомления выше.
+          try {
+            if (["completed", "delivered"].includes(updated.status)) {
+              scheduleSignificanceNotifications(id);
+            } else {
+              cancelPendingSignificanceNotifications(id);
+            }
+          } catch (significanceErr) {
+            console.error("[crm] significance notify schedule error:", significanceErr);
+          }
         });
       }
     } catch (error) {
@@ -2631,6 +2647,16 @@ crmOperationsRouter.post(
           }).catch((notifyErr) => {
             console.error("[crm] deferred /issue auto-notify error:", notifyErr);
           });
+          // Пометки значимости: выдача через /issue тоже ставит сообщение.
+          try {
+            if (["completed", "delivered"].includes(updatedOrder.status)) {
+              scheduleSignificanceNotifications(id);
+            } else {
+              cancelPendingSignificanceNotifications(id);
+            }
+          } catch (significanceErr) {
+            console.error("[crm] significance notify schedule error:", significanceErr);
+          }
         });
       }
     } catch (error) {
@@ -2746,6 +2772,18 @@ crmOperationsRouter.delete(
         // Старый собранный заказ без истории ячеек остаётся legacy-заказом.
         if (restoredStatus === "in_progress" && hadPickupCellHistory) {
           assignLowestAvailablePickupCell(id);
+        }
+
+        // Пометки значимости: снятие оплаты откатывает выдачу — отложенные
+        // сообщения по этому заказу отменяем (иначе висят до истечения
+        // задержки, хотя отправка всё равно не прошла бы из-за проверки
+        // статуса при отправке).
+        if (!["completed", "delivered"].includes(restoredStatus)) {
+          try {
+            cancelPendingSignificanceNotifications(id);
+          } catch (significanceErr) {
+            console.error("[crm] significance notify cancel error:", significanceErr);
+          }
         }
 
         if (freshOrder.promo_code_id) {

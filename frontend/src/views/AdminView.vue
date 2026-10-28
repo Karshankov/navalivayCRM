@@ -845,6 +845,7 @@
               </section>
 
               <AdminAgreementsSection />
+              <AdminSignificanceMarksSection />
               <AdminBotSection />
             </div>
           </div>
@@ -1279,6 +1280,7 @@ import AdminWholesaleLinksPanel from '@/components/admin/AdminWholesaleLinksPane
 import IncompleteGroupsPanel from '@/components/admin/IncompleteGroupsPanel.vue'
 import AdminAgreementsSection from '@/components/admin/AdminAgreementsSection.vue'
 import AdminBotSection from '@/components/admin/AdminBotSection.vue'
+import AdminSignificanceMarksSection from '@/components/admin/AdminSignificanceMarksSection.vue'
 import CashierLockScreen from '@/components/admin/CashierLockScreen.vue'
 import ProfitAccessGate from '@/components/admin/ProfitAccessGate.vue'
 import '@/styles/crm-reference-page.css'
@@ -2915,7 +2917,7 @@ async function reloadProductsAfterDiscount() {
   })
 }
 
-async function handleGroupFormSubmit(payload: { name: string; slug?: string; coverImage?: string | null; hideEmpty?: boolean; parentId?: string | null; metaLabel?: string | null; metaValue?: string | null; minStockThreshold?: number | null; totalControl?: boolean; isNew?: boolean; newDays?: number; discount?: { price: number | null; untilDate: string | null }; wholesalePrices?: Record<string, number | null>; waiveDescription?: boolean; waiveMinStock?: boolean; waiveWholesale?: boolean; waiveStrengthTier?: boolean; strengthTier?: string | null; posPublication?: any }) {
+async function handleGroupFormSubmit(payload: { name: string; slug?: string; coverImage?: string | null; hideEmpty?: boolean; parentId?: string | null; metaLabel?: string | null; metaValue?: string | null; minStockThreshold?: number | null; totalControl?: boolean; isNew?: boolean; newDays?: number; discount?: { price: number | null; untilDate: string | null }; wholesalePrices?: Record<string, number | null>; waiveDescription?: boolean; waiveMinStock?: boolean; waiveWholesale?: boolean; waiveStrengthTier?: boolean; strengthTier?: string | null; significanceMarkId?: string | null; posPublication?: any }) {
   const categoryId = groupFormCategoryId.value || activeGroupCategory.value?.id || null
   if (!categoryId) {
     showToast('Сначала выберите категорию', 'error')
@@ -2951,6 +2953,7 @@ async function handleGroupFormSubmit(payload: { name: string; slug?: string; cov
         waiveWholesale: payload.waiveWholesale,
         waiveStrengthTier: payload.waiveStrengthTier,
         strengthTier: payload.strengthTier ?? null,
+        significanceMarkId: payload.significanceMarkId ?? null,
         posPublication: payload.posPublication,
       })
       showToast('Линейка обновлена', 'success')
@@ -2967,6 +2970,7 @@ async function handleGroupFormSubmit(payload: { name: string; slug?: string; cov
         minStockThreshold: payload.minStockThreshold ?? null,
         totalControl: payload.totalControl ?? false,
         isNew: payload.isNew ?? false,
+        significanceMarkId: payload.significanceMarkId ?? null,
         ...(payload.newDays !== undefined ? { newDays: payload.newDays } : {}),
         wholesalePrices: payload.wholesalePrices ?? {},
         waiveDescription: payload.waiveDescription,
