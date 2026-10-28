@@ -203,25 +203,82 @@ function insertPromoBlock() {
   syncValue()
 }
 
-/** Изменение размера картинки: клик по картинке выделяет её, кнопки меняют ширину. */
+/**
+ * Изменение размера картинки: клик по картинке выделяет её, клик мимо —
+ * снимает выделение (иначе оно «залипало» навсегда).
+ */
 function onImageClick(event: MouseEvent) {
   const target = event.target as HTMLElement
-  if (target.tagName !== 'IMG') return
+  if (target.tagName !== 'IMG') {
+    clearImageSelection()
+    return
+  }
   editorEl.value?.querySelectorAll('img.rich-editor__img-selected').forEach((el) => {
     el.classList.remove('rich-editor__img-selected')
   })
   target.classList.add('rich-editor__img-selected')
 }
 
+function clearImageSelection() {
+  editorEl.value?.querySelectorAll('img.rich-editor__img-selected').forEach((el) => {
+    el.classList.remove('rich-editor__img-selected')
+  })
+}
+
+/**
+ * Рядом ли каретка с выделенной картинкой: удаление сработает только тогда,
+ * а не при любом Backspace во время набора текста в другом месте.
+ */
+function isCaretAdjacentTo(selected: HTMLElement): boolean {
+  const sel = window.getSelection()
+  if (!sel || sel.rangeCount === 0) return false
+  const range = sel.getRangeAt(0)
+  const container = range.startContainer
+  const element = container.nodeType === Node.TEXT_NODE ? container.parentElement : (container as HTMLElement)
+  if (!element || !editorEl.value?.contains(element)) return false
+
+  // Клик по картинке ставит каретку в неё или рядом — считаем соседством.
+  if (selected.contains(element)) return true
+  // Каретка в тексте сразу после картинки.
+  if (element.previousElementSibling === selected) return true
+  // Каретка в тексте сразу перед картинкой.
+  if (element.nextElementSibling === selected) return true
+  // Каретка в том же абзаце, что и картинка, без текста между ними.
+  if (element.parentElement === selected.parentElement) {
+    const nodes = Array.from(element.parentElement?.children || [])
+    const between = nodes.slice(
+      Math.min(nodes.indexOf(element), nodes.indexOf(selected)) + 1,
+      Math.max(nodes.indexOf(element), nodes.indexOf(selected)),
+    )
+    if (between.length === 0) return true
+    const hasText = between.some((n) => (n.textContent || '').trim().length > 0)
+    if (!hasText) return true
+  }
+  return false
+}
+
 function onEditorKeydown(event: KeyboardEvent) {
-  // Delete/Backspace удаляет выделенную картинку.
+  if (event.key !== 'Delete' && event.key !== 'Backspace') return
   const selected = editorEl.value?.querySelector('img.rich-editor__img-selected')
   if (!selected) return
-  if (event.key === 'Delete' || event.key === 'Backspace') {
-    event.preventDefault()
-    selected.remove()
-    syncValue()
+
+  const sel = window.getSelection()
+  // Есть текстовое выделение — это работа с текстом, картинку не трогаем.
+  if (sel && !sel.isCollapsed) {
+    clearImageSelection()
+    return
   }
+
+  // Каретка не рядом с картинкой — Backspace работает по тексту как обычно.
+  if (!isCaretAdjacentTo(selected as HTMLElement)) {
+    // Снимаем выделение картинки: набор текста не должен удалять её.
+    clearImageSelection()
+    return
+  }
+
+  event.preventDefault()
+  selected.remove()
+  syncValue()
 }
 
 function resizeSelectedImage(percent: number) {
