@@ -150,6 +150,7 @@ export function createBlock({
   reason,
   blocked_by,
   block_type = 'delivery',
+  replace = false,
 }) {
   // Сценарий 1: явный customer_id
   if (customer_id) {
@@ -167,6 +168,7 @@ export function createBlock({
       reason,
       blocked_by,
       block_type,
+      replace,
     });
   }
 
@@ -189,6 +191,7 @@ export function createBlock({
       reason,
       blocked_by,
       block_type,
+      replace,
     });
   }
 
@@ -217,9 +220,10 @@ function generateBlockId() {
  *     успеет первым, наш INSERT упадёт с SQLITE_CONSTRAINT — мы это
  *     ловим и возвращаем `already_blocked` с текущим существующим блоком.
  */
-function insertCustomerBlock({ customer_id, block_until, reason, blocked_by, block_type = 'delivery' }) {
+function insertCustomerBlock({ customer_id, block_until, reason, blocked_by, block_type = 'delivery', replace = false }) {
   const customerIdStr = String(customer_id);
   let inserted = null;
+  let replacedBlockId = null;
 
   const tx = db.transaction(() => {
     // Pavel 11.05.2026: «блокировка снялась, но повторно заблокать не могу».
@@ -245,10 +249,24 @@ function insertCustomerBlock({ customer_id, block_until, reason, blocked_by, blo
 
     const existing = getActiveBlockForCustomerId(customerIdStr);
     if (existing) {
-      const err = new Error('already_blocked');
-      err.code = 'already_blocked';
-      err.existing = existing;
-      throw err;
+      // Перебан без ручной разблокировки: старый блок гасим с пометкой
+      // 'replaced', новый встаёт на его место в той же транзакции.
+      if (replace) {
+        db.prepare(
+          `UPDATE customer_blocks
+             SET active = 0,
+                 unblocked_at = DATETIME('now'),
+                 unblocked_by = ?,
+                 unblock_reason = 'replaced'
+           WHERE id = ? AND active = 1`,
+        ).run(blocked_by ?? 'admin', existing.id);
+        replacedBlockId = existing.id;
+      } else {
+        const err = new Error('already_blocked');
+        err.code = 'already_blocked';
+        err.existing = existing;
+        throw err;
+      }
     }
     const blockId = generateBlockId();
     db.prepare(
@@ -281,7 +299,7 @@ function insertCustomerBlock({ customer_id, block_until, reason, blocked_by, blo
     throw err;
   }
 
-  return { kind: 'active', block: inserted };
+  return { kind: 'active', block: inserted, replaced_block_id: replacedBlockId };
 }
 
 /**

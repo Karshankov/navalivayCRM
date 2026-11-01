@@ -292,6 +292,45 @@ describe('FinancialDayCloseModal', () => {
     expect(wrapper!.text()).toContain('588,00 BYN');
     expect(completeCalls()).toHaveLength(0);
   });
+  it('shows owner payout breakdown in notes: strictly small-to-large from counted notes', async () => {
+    // Прибыль 588, карта 100 → владельцу наличными 490 (после округления).
+    current.profit_minor = 58800;
+    setup(); await flushPromises();
+    await wrapper!.get('[data-test="close-terminal-cash"]').setValue('200');
+    await wrapper!.get('[data-test="close-terminal-card"]').setValue('100');
+    await wrapper!.get('form').trigger('submit');
+    // В кассе: 50 пятёрок, 20 десяток, 5 полтинников.
+    await wrapper!.get('#close-note-5').setValue('50');
+    await wrapper!.get('#close-note-10').setValue('20');
+    await wrapper!.get('#close-note-50').setValue('5');
+    await wrapper!.get('[data-test="close-coins"]').setValue('0');
+    await wrapper!.get('form').trigger('submit');
+
+    // Шаг распределения: подсказка раскладки присутствует.
+    const breakdown = wrapper!.get('[data-test="close-notes-breakdown"]');
+    // 490: пятёрки в приоритете — 50×5 (250), потом 20×10 (200) = 450;
+    // остаток 40 не набирается (мелочь исчерпана, 50 не делит 40).
+    const items = breakdown.findAll('.close-breakdown-list li');
+    expect(items.map((li) => li.get('.close-breakdown-quantity').text())).toEqual(['50 × 5', '20 × 10']);
+    expect(breakdown.get('.close-breakdown-total').text()).toContain('не хватает');
+    expect(completeCalls()).toHaveLength(0);
+  });
+  it('warns when counted notes cannot make the owner payout', async () => {
+    // Прибыль 588, карта 0 → владельцу 590 наличными, а в кассе только 2×5 и 1×10.
+    current.profit_minor = 58800;
+    setup(); await flushPromises();
+    await wrapper!.get('[data-test="close-terminal-cash"]').setValue('200');
+    await wrapper!.get('[data-test="close-terminal-card"]').setValue('0');
+    await wrapper!.get('form').trigger('submit');
+    await wrapper!.get('#close-note-5').setValue('2');
+    await wrapper!.get('#close-note-10').setValue('1');
+    await wrapper!.get('[data-test="close-coins"]').setValue('0');
+    await wrapper!.get('form').trigger('submit');
+
+    const breakdown = wrapper!.get('[data-test="close-notes-breakdown"]');
+    expect(breakdown.get('.close-breakdown-total').text()).toContain('не хватает');
+    expect(completeCalls()).toHaveLength(0);
+  });
   it('clears the default zero on focus for every note denomination', async () => {
     await openCashCountStep();
     for (const denomination of CLOSE_DENOMINATIONS) {

@@ -2317,8 +2317,15 @@ crmRouter.post('/api/admin/crm/blocks', authMiddleware, (req, res) => {
         block_until,
         reason: typeof reason === 'string' ? reason.trim() || null : null,
         blocked_by: req.user?.u || 'admin',
+        // Перебан без ручной разблокировки: активный блок заменяется новым.
+        replace: req.body?.replace === true,
       });
-      return res.json({ ok: true, kind: result.kind, block: serializeBlock(result.block, result.kind) });
+      return res.json({
+        ok: true,
+        kind: result.kind,
+        block: serializeBlock(result.block, result.kind),
+        replaced_block_id: result.replaced_block_id ?? null,
+      });
     } catch (err) {
       if (err.code === 'already_blocked') {
         return res.status(409).json({

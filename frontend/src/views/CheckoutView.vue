@@ -207,74 +207,54 @@
           </p>
         </div>
 
-        <div class="promo-card" :class="{ 'promo-card-applied': promoResult, 'promo-card-error': promoError, 'promo-card--frozen': discountBlocked }">
+        <!-- Промокод: вместо развёрнутого блока — компактная кнопка;
+             ввод переехал в модалку с предупреждением о блокировке. -->
+        <div class="promo-card" :class="{ 'promo-card-applied': promoResult, 'promo-card--frozen': discountBlocked }">
           <p v-if="discountBlocked" class="promo-frozen-notice" role="status">
             Скидки и ввод промокодов недоступны до {{ discountBlockedUntilLabel }}
           </p>
 
-          <label class="promo-label" for="checkout-promo-code">
-            {{ wholesaleStore.isWholesale ? 'Есть промокод на подарок?' : 'Есть промокод?' }}
-          </label>
-
-          <div v-if="!promoResult" class="promo-input-row">
-            <input
-              ref="promoInputRef"
-              id="checkout-promo-code"
-              v-model="promoCode"
-              type="text"
-              class="promo-input"
-              placeholder="Введите промокод"
-              enterkeyhint="done"
-              :disabled="promoValidating || discountBlocked"
-              :aria-describedby="promoError ? 'checkout-promo-error' : undefined"
-              @keydown.enter="handlePromoApply"
-              @input="promoError = ''"
-            />
-            <button
-              class="promo-apply-btn"
-              :disabled="!promoCode.trim() || promoValidating || discountBlocked"
-              @click="handlePromoApply"
-            >
-              {{ promoValidating ? '...' : 'Применить' }}
-            </button>
-          </div>
-
-          <div v-else class="promo-applied-row">
-            <div class="promo-applied-info">
-              <span class="promo-input-label">Промокод</span>
-              <div class="promo-code-display">
-                <span class="promo-code-text">{{ promoCode.toUpperCase() }}</span>
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                  <path d="M2 7L5.5 10.5L12 3.5" stroke="#34c759" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
+          <template v-else>
+            <!-- Применённый промокод: компактный чип с галочкой. -->
+            <div v-if="promoResult" class="promo-applied-row">
+              <div class="promo-applied-info">
+                <span class="promo-input-label">Промокод</span>
+                <div class="promo-code-display">
+                  <span class="promo-code-text">{{ promoCode.toUpperCase() }}</span>
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                    <path d="M2 7L5.5 10.5L12 3.5" stroke="#34c759" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </div>
               </div>
+              <button class="promo-cancel-btn" @click="handlePromoClear">Убрать</button>
             </div>
-            <button class="promo-cancel-btn" @click="handlePromoClear">Убрать</button>
-          </div>
-
-          <p
-            v-if="promoError"
-            id="checkout-promo-error"
-            class="promo-error-text"
-            role="alert"
-          >
-            {{ promoError }}
-          </p>
-
-          <p v-if="promoResult" class="promo-discount-text">
-            <template v-if="wholesaleStore.isWholesale">
-              Подарок будет добавлен к заказу
-              <template v-if="promoResult.customer_description || promoResult.description">
-                · {{ promoResult.customer_description || promoResult.description }}
+            <p v-if="promoResult" class="promo-discount-text">
+              <template v-if="wholesaleStore.isWholesale">
+                Подарок будет добавлен к заказу
+                <template v-if="promoResult.customer_description || promoResult.description">
+                  · {{ promoResult.customer_description || promoResult.description }}
+                </template>
               </template>
-            </template>
-            <template v-else>
-              Скидка: -{{ formatPrice(promoResult.calculated_discount) }} BYN
-              <template v-if="promoResult.customer_description || promoResult.description">
-                · {{ promoResult.customer_description || promoResult.description }}
+              <template v-else>
+                Скидка: -{{ formatPrice(promoResult.calculated_discount) }} BYN
+                <template v-if="promoResult.customer_description || promoResult.description">
+                  · {{ promoResult.customer_description || promoResult.description }}
+                </template>
               </template>
-            </template>
-          </p>
+            </p>
+
+            <!-- Кнопка ввода промокода — открывает модалку. -->
+            <button
+              v-else
+              type="button"
+              class="promo-open-btn"
+              data-test="promo-open-btn"
+              @click="openPromoModal"
+            >
+              <span class="promo-open-btn__icon" aria-hidden="true">%</span>
+              <span class="promo-open-btn__label">Ввести промокод</span>
+            </button>
+          </template>
         </div>
 
         <div v-if="!wholesaleStore.isWholesale && promoResult" class="summary-row">
@@ -677,6 +657,70 @@
       </template>
     </CustomerModalShell>
 
+    <!-- Модалка ввода промокода: поле + предупреждение о блокировке
+         скидочной системы в стиле плашки из каталога расходников. -->
+    <CustomerModalShell
+      :open="showPromoModal"
+      title="Ввести промокод"
+      close-label="Закрыть окно"
+      @close="closePromoModal"
+    >
+      <div class="checkout-modal-copy">
+        <div class="promo-modal-input-row">
+          <input
+            ref="promoInputRef"
+            id="checkout-promo-code"
+            v-model="promoCode"
+            type="text"
+            class="promo-input"
+            placeholder="Введите промокод"
+            enterkeyhint="done"
+            :disabled="promoValidating"
+            :aria-describedby="promoError ? 'checkout-promo-error' : undefined"
+            data-test="promo-modal-input"
+            @keydown.enter="handlePromoApply"
+            @input="promoError = ''"
+          />
+          <button
+            class="promo-apply-btn"
+            :disabled="!promoCode.trim() || promoValidating"
+            data-test="promo-modal-apply"
+            @click="handlePromoApply"
+          >
+            {{ promoValidating ? '...' : 'Применить' }}
+          </button>
+        </div>
+        <p
+          v-if="promoError"
+          id="checkout-promo-error"
+          class="promo-error-text"
+          role="alert"
+        >
+          {{ promoError }}
+        </p>
+
+        <!-- Предупреждение в оформлении CompatibilityNotice (каталог
+             расходников): красный градиентный квадрат с треугольником,
+             белый фон карточки, cqw-пропорции. -->
+        <div class="promo-warning" role="alert">
+          <div class="promo-warning__card">
+            <div class="promo-warning__icon" aria-hidden="true">
+              <svg viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M60 15Q64 8 68 15L118 104Q122 112 113 112H15Q6 112 10 104Z"
+                  stroke="white" stroke-width="7.5" stroke-linecap="round" stroke-linejoin="round" />
+                <path d="M64 48V76" stroke="white" stroke-width="9" stroke-linecap="round" />
+                <circle cx="64" cy="93" r="5" fill="white" />
+              </svg>
+            </div>
+            <div class="promo-warning__content">
+              <h3 class="promo-warning__title">Внимание</h3>
+              <p class="promo-warning__text">За неправильное использование промокода Вы можете получить блокировку скидочной системы</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </CustomerModalShell>
+
     <CustomerModalShell
       :open="showUsernameRequiredModal"
       title="Нужен Telegram username"
@@ -744,7 +788,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, watch } from "vue";
+import { ref, reactive, computed, onMounted, watch, nextTick } from "vue";
 import { useRouter } from "vue-router";
 import { useCartStore } from "@/stores/cart";
 import { useCatalogStore } from "@/stores/catalog";
@@ -823,6 +867,24 @@ const promoResult = ref<{
 } | null>(null);
 const promoError = ref("");
 const promoInputRef = ref<HTMLInputElement | null>(null);
+/** Модалка ввода промокода (кнопка «Ввести промокод» на карточке). */
+const showPromoModal = ref(false);
+
+function openPromoModal() {
+  if (discountBlocked.value) return;
+  promoError.value = '';
+  showPromoModal.value = true;
+  // Фокус в поле ввода после появления модалки.
+  nextTick(() => {
+    promoInputRef.value?.focus();
+  });
+}
+
+function closePromoModal() {
+  if (promoValidating.value) return;
+  showPromoModal.value = false;
+  promoError.value = '';
+}
 const telegramUser = ref<TelegramMiniAppUser | null>(null);
 const showUsernameRequiredModal = ref(false);
 // Окно «Лимит превышен» при изменении карточного заказа: сервер отклонил
@@ -1263,6 +1325,9 @@ async function handlePromoApply() {
       if (isEditingOrder.value) {
         cartStore.setEditingPromoCode(code);
       }
+      // Промокод применён — модалку ввода закрываем: на карточке
+      // останется компактный чип с кодом.
+      showPromoModal.value = false;
     } else {
       promoError.value = data.message || 'Недействительный промокод';
     }
@@ -2596,26 +2661,139 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   color: rgba(255, 255, 255, 0.55);
 }
 
+/* Обёртка промокода без визуальной подложки: кнопка и чип живут
+ * прямо на фоне страницы. */
 .promo-card {
-  background: #ffffff;
   border-radius: 20px;
-  padding: 24px 16px;
   transition: border-color 0.2s ease;
-  border: 1px solid transparent;
 }
 
-.promo-card-applied {
+.promo-card--frozen {
+  border-color: transparent;
+}
+
+/* Применённый промокод: чип с зелёной обводкой. */
+.promo-card-applied .promo-applied-row {
   border-color: #34c759;
 }
 
-.promo-card-error {
-  border-color: #dc2626;
+/* Кнопка «Ввести промокод» на карточке: компактная по высоте (40px),
+ * но на всю ширину, в фирменном градиенте кнопки заказа. */
+.promo-open-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  height: 40px;
+  padding: 0 18px;
+  border: none;
+  border-radius: 528px;
+  background: linear-gradient(90deg, #f50302 0%, #a90f0e 100%);
+  color: #ffffff;
+  font-family: "Montserrat", sans-serif;
+  font-weight: 500;
+  font-size: 13px;
+  line-height: 16px;
+  cursor: pointer;
+  box-sizing: border-box;
 }
 
-/* Заморозка скидочной системы: плашка в фирменном градиенте кнопки заказа,
- * поле ввода остаётся обычным (disabled, приглушено) */
-.promo-card--frozen {
-  border-color: transparent;
+.promo-open-btn:active {
+  opacity: 0.92;
+}
+
+.promo-open-btn__icon {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.22);
+  font-family: -apple-system, "SF Pro Display", sans-serif;
+  font-weight: 700;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.promo-open-btn__label {
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+/* Модалка ввода: та же строка ввода, что была на карточке. */
+.promo-modal-input-row {
+  display: flex;
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #e6e9ed;
+  border-radius: 16px;
+  height: 64px;
+  padding: 0 10px 0 16px;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+/* Предупреждение о блокировке скидочной системы — оформление
+ * CompatibilityNotice (каталог расходников): пропорции cqw от ширины
+ * модалки, красный градиентный квадрат с треугольником, белый фон. */
+.promo-warning {
+  --notice-red-start: #e62c20;
+  --notice-red-end: #a92520;
+  container-type: inline-size;
+  width: 100%;
+  color: #101010;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+}
+
+.promo-warning,
+.promo-warning * {
+  box-sizing: border-box;
+}
+
+.promo-warning__card {
+  display: grid;
+  grid-template-columns: 18cqw minmax(0, 1fr);
+  align-items: center;
+  column-gap: 3.5cqw;
+  padding: 4.85cqw 4.7cqw;
+  border: 0;
+  border-radius: 5.25cqw;
+  background: #fff;
+}
+
+.promo-warning__icon {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 4cqw;
+  background: linear-gradient(110deg, var(--notice-red-start), var(--notice-red-end));
+}
+
+.promo-warning__icon svg {
+  display: block;
+  width: 69%;
+  height: 69%;
+  overflow: visible;
+}
+
+.promo-warning__title {
+  margin: 0 0 1.8cqw;
+  font-size: 4.35cqw;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.045cqw;
+}
+
+.promo-warning__text {
+  margin: 0;
+  color: #7c818d;
+  font-size: 3.77cqw;
+  font-weight: 400;
+  line-height: 1.19;
+  letter-spacing: 0;
 }
 
 .promo-frozen-notice {
@@ -2630,10 +2808,6 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   line-height: 1.45;
 }
 
-.promo-card--frozen .promo-input-row {
-  opacity: 0.55;
-}
-
 .promo-error-text {
   font-family: -apple-system, "SF Pro Display", sans-serif;
   font-weight: 400;
@@ -2643,16 +2817,6 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   margin: 12px 0 0;
 }
 
-.promo-label {
-  display: block;
-  font-family: "Montserrat", sans-serif;
-  font-weight: 700;
-  font-size: 16px;
-  line-height: 20px;
-  color: #191919;
-  margin: 0 0 16px;
-}
-
 .promo-info-text {
   font-family: -apple-system, "SF Pro Display", sans-serif;
   font-weight: 400;
@@ -2660,18 +2824,6 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   line-height: 18px;
   color: #aab2bd;
   margin: 12px 0 0;
-}
-
-.promo-input-row {
-  display: flex;
-  align-items: center;
-  background: #ffffff;
-  border: 1px solid #e6e9ed;
-  border-radius: 16px;
-  height: 64px;
-  padding: 0 10px 0 16px;
-  box-sizing: border-box;
-  overflow: hidden;
 }
 
 .promo-input {

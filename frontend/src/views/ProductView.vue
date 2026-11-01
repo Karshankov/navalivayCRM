@@ -320,10 +320,12 @@
                           {{ formatPrice(currentPrice) }}
                         </span>
                       </div>
-                      <!-- Stock Status -->
-                      <div class="flex items-center gap-2 px-4 py-2 rounded-full" :class="isAvailable ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'">
-                        <CheckCircleIcon v-if="isAvailable" class="w-5 h-5" />
-                        <span class="font-medium">{{ isAvailable ? 'В наличии' : 'Нет в наличии' }}</span>
+                      <div class="flex items-center gap-2">
+                        <!-- Stock Status -->
+                        <div class="flex items-center gap-2 px-4 py-2 rounded-full" :class="isAvailable ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'">
+                          <CheckCircleIcon v-if="isAvailable" class="w-5 h-5" />
+                          <span class="font-medium">{{ isAvailable ? 'В наличии' : 'Нет в наличии' }}</span>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -400,9 +402,11 @@
             </div>
 
             <!-- Stock Status -->
-            <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-full" :class="isAvailable ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'">
-              <CheckCircleIcon v-if="isAvailable" class="w-4 h-4" />
-              <span class="text-sm font-medium">{{ isAvailable ? 'В наличии' : 'Нет' }}</span>
+            <div class="flex items-center gap-2">
+              <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-full" :class="isAvailable ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'">
+                <CheckCircleIcon v-if="isAvailable" class="w-4 h-4" />
+                <span class="text-sm font-medium">{{ isAvailable ? 'В наличии' : 'Нет' }}</span>
+              </div>
             </div>
           </div>
 
@@ -557,6 +561,10 @@ const isAvailable = computed(() => {
   return product.value?.isAvailable ?? true
 })
 
+/**
+ * Избранное привязано к конкретному вкусу: у товаров с вариантами —
+ * выбранный вкус, у обычных товаров — сам товар (variant_id = null).
+ */
 const images = computed(() => {
   if (!product.value) return [] as string[]
 
@@ -723,7 +731,7 @@ const loadProduct = async (id: string) => {
 // Lifecycle
 onMounted(async () => {
   await loadProduct(props.id)
-  
+
   // Update bottom bar height
   updateBottomBarHeight()
   

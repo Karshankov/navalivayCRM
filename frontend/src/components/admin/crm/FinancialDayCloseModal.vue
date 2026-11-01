@@ -111,6 +111,18 @@
                 <div data-test="close-owner-rounded"><dt>Передать владельцу наличными · кратно 5 BYN</dt><dd>{{ ownerCash === null ? 'Данные недоступны' : money(ownerCash) }}</dd></div>
                 <div v-if="ownerRounding !== null && ownerRounding !== 0" data-test="close-owner-rounding"><dt>Разница округления</dt><dd>{{ roundingLabel(ownerRounding) }}</dd></div>
               </dl>
+              <!-- Раскладка выдачи по купюрам: строго от мелкой (5 BYN) к
+                   крупной, из фактически пересчитанных купюр кассы. -->
+              <div v-if="ownerNotesBreakdown" class="close-notes-breakdown" data-test="close-notes-breakdown" role="status">
+                <p class="close-breakdown-title">Отдать владельцу купюрами (мелочь в приоритете)</p>
+                <ul class="close-breakdown-list">
+                  <li v-for="note in ownerNotesBreakdown.notes" :key="note.denomination">
+                    <span class="close-breakdown-quantity">{{ note.quantity }} × {{ note.denomination }}</span>
+                    <span class="close-breakdown-sum">= {{ formatCloseMoney(note.quantity * note.denomination * 100) }}</span>
+                  </li>
+                </ul>
+                <p class="close-breakdown-total">{{ breakdownTotalLabel }}</p>
+              </div>
               <p class="close-muted">Наличная выдача округляется до ближайших 5 BYN; ровно посередине — вверх. Разница меняет перевод в «Выручку», а не прибыль в «Обзоре».</p>
               <div class="close-field-card">
                 <label for="close-retained">Оставить купюрами в «{{ context.cash_account_name }}», BYN</label><input id="close-retained" v-model="retainedCash" inputmode="decimal" :aria-invalid="!!fieldError('retained_cash')" aria-describedby="close-retained-error" data-test="close-retained" /><p id="close-retained-error" class="close-field-error">{{ fieldError('retained_cash') }}</p>
@@ -166,7 +178,7 @@
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import AdminModal from '@/components/AdminModal.vue';
 import { requestFinancialDayClose, StaffApiError, useCrmStore, type CashAccount } from '@/stores/crm';
-import { CLOSE_DENOMINATIONS, PENDING_CLOSE_STORAGE_KEY, countCloseCash, formatCloseMoney, isFinancialCloseContext, isFinancialCloseSnapshot, isSavedFinancialClose, loadPendingFinancialClose, notificationCloseLabel, parseCloseMoney, parseCloseNoteCount, savePendingFinancialClose, type FinancialCloseContext, type FinancialCloseInput, type FinancialClosePreview, type PendingFinancialClose, type SavedFinancialClose } from '@/utils/financialDayClose';
+import { CLOSE_DENOMINATIONS, PENDING_CLOSE_STORAGE_KEY, breakdownOwnerCashNotes, countCloseCash, formatCloseMoney, isFinancialCloseContext, isFinancialCloseSnapshot, isSavedFinancialClose, loadPendingFinancialClose, notificationCloseLabel, parseCloseMoney, parseCloseNoteCount, savePendingFinancialClose, type FinancialCloseContext, type FinancialCloseInput, type FinancialClosePreview, type PendingFinancialClose, type SavedFinancialClose } from '@/utils/financialDayClose';
 
 const props = defineProps<{ isOpen: boolean }>();
 const emit = defineEmits<{ close: []; saved: [closure: SavedFinancialClose]; reset: [closureId: string] }>();
@@ -230,6 +242,28 @@ const ownerCash = computed(() => {
 });
 const ownerRounding = computed(() => ownerCash.value !== null && ownerCashBeforeRounding.value !== null && ownerCashBeforeRounding.value >= 0
   ? safeSum(ownerCash.value, -ownerCashBeforeRounding.value) : null);
+
+/**
+ * Раскладка выдачи владельцу по купюрам — строго от 5 BYN к крупным,
+ * из фактически пересчитанных купюр кассы (шаг пересчёта уже пройден).
+ * Реагирует на правку количества купюр и поля «оставить в кассе».
+ */
+const ownerNotesBreakdown = computed(() => {
+  if (ownerCash.value === null || ownerCash.value <= 0) return null;
+  return breakdownOwnerCashNotes(ownerCash.value, counts);
+});
+
+const breakdownTotalLabel = computed(() => {
+  const breakdown = ownerNotesBreakdown.value;
+  if (!breakdown) return '';
+  const owner = ownerCash.value ?? 0;
+  if (breakdown.coveredMinor === owner) {
+    const noteCount = breakdown.notes.reduce((sum, note) => sum + note.quantity, 0);
+    return `Итого ${noteCount} купюр на ${formatCloseMoney(breakdown.coveredMinor)}`;
+  }
+  return `Хватает только на ${formatCloseMoney(breakdown.coveredMinor)} из ${formatCloseMoney(owner)} — мелочи и купюр в кассе не хватает, проверьте пересчёт.`;
+});
+
 function roundingLabel(value: number): string {
   return value > 0 ? `${money(value)} из выручки` : value < 0 ? `${money(-value)} остаётся в выручке` : 'Без изменения';
 }
@@ -595,6 +629,14 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
 .close-totals > .close-owner-card dt, .close-totals > [data-test='close-owner-rounded'] dt { color: #143768; font-size: 19px; font-weight: 800; }
 .close-totals > .close-owner-card dd, .close-totals > [data-test='close-owner-rounded'] dd { color: #081b4b; font-size: clamp(36px, 5.5vw, 56px); font-weight: 900; letter-spacing: -.04em; line-height: 1.12; }
 .close-owner-hint { margin: 0 0 16px; color: #425778; font-size: 15px; line-height: 1.6; }
+/* Раскладка выдачи владельцу по купюрам: строго от 5 BYN к крупным. */
+.close-notes-breakdown { margin: 14px 0 4px; padding: 18px; border: 1px solid #b4d9ff; border-radius: 16px; background: linear-gradient(140deg, #fff, #eef6ff); }
+.close-breakdown-title { margin: 0 0 10px; color: #143768; font-size: 16px; font-weight: 800; line-height: 1.4; }
+.close-breakdown-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.close-breakdown-list li { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.close-breakdown-quantity { color: #081b4b; font-size: 17px; font-weight: 850; font-variant-numeric: tabular-nums; }
+.close-breakdown-sum { color: #50658a; font-size: 14px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.close-breakdown-total { margin: 10px 0 0; color: #143768; font-size: 14px; font-weight: 750; line-height: 1.5; }
 .close-totals > .close-discrepancy-row { grid-column: 1 / -1; border-color: #fecaca; background: #fff0f0; }
 .close-totals > .close-discrepancy-row dt, .close-totals > .close-discrepancy-row dd { color: #b91c1c; font-weight: 800; }
 .close-confirmation { margin: 22px 0 0; padding: 22px; border: 1px solid #bcd9f9; border-radius: 18px; background: #f5faff; }

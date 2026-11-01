@@ -132,12 +132,12 @@
             <button
               type="button"
               class="crm-hub-action crm-hub-action--danger"
-              :disabled="Boolean(hub.block) || busy"
+              :disabled="busy"
               data-test="customer-hub-block"
               @click="emitAction('block')"
             >
               <span class="crm-hub-action-icon" aria-hidden="true"><NoSymbolIcon /></span>
-              <span>{{ hub.block ? 'Клиент уже заблокирован' : 'Заблокировать' }}</span>
+              <span>{{ hub.block ? 'Заблокировать заново' : 'Заблокировать' }}</span>
               <ChevronRightIcon aria-hidden="true" class="crm-hub-action-arrow" />
             </button>
             <button
@@ -211,6 +211,17 @@
             >
               <span class="crm-hub-action-icon" aria-hidden="true"><Cog6ToothIcon /></span>
               <span>Настройки опта</span>
+              <ChevronRightIcon aria-hidden="true" class="crm-hub-action-arrow" />
+            </button>
+            <button
+              type="button"
+              class="crm-hub-action"
+              :disabled="busy || !(hub.customer.telegram_username || hub.customer.telegram_id)"
+              data-test="customer-hub-chat"
+              @click="emitAction('chat')"
+            >
+              <span class="crm-hub-action-icon" aria-hidden="true"><PaperAirplaneIcon /></span>
+              <span>Написать в Telegram</span>
               <ChevronRightIcon aria-hidden="true" class="crm-hub-action-arrow" />
             </button>
             <button
@@ -297,6 +308,7 @@ import {
   Cog6ToothIcon,
   LockClosedIcon,
   NoSymbolIcon,
+  PaperAirplaneIcon,
   PencilSquareIcon,
   UserGroupIcon,
   UserMinusIcon,
@@ -304,7 +316,7 @@ import {
 import AdminModal from '@/components/AdminModal.vue'
 import { useCrmStore, type CustomerHubData } from '@/stores/crm'
 
-export type CustomerHubAction = 'block' | 'discount-block' | 'note' | 'invite-ban' | 'remove-invite-ban' | 'wholesale' | 'find-inviter' | 'contact'
+export type CustomerHubAction = 'block' | 'discount-block' | 'note' | 'invite-ban' | 'remove-invite-ban' | 'wholesale' | 'find-inviter' | 'contact' | 'chat'
 export type HubInviterAction = 'copy' | 'message' | 'block' | 'invite-ban' | 'remove-ban'
 
 export interface CustomerHubActionContext {
@@ -317,6 +329,8 @@ export interface CustomerHubActionContext {
   inviteBanId: string | null
   /** Статус заморозки скидочной системы клиента (для действия discount-block). */
   discountBlock: { blocked: boolean; until: string | null; comment: string | null } | null
+  /** Telegram ID клиента — для открытия диалога в TG (действие chat). */
+  telegramId: string | null
 }
 
 export interface CustomerHubInviter {
@@ -484,6 +498,7 @@ function emitAction(action: CustomerHubAction) {
     orderId: hubOrderId.value,
     inviteBanId: hub.value?.invite_ban?.id ?? null,
     discountBlock: customer.discount_block ?? null,
+    telegramId: customer.telegram_id ?? null,
   })
 }
 
@@ -500,6 +515,7 @@ function toggleInviter() {
       orderId: hubOrderId.value,
       inviteBanId: current.invite_ban?.id ?? null,
       discountBlock: current.customer.discount_block ?? null,
+      telegramId: current.customer.telegram_id ?? null,
     })
     return
   }

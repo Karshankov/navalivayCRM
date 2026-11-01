@@ -298,6 +298,51 @@ function runTests() {
   // Текущий активный блок — это новый
   const activeNow = getActiveBlockForCustomerId('cust_charlie');
   assertEq(activeNow?.reason, 'fresh', 'getActive теперь возвращает новый блок');
+
+  // Test 13: replace=true — перебан поверх АКТИВНОГО блока без ручной
+  // разблокировки («до завтра» → «навсегда»). Старый блок гасится с
+  // пометкой 'replaced', новый становится активным — атомарно.
+  console.log('\n=== Test 13: replace=true перебанивает активный блок ===');
+  makeCustomer({ id: 'cust_dan', telegram_id: '9999', telegram_username: 'dan' });
+  // Активный блок «на 20 часов»
+  const first = createBlock({
+    customer_id: 'cust_dan',
+    block_until: computeBlockUntil({ unit: 'hours', value: 20 }),
+    reason: 'temporary',
+    blocked_by: 'admin',
+  });
+  assertEq(first.kind, 'active', 'первый блок создан');
+  // Перебан навсегда БЕЗ ручной разблокировки
+  const reban = createBlock({
+    customer_id: 'cust_dan',
+    block_until: null,
+    reason: 'permanent',
+    blocked_by: 'admin',
+    replace: true,
+  });
+  assertEq(reban.kind, 'active', 'перебан создан как active');
+  assertEq(reban.block.reason, 'permanent', 'reason нового блока');
+  assertEq(reban.block.block_until, null, 'block_until=null (навсегда)');
+  assertEq(reban.replaced_block_id, first.block.id, 'replaced_block_id указывает на старый блок');
+  // Старый блок погашен с пометкой
+  const oldDan = db
+    .prepare('SELECT active, unblock_reason, unblocked_by FROM customer_blocks WHERE id = ?')
+    .get(first.block.id);
+  assertEq(oldDan.active, 0, 'старый блок active=0');
+  assertEq(oldDan.unblock_reason, 'replaced', 'unblock_reason=replaced');
+  assertEq(oldDan.unblocked_by, 'admin', 'unblocked_by=admin');
+  // Активный теперь — новый
+  const activeDan = getActiveBlockForCustomerId('cust_dan');
+  assertEq(activeDan?.id, reban.block.id, 'getActive возвращает новый блок');
+  assertEq(activeDan?.reason, 'permanent', 'активный — permanent');
+  // Без replace поведение прежнее: уже заблокирован → already_blocked
+  let replaceOffErr = null;
+  try {
+    createBlock({ customer_id: 'cust_dan', block_until: null, reason: 'dup', replace: false });
+  } catch (e) {
+    replaceOffErr = e;
+  }
+  assertEq(replaceOffErr?.code, 'already_blocked', 'без replace всё ещё already_blocked');
 }
 
 function cleanup() {

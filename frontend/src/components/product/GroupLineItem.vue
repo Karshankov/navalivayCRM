@@ -49,6 +49,11 @@
             :mode="reviewDisplayMode"
             @click="openReviewsModal"
           />
+          <!-- Кнопка «Избранное» — в общем вертикальном контейнере,
+              центрируемом по высоте карточки. -->
+          <span v-if="hasTelegramContext" class="group-line-favorite" @click.stop>
+            <FavoriteGroupHeart :group-id="node.id" />
+          </span>
         </span>
       </span>
 
@@ -139,6 +144,8 @@ import { useCustomerOrders } from "@/composables/useCustomerOrders";
 import { ChevronDownIcon } from "@heroicons/vue/24/outline";
 import { useCatalogStore, type Product } from "@/stores/catalog";
 import GroupLineItemContent from "@/components/product/GroupLineItemContent.vue";
+import FavoriteGroupHeart from "@/components/product/FavoriteGroupHeart.vue";
+import { hasTelegramMiniAppUserContext } from "@/utils/telegramMiniAppContext";
 import NewLineupBadge from "@/components/product/NewLineupBadge.vue";
 import DiscountBadge from "@/components/product/DiscountBadge.vue";
 import { getMinBasePriceForProducts, hasDiscountInTree } from "@/components/product/groupPrice";
@@ -182,6 +189,9 @@ const emit = defineEmits<{
 }>();
 
 const catalogStore = useCatalogStore();
+
+// Кнопка «Избранное» видна только в реальном Mini App / dev-моке.
+const hasTelegramContext = hasTelegramMiniAppUserContext();
 const { fetchGroupReviewSummary } = useCustomerOrders();
 
 const bodyWrapper = ref<HTMLElement | null>(null);
@@ -533,8 +543,14 @@ onBeforeUnmount(() => {
 }
 
 .group-line-info {
+  /* Единый вертикальный контейнер: название, крепость, рейтинг и кнопка
+     «Избранное». Родитель (group-line-main) центрирует его по высоте
+     карточки через align-items: center — свободное место сверху и снизу
+     одинаково, без ручных сдвигов, для любого числа строк названия. */
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
   gap: 6px;
   min-width: 0;
   flex: 1;
@@ -553,6 +569,13 @@ onBeforeUnmount(() => {
   font-size: 16px;
   line-height: 20px;
   color: #191919;
+  /* Длинные названия линеек не выталкивают сердце/шеврон: текст
+     обрезается многоточием в пределах info-колонки. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+  white-space: nowrap;
+  max-width: 100%;
 }
 
 .group-line-meta {
@@ -587,6 +610,15 @@ onBeforeUnmount(() => {
   flex-direction: row;
   align-items: center;
   flex-shrink: 0;
+  gap: 4px;
+}
+
+.group-line-favorite {
+  /* Кнопка «Избранное» из макета: пилюля с сердцем и подписью.
+     Позиция — просто следующий элемент info-колонки. */
+  display: inline-flex;
+  align-items: center;
+  margin-top: 2px;
 }
 
 .group-line-toggle {
@@ -827,6 +859,22 @@ onBeforeUnmount(() => {
   .group-line-toggle {
     width: 36px;
     height: 36px;
+  }
+
+  /* Сердце уменьшается вместе с шевроном. */
+  .group-line-favorite {
+    width: 36px;
+    height: 36px;
+  }
+
+  .group-line-favorite :deep(.favorite-heart) {
+    width: 36px;
+    height: 36px;
+  }
+
+  .group-line-favorite :deep(.favorite-heart svg) {
+    width: 20px;
+    height: 20px;
   }
 
   .group-line-toggle-icon {

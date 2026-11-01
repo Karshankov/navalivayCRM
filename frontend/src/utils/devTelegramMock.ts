@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Dev-only СѓС‚РёР»РёС‚Р° РґР»СЏ С‚РµСЃС‚РёСЂРѕРІР°РЅРёСЏ РєР»РёРµРЅС‚СЃРєРѕРіРѕ РёРЅС‚РµСЂС„РµР№СЃР° РІ РѕР±С‹С‡РЅРѕРј Р±СЂР°СѓР·РµСЂРµ
  * Р±РµР· СЂРµР°Р»СЊРЅРѕРіРѕ Telegram Mini App.
  *
@@ -402,9 +402,34 @@ export function applyDevTelegramMockIfNeeded(): void {
   const queryUsername = url.searchParams.get('username') || ''
   const queryFirstName = url.searchParams.get('first_name') || ''
 
+  // Явный отказ: ?no_tg=1 / ?as=0 — посмотреть интерфейс «как гость»
+  // без Telegram-контекста (сердечки/избранное скрыты).
+  const disabled =
+    url.searchParams.get('no_tg') === '1' || url.searchParams.get('as') === '0'
+  if (disabled) {
+    try {
+      sessionStorage.removeItem(DEV_MOCK_KEY)
+    } catch {
+      /* noop */
+    }
+    return
+  }
+
   const stored = readStoredIdentity()
 
   let identity: DevMockIdentity | null = stored
+
+  // Dev по умолчанию: браузер без Telegram ведёт себя как тестовый
+  // клиент, чтобы сердечки/избранное были видны сразу, без ручного
+  // ?telegram_id=. sessionStorage переживает переходы внутри таба.
+  if (!identity && !queryId.trim()) {
+    identity = {
+      id: '1000001',
+      username: '',
+      first_name: 'Dev Browser',
+    }
+    persistIdentity(identity)
+  }
 
   if (queryId.trim()) {
     identity = {

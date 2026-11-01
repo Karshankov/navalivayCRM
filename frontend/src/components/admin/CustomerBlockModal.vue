@@ -266,6 +266,9 @@ async function submit() {
       telegram_username: props.customerId ? undefined : username,
       reason: reason.value.trim() || null,
       duration,
+      // Перебан без разблокировки: активный блок заменяется новым
+      // автоматически (например «до завтра» → «навсегда»).
+      replace: true,
     })
     emit('created', { kind: result.kind, username })
 

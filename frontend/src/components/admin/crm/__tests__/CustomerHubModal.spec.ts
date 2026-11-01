@@ -349,7 +349,7 @@ describe('CustomerHubModal: actions', () => {
     const w = await setup()
     await findClient(w)
     const expected = {
-      username: 'alice', customerId: 'client-1', customerName: 'Алиса', notes: null, orderId: null, inviteBanId: null, discountBlock: null,
+      username: 'alice', customerId: 'client-1', customerName: 'Алиса', notes: null, orderId: null, inviteBanId: null, discountBlock: null, telegramId: '7011',
     }
     for (const [test, action] of [
       ['customer-hub-block', 'block'], ['customer-hub-note', 'note'],
@@ -361,6 +361,20 @@ describe('CustomerHubModal: actions', () => {
     expect(w.emitted('close')).toBeUndefined()
   })
 
+  it('emits chat action for the Telegram dialog (available without an order)', async () => {
+    const w = await setup()
+    await findClient(w)
+    const chat = w.get('[data-test="customer-hub-chat"]')
+    expect(chat.attributes('disabled')).toBeUndefined()
+    expect(chat.text()).toContain('Написать в Telegram')
+    await chat.trigger('click')
+    expect(w.emitted('action')?.at(-1)).toEqual(['chat', {
+      username: 'alice', customerId: 'client-1', customerName: 'Алиса', notes: null, orderId: null, inviteBanId: null, discountBlock: null, telegramId: '7011',
+    }])
+    // Хаб не закрывается: переход в TG — не модалка.
+    expect(w.emitted('close')).toBeUndefined()
+  })
+
   it('carries notes and order context into the note action', async () => {
     crm.fetchCustomerHub.mockResolvedValue(hubPayload({
       customer: { ...hubPayload().customer, notes: 'Перезвонить' },
@@ -368,19 +382,24 @@ describe('CustomerHubModal: actions', () => {
     const w = await setup({ prefill: { username: 'alice', customerId: 'client-1', orderId: 'order-1' } })
     await w.get('[data-test="customer-hub-note"]').trigger('click')
     expect(w.emitted('action')?.at(-1)).toEqual(['note', {
-      username: 'alice', customerId: 'client-1', customerName: 'Алиса', notes: 'Перезвонить', orderId: 'order-1', inviteBanId: null, discountBlock: null,
+      username: 'alice', customerId: 'client-1', customerName: 'Алиса', notes: 'Перезвонить', orderId: 'order-1', inviteBanId: null, discountBlock: null, telegramId: '7011',
     }])
   })
 
-  it('disables blocking when it exists and offers lifting the invite ban', async () => {
+  it('allows re-blocking (replace) when a block exists and offers lifting the invite ban', async () => {
     crm.fetchCustomerHub.mockResolvedValue(hubPayload({
       block: { id: 'b1', kind: 'active', block_until: null, reason: null, blocked_at: null, blocked_by: null },
       invite_ban: { id: 'ib1', reason: null, banned_by: null, banned_at: null },
     }))
     const w = await setup()
     await findClient(w)
-    expect(w.get('[data-test="customer-hub-block"]').attributes('disabled')).toBeDefined()
-    expect(w.get('[data-test="customer-hub-block"]').text()).toContain('Клиент уже заблокирован')
+    // Перебан доступен и на заблокированном клиенте (replace на сервере).
+    expect(w.get('[data-test="customer-hub-block"]').attributes('disabled')).toBeUndefined()
+    expect(w.get('[data-test="customer-hub-block"]').text()).toContain('Заблокировать заново')
+    await w.get('[data-test="customer-hub-block"]').trigger('click')
+    expect(w.emitted('action')?.at(-1)).toEqual(['block', {
+      username: 'alice', customerId: 'client-1', customerName: 'Алиса', notes: null, orderId: null, inviteBanId: 'ib1', discountBlock: null, telegramId: '7011',
+    }])
     // Действующий запрет — не мёртвая строка: её можно снять прямо из хаба.
     expect(w.find('[data-test="customer-hub-invite-ban"]').exists()).toBe(false)
     const unban = w.get('[data-test="customer-hub-invite-unban"]')
@@ -388,7 +407,7 @@ describe('CustomerHubModal: actions', () => {
     expect(unban.text()).toContain('Разрешить приглашать')
     await unban.trigger('click')
     expect(w.emitted('action')?.at(-1)).toEqual(['remove-invite-ban', {
-      username: 'alice', customerId: 'client-1', customerName: 'Алиса', notes: null, orderId: null, inviteBanId: 'ib1', discountBlock: null,
+      username: 'alice', customerId: 'client-1', customerName: 'Алиса', notes: null, orderId: null, inviteBanId: 'ib1', discountBlock: null, telegramId: '7011',
     }])
   })
 

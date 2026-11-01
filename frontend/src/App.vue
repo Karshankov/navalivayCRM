@@ -42,6 +42,8 @@ const showTabBar = computed(() => {
   if (path.startsWith("/admin")) return false;
   if (path === "/checkout") return false;
   if (path === "/my-order") return false;
+  // Избранное — самостоятельный экран с собственной навигацией назад.
+  if (path === "/favorites") return false;
   // Опт получает свой набор табов вместо скрытого футера -
   // см. docs/wholesale-rules.md и спецификацию рулетки.
   return true;
@@ -65,6 +67,7 @@ const showWheelWidget = computed(() => {
   if (path === "/wheel" || path.startsWith("/wheel/")) return false;
   if (path === "/checkout") return false;
   if (path === "/my-order") return false;
+  if (path === "/favorites") return false;
   if (path.startsWith("/profile/orders")) return false;
   if (path.startsWith("/opt")) return false;
   return true;

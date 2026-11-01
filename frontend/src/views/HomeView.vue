@@ -15,6 +15,15 @@
     </div>
 
     <div class="main-content-wrapper">
+      <!-- Кнопка избранного под баннером (утверждённый макет) -->
+      <section
+        v-if="!wholesaleStore.isWholesale"
+        class="favorites-banner-section"
+        aria-label="Избранное"
+      >
+        <FavoritesBanner />
+      </section>
+
       <section v-if="wholesaleStore.isWholesale" class="px-4 pt-4">
         <div class="wholesale-mode-card">
           <p class="wholesale-mode-kicker">Оптовый режим</p>
@@ -138,6 +147,7 @@ import { useCartStore } from "@/stores/cart";
 import { useWholesaleStore } from "@/stores/wholesale";
 import SmokeParticles from "@/components/SmokeParticles.vue";
 import BannerCarousel from "@/components/BannerCarousel.vue";
+import FavoritesBanner from "@/components/FavoritesBanner.vue";
 import DiscountBadge from "@/components/product/DiscountBadge.vue";
 import { hasDiscountForProduct } from "@/components/product/groupPrice";
 import {
@@ -145,10 +155,12 @@ import {
   getTelegramIdentity,
   type CustomerActiveOrder,
 } from "@/utils/customerOrders";
+import { useFavoritesStore } from "@/stores/favorites";
 
 const catalogStore = useCatalogStore();
 const cartStore = useCartStore();
 const wholesaleStore = useWholesaleStore();
+const favoritesStore = useFavoritesStore();
 const router = useRouter();
 const activeOrder = ref<CustomerActiveOrder | null>(null);
 
@@ -218,6 +230,11 @@ function goToCheckout() {
 
 async function refreshHomeState() {
   await catalogStore.initialize();
+
+  // Избранное грузим один раз за сессию: сердечки и страница берут из стора.
+  if (!favoritesStore.isLoaded) {
+    void favoritesStore.fetchFavorites();
+  }
 
   if (!cartStore.editingOrderId) {
     try {
@@ -533,6 +550,20 @@ onMounted(async () => {
   margin-top: 1rem;
   width: 100%;
   box-sizing: border-box;
+}
+
+/* Кнопка «Избранное»: контейнерные единицы макета требуют inline-size.
+   Композиция 778×146 рассчитана на мобильную колонку — на широких
+   экранах ограничиваем, иначе в desktop-Telegram баннер растянется. */
+.favorites-banner-section {
+  position: relative;
+  margin-top: 12px;
+  margin-left: auto;
+  margin-right: auto;
+  padding: 0 0 4px;
+  width: 100%;
+  max-width: 460px;
+  container-type: inline-size;
 }
 
 /* ===== Cart Button Styles (Brutal Card Style) ===== */

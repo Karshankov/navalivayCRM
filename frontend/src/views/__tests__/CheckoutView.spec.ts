@@ -1377,6 +1377,9 @@ describe("CheckoutView order flows", () => {
     expect(wrapper.text()).not.toContain("До скидки");
     expect(wrapper.find(".user-info-input").exists()).toBe(true);
 
+    // Промокод теперь вводится через модалку: сначала открываем её кнопкой.
+    await wrapper.find(".promo-open-btn").trigger("click");
+    expect(wrapper.find(".promo-modal-input-row").exists()).toBe(true);
     await wrapper.find(".promo-input").setValue("PROMO5");
     await wrapper.find(".promo-apply-btn").trigger("click");
     await flushPromises();
@@ -1842,7 +1845,9 @@ describe("CheckoutView order flows", () => {
     });
 
     await flushPromises();
-    expect(wrapper.find(".promo-input").exists()).toBe(true);
+    // Кнопка вместо блока «Есть промокод?»: ввод через модалку.
+    expect(wrapper.find(".promo-open-btn").exists()).toBe(true);
+    await wrapper.find(".promo-open-btn").trigger("click");
     await wrapper.find(".promo-input").setValue("WHOLESALEGIFT");
     await wrapper.find(".promo-apply-btn").trigger("click");
     await flushPromises();
@@ -1855,8 +1860,9 @@ describe("CheckoutView order flows", () => {
 
     await wrapper.find(".promo-cancel-btn").trigger("click");
     await flushPromises();
-    expect(wrapper.find(".promo-input").exists()).toBe(true);
-
+    // Код снят — на карточке снова кнопка, открываем модалку заново.
+    expect(wrapper.find(".promo-open-btn").exists()).toBe(true);
+    await wrapper.find(".promo-open-btn").trigger("click");
     await wrapper.find(".promo-input").setValue("REGULAR10");
     await wrapper.find(".promo-apply-btn").trigger("click");
     await flushPromises();

@@ -16,6 +16,7 @@
       :subgroups="group.children"
       :expanded="isExpanded"
       :top-rank="topRank"
+      :show-promo-badges="showPromoBadges"
       @toggle="toggleExpand"
       @show-toast="
         (msg: string, type: 'error' | 'success' | 'info') =>
@@ -48,6 +49,7 @@
             :top-rank="resolveChildTopRank(child.id)"
             :fallback-image="fallbackImage"
             :expanded-groups="expandedGroups"
+            :show-promo-badges="showPromoBadges"
             @toggle="$emit('toggle', $event)"
             @showToast="
               (msg: string, type: 'error' | 'success' | 'info') =>
@@ -84,13 +86,20 @@ interface LiquidGroup {
   children: LiquidGroup[];
 }
 
-const props = defineProps<{
-  group: LiquidGroup;
-  topRank?: number | null;
-  topRankByGroupId?: Record<string, number>;
-  fallbackImage?: string;
-  expandedGroups: Record<string, boolean>;
-}>();
+const props = withDefaults(
+  defineProps<{
+    group: LiquidGroup;
+    topRank?: number | null;
+    topRankByGroupId?: Record<string, number>;
+    fallbackImage?: string;
+    expandedGroups: Record<string, boolean>;
+    /** Плашки «акционный/новинка/топ/социальный»: в избранном скрыты. */
+    showPromoBadges?: boolean;
+  }>(),
+  {
+    showPromoBadges: true,
+  },
+);
 
 function resolveChildTopRank(groupId: string): number | null {
   const fromMap = props.topRankByGroupId?.[groupId];

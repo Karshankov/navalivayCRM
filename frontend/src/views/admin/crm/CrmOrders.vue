@@ -2230,6 +2230,18 @@ async function handleCustomerHubAction(action: CustomerHubAction, context: Custo
     customerHubContactOrderId.value = null;
     return;
   }
+  if (action === 'chat') {
+    // Прямой переход в диалог Telegram с клиентом: username → t.me,
+    // без username — tg:// по telegram_id. Хаб остаётся открытым.
+    if (context.username) {
+      window.open(`https://t.me/${context.username}`, '_blank');
+    } else if (context.telegramId) {
+      window.open(`tg://openmessage?user_id=${context.telegramId}`, '_blank');
+    } else {
+      showOrderToast({ kind: 'error', message: 'У клиента нет Telegram.' });
+    }
+    return;
+  }
   customerHubReturnAfterAction.value = true;
   showCustomerHubModal.value = false;
   // Первая модалка должна вернуть фокус до открытия следующей (паттерн очереди).

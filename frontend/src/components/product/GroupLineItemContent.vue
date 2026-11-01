@@ -567,6 +567,11 @@ function decrementVariantQuantity(
   font-size: 16px;
   line-height: 20px;
   color: #191919;
+  /* Длинные названия вкусов не выталкивают кнопки за край. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
 }
 
 .group-variant-price {
@@ -749,6 +754,11 @@ function decrementVariantQuantity(
   font-size: 16px;
   line-height: 20px;
   color: #191919;
+  /* Длинные названия товаров не выталкивают кнопки за край. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
 }
 
 .group-product-price {

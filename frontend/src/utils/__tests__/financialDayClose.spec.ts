@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CLOSE_DENOMINATIONS, PENDING_CLOSE_STORAGE_KEY, countCloseCash, formatCloseMoney, isFinancialCloseSnapshot, loadPendingFinancialClose, notificationCloseLabel, parseCloseMoney, parseCloseNoteCount, savePendingFinancialClose, type PendingFinancialClose } from '../financialDayClose';
+import { CLOSE_DENOMINATIONS, PENDING_CLOSE_STORAGE_KEY, breakdownOwnerCashNotes, countCloseCash, formatCloseMoney, isFinancialCloseSnapshot, loadPendingFinancialClose, notificationCloseLabel, parseCloseMoney, parseCloseNoteCount, savePendingFinancialClose, type PendingFinancialClose } from '../financialDayClose';
 
 const roundedSnapshot = () => ({
   cash_balance_before_minor: 110100, counted_cash_minor: 100000,
@@ -90,5 +90,59 @@ describe('financial day close input and recovery', () => {
     expect(notificationCloseLabel('awaiting_recipient')).toBe('Получатель не настроен');
     expect(notificationCloseLabel('unknown')).not.toBe('Отправлено');
     expect(notificationCloseLabel('sent')).toBe('Отправлено');
+  });
+});
+
+describe('owner cash note breakdown: strictly small-to-large from counted notes', () => {
+  function countsFor(map: Record<number, number>) {
+    return Object.fromEntries(CLOSE_DENOMINATIONS.map((d) => [String(d), String(map[d] ?? 0)]));
+  }
+
+  it('250 BYN from a rich drawer: 50×5 preferred over larger notes', () => {
+    // В кассе по 100 купюр каждого номинала.
+    const counts = countsFor({ 5: 100, 10: 100, 20: 100, 50: 100, 100: 100, 200: 100 });
+    const result = breakdownOwnerCashNotes(25000, counts)!;
+    // Строго от малой: 50 пятёрок, десятки не тронуты.
+    expect(result.notes).toEqual([{ denomination: 5, quantity: 50 }]);
+    expect(result.coveredMinor).toBe(25000);
+  });
+
+  it('250 BYN with limited small notes: fills upward, warns on gap', () => {
+    const counts = countsFor({ 5: 10, 10: 5, 20: 10, 50: 10, 100: 10, 200: 10 });
+    const result = breakdownOwnerCashNotes(25000, counts)!;
+    // 10×5=50 + 5×10=50 + 7×20=140 → 240; остаток 10 не набирается
+    // (мелочь исчерпана, 50 не делит 10) — covered < amount.
+    expect(result.notes).toEqual([
+      { denomination: 5, quantity: 10 },
+      { denomination: 10, quantity: 5 },
+      { denomination: 20, quantity: 7 },
+    ]);
+    expect(result.coveredMinor).toBe(24000);
+  });
+
+  it('partial coverage when the drawer cannot make the amount', () => {
+    // Только 2 пятёрки и 1 десятка = 20 BYN, а нужно 250.
+    const counts = countsFor({ 5: 2, 10: 1 });
+    const result = breakdownOwnerCashNotes(25000, counts)!;
+    expect(result.coveredMinor).toBe(2000);
+    expect(result.notes).toEqual([
+      { denomination: 5, quantity: 2 },
+      { denomination: 10, quantity: 1 },
+    ]);
+  });
+
+  it('zero owner cash: no breakdown', () => {
+    const counts = countsFor({ 5: 10 });
+    expect(breakdownOwnerCashNotes(0, counts)).toBeNull();
+  });
+
+  it('negative owner cash: null (error path)', () => {
+    const counts = countsFor({ 5: 10 });
+    expect(breakdownOwnerCashNotes(-500, counts)).toBeNull();
+  });
+
+  it('invalid note input yields null', () => {
+    const counts = { '5': 'abc', '10': '0', '20': '0', '50': '0', '100': '0', '200': '0' };
+    expect(breakdownOwnerCashNotes(25000, counts)).toBeNull();
   });
 });

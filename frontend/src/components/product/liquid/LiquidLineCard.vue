@@ -1,6 +1,6 @@
 <template>
   <div class="liquid-line-card" :class="{ expanded }">
-    <NewLineupBadge v-if="isNew" />
+    <NewLineupBadge v-if="isNew && showPromoBadges" />
     <div class="liquid-line-header" @click="toggle">
       <div
         class="liquid-line-main"
@@ -10,7 +10,7 @@
         @keyup.space.prevent="toggle"
       >
         <div class="liquid-line-image-wrapper">
-          <span v-if="topRank" class="liquid-line-top-rank">#{{ topRank }}</span>
+          <span v-if="topRank && showPromoBadges" class="liquid-line-top-rank">#{{ topRank }}</span>
           <div class="liquid-line-image-box">
             <div v-if="coverUrl" class="liquid-line-image">
               <img :src="coverUrl" :alt="title" loading="lazy" decoding="async" />
@@ -29,7 +29,7 @@
                 <path d="M21 15l-5-5L5 21" />
               </svg>
             </div>
-            <DiscountBadge v-if="hasDiscount" class="liquid-line-discount" />
+            <DiscountBadge v-if="hasDiscount && showPromoBadges" class="liquid-line-discount" />
           </div>
           <p v-if="minPriceLabel" class="liquid-line-image-price" :class="{ discounted: oldPriceLabel }">
             <span v-if="oldPriceLabel" class="liquid-line-image-price-old">{{ oldPriceLabel }}</span>
@@ -48,6 +48,11 @@
             :mode="reviewDisplayMode"
             @click="openReviewsModal"
           />
+          <!-- Кнопка «Избранное» — в общем вертикальном контейнере,
+              центрруемом по высоте карточки. -->
+          <div v-if="hasTelegramContext" class="liquid-line-favorite" @click.stop>
+            <FavoriteGroupHeart :group-id="groupId" />
+          </div>
         </div>
       </div>
       <div class="liquid-line-side">
@@ -65,7 +70,7 @@
 
     <!-- Пометка значимости: под шапкой линейки, вне кликабельного заголовка —
         своя кнопка «Подробнее» не сворачивает линейку. -->
-    <div v-if="mark" class="liquid-line-mark-wrapper">
+    <div v-if="mark && showPromoBadges" class="liquid-line-mark-wrapper">
       <SignificanceMark :mark="mark" />
     </div>
 
@@ -317,6 +322,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch, nextTick } from "vue";
 import NewLineupBadge from "@/components/product/NewLineupBadge.vue";
+import FavoriteGroupHeart from "@/components/product/FavoriteGroupHeart.vue";
 import GroupReviewsModal from "@/components/reviews/GroupReviewsModal.vue";
 import ReviewRatingLink from "@/components/reviews/ReviewRatingLink.vue";
 import SignificanceMark from "@/components/product/SignificanceMark.vue";
@@ -333,6 +339,7 @@ import {
 } from "@heroicons/vue/24/outline";
 import { useCartStore } from "@/stores/cart";
 import { useCatalogStore, type Product, type ProductVariant } from "@/stores/catalog";
+import { hasTelegramMiniAppUserContext } from "@/utils/telegramMiniAppContext";
 import ColorPreviewModal from "@/components/product/ColorPreviewModal.vue";
 import DiscountBadge from "@/components/product/DiscountBadge.vue";
 import {
@@ -357,23 +364,30 @@ interface SubgroupInfo {
   children?: SubgroupInfo[];
 }
 
-const props = defineProps<{
-  groupId: string;
-  title: string;
-  products: Product[];
-  expanded: boolean;
-  coverImage?: string | null;
-  fallbackImage?: string;
-  subgroups?: SubgroupInfo[];
-  badge?: string;
-  badgeColor?: string;
-  isNew?: boolean;
-  metaLabel?: string | null;
-  metaValue?: string | null;
-  topRank?: number | null;
-  /** Пометка значимости линейки: ярлык в строке, рядом с отзывами. */
-  mark?: ProductMark | null;
-}>();
+const props = withDefaults(
+  defineProps<{
+    groupId: string;
+    title: string;
+    products: Product[];
+    expanded: boolean;
+    coverImage?: string | null;
+    fallbackImage?: string;
+    subgroups?: SubgroupInfo[];
+    badge?: string;
+    badgeColor?: string;
+    isNew?: boolean;
+    metaLabel?: string | null;
+    metaValue?: string | null;
+    topRank?: number | null;
+    /** Пометка значимости линейки: ярлык в строке, рядом с отзывами. */
+    mark?: ProductMark | null;
+    /** Плашки «акционный/новинка/топ/социальный»: в избранном скрыты. */
+    showPromoBadges?: boolean;
+  }>(),
+  {
+    showPromoBadges: true,
+  },
+);
 
 const emit = defineEmits<{
   (e: "toggle", groupId: string): void;
@@ -381,6 +395,9 @@ const emit = defineEmits<{
 }>();
 
 const cartStore = useCartStore();
+
+// Кнопка «Избранное» видна только в реальном Mini App / dev-моке.
+const hasTelegramContext = hasTelegramMiniAppUserContext();
 const catalogStore = useCatalogStore();
 const { fetchGroupReviewSummary } = useCustomerOrders();
 const bodyWrapper = ref<HTMLElement | null>(null);
@@ -1123,8 +1140,14 @@ function closeColorPreview() {
 }
 
 .liquid-line-info {
+  /* Единый вертикальный контейнер: название, крепость, рейтинг и кнопка
+     «Избранное». Родитель (liquid-line-main) центрирует его по высоте
+     карточки через align-items: center — свободное место сверху и снизу
+     одинаково, без ручных сдвигов, для любого числа строк названия. */
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
   gap: 6px;
   min-width: 0;
   flex: 1;
@@ -1138,6 +1161,11 @@ function closeColorPreview() {
   font-size: 16px;
   line-height: 20px;
   color: #191919;
+  /* Длинные названия не выталкивают сердце/шеврон. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
 }
 
 .liquid-line-meta {
@@ -1174,6 +1202,15 @@ function closeColorPreview() {
   flex-direction: row;
   align-items: center;
   flex-shrink: 0;
+  gap: 4px;
+}
+
+.liquid-line-favorite {
+  /* Кнопка «Избранное» из макета: пилюля с сердцем и подписью.
+     Позиция — просто следующий элемент info-колонки. */
+  display: inline-flex;
+  align-items: center;
+  margin-top: 2px;
 }
 
 .liquid-line-toggle {
@@ -1227,6 +1264,8 @@ function closeColorPreview() {
   align-items: center;
   gap: 12px;
   cursor: pointer;
+  /* Длинный контент заголовка сжимается, шеврон не уезжает. */
+  min-width: 0;
 }
 
 .liquid-subline-image-wrapper {
@@ -1269,6 +1308,11 @@ function closeColorPreview() {
   font-size: 16px;
   line-height: 20px;
   color: #191919;
+  /* Длинные названия подлинеек не выталкивают шеврон за край экрана. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
 }
 
 .liquid-subline-description {
@@ -1298,6 +1342,8 @@ function closeColorPreview() {
 .liquid-subline-toggle {
   width: 40px;
   height: 40px;
+  /* Не сжимается длинными названиями: стрелка всегда на месте. */
+  flex-shrink: 0;
   border-radius: 512px;
   border: none;
   background: #f5f7fa;
@@ -1380,6 +1426,11 @@ function closeColorPreview() {
   font-size: 16px;
   line-height: 20px;
   color: #191919;
+  /* Длинные названия вариантов не выталкивают кнопки за край. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
 }
 
 .liquid-variant-price {
@@ -1557,6 +1608,11 @@ function closeColorPreview() {
   font-size: 16px;
   line-height: 20px;
   color: #191919;
+  /* Длинные названия вкусов не выталкивают кнопки +/- за край. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
 }
 
 .liquid-flavor-price {

@@ -121,6 +121,47 @@ export function countCloseCash(counts: Record<string, string>, coins: string): n
   return total;
 }
 
+/**
+ * Раскладка суммы выдачи владельцу по купюрам: строго от самой мелкой
+ * (5 BYN) к крупной, из фактически пересчитанных купюр кассы.
+ *
+ * Возвращает количество купюр каждого номинала, которое нужно отдать,
+ * либо null, если данными нельзя пользоваться (некорректный ввод).
+ * Если мелочи не хватает — остаток набирается крупнее; когда и
+ * всеми купюрами сумму не набрать, listed total меньше суммы
+ * (покажем предупреждение в UI).
+ */
+export function breakdownOwnerCashNotes(
+  ownerCashMinor: number,
+  counts: Record<string, string>,
+): { notes: Array<{ denomination: number; quantity: number }>; coveredMinor: number } | null {
+  if (!Number.isSafeInteger(ownerCashMinor) || ownerCashMinor <= 0) return null;
+
+  // Доступные купюры кассы по номиналам (от мелких к крупным):
+  // CLOSE_DENOMINATIONS идёт от 200 к 5 — разворачиваем.
+  const available: Array<{ denomination: number; quantity: number }> = [];
+  for (const denomination of [...CLOSE_DENOMINATIONS].reverse()) {
+    const quantity = parseCloseNoteCount(counts[String(denomination)] ?? '');
+    if (quantity === null) return null;
+    if (quantity > 0) available.push({ denomination, quantity });
+  }
+
+  const notes: Array<{ denomination: number; quantity: number }> = [];
+  let remaining = ownerCashMinor;
+  // Строго от малой к большой: пятёрки приоритетнее.
+  for (const { denomination, quantity } of available) {
+    if (remaining <= 0) break;
+    const denominationMinor = denomination * 100;
+    const take = Math.min(quantity, Math.floor(remaining / denominationMinor));
+    if (take > 0) {
+      notes.push({ denomination, quantity: take });
+      remaining -= take * denominationMinor;
+    }
+  }
+
+  return { notes, coveredMinor: ownerCashMinor - remaining };
+}
+
 export function formatCloseMoney(minor: number): string {
   if (!Number.isSafeInteger(minor)) return 'Данные недоступны';
   const absolute = Math.abs(minor);

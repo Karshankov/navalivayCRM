@@ -80,7 +80,7 @@ describe('Customer restriction modals: reference design and preserved actions', 
     await wrapper.get('#customer-block-reason').setValue('  Причина  ')
     await wrapper.get('form').trigger('submit')
     await flushPromises()
-    expect(create).toHaveBeenCalledWith({ customer_id: undefined, telegram_username: 'client_test', reason: 'Причина', duration: { unit, value: 3 } })
+    expect(create).toHaveBeenCalledWith({ customer_id: undefined, telegram_username: 'client_test', reason: 'Причина', duration: { unit, value: 3 }, replace: true })
     expect(wrapper.emitted('created')?.[0]).toEqual([{ kind: 'active', username: 'client_test' }])
     expect(writesTo('/api/admin/crm/blocks/block-test/notify')).toHaveLength(1)
     expect(wrapper.emitted('close')).toHaveLength(1)
@@ -95,7 +95,7 @@ describe('Customer restriction modals: reference design and preserved actions', 
     expect(wrapper.find('#customer-block-duration').exists()).toBe(false)
     await wrapper.get('form').trigger('submit')
     await flushPromises()
-    expect(create).toHaveBeenCalledWith({ customer_id: 'real-customer', telegram_username: undefined, reason: null, duration: { unit: 'forever' } })
+    expect(create).toHaveBeenCalledWith({ customer_id: 'real-customer', telegram_username: undefined, reason: null, duration: { unit: 'forever' }, replace: true })
   })
 
   it('keeps invalid-duration protection and recoverable block errors', async () => {
