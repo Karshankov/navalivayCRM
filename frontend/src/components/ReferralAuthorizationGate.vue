@@ -112,6 +112,15 @@ import { getTelegramInitData, withTelegramAuthHeaders } from "@/utils/telegramAu
 
 type GatePhase = "hidden" | "checking" | "required" | "error";
 
+/** Прокси/бэкенд недоступен: 5xx без тела, «Failed to fetch», таймаут.
+ * Отличаем от логических ошибок приложения (401, 404 и т.п.). */
+class NetworkUnavailableError extends Error {
+  constructor() {
+    super("Сервер недоступен");
+    this.name = "NetworkUnavailableError";
+  }
+}
+
 const USERNAME_RETRY_DELAYS_MS = [0, 1200, 2400, 4000] as const;
 const USERNAME_RETRY_TIMEOUT_MS = 16000;
 const STATUS_CHECK_TIMEOUT_MS = 14000;
@@ -151,6 +160,9 @@ const TELEGRAM_SERVICE_PATHS = new Set([
 const emit = defineEmits<{
   authorized: [];
   "gate-active": [active: boolean];
+  /** Сервер недоступен (сетевой фейл проверки): App.vue показывает
+   * оффлайн-заглушку вместо модалок гейта. */
+  "network-error": [failed: boolean];
 }>();
 const { applyBlockFromResponse } = useCustomerBlock();
 const phase = ref<GatePhase>("checking");
@@ -208,7 +220,16 @@ async function checkLiveUsername(runId: number, retryUntilUpdated: boolean, sign
       cache: "no-store",
       signal,
     });
-    const usernameStatus = await usernameResponse.json().catch(() => ({}));
+    let usernameStatus: Record<string, unknown> = {};
+    try {
+      usernameStatus = await usernameResponse.json();
+    } catch {
+      // Пустое/битое тело: Vite-прокси при лежащем бэке отдаёт 500 без JSON —
+      // это именно недоступность сервера, а не ответ приложения.
+      if (usernameResponse.status >= 500) {
+        throw new NetworkUnavailableError();
+      }
+    }
     if (runId !== refreshRunId) return false;
     if (usernameResponse.status === 401) {
       errorMessage.value = "Сессия Telegram устарела. Закройте и заново откройте магазин.";
@@ -216,6 +237,10 @@ async function checkLiveUsername(runId: number, retryUntilUpdated: boolean, sign
       return false;
     }
     if (!usernameResponse.ok) {
+      // 5xx с телом или обрыв прокси — сервер недоступен.
+      if (usernameResponse.status >= 500) {
+        throw new NetworkUnavailableError();
+      }
       throw new Error("Не удалось проверить username. Проверьте интернет и повторите.");
     }
     if (usernameStatus?.hasUsername) return true;
@@ -270,7 +295,13 @@ async function refreshStatus(options: { retryUsername?: boolean } = {}) {
       signal: controller.signal,
     });
     if (runId !== refreshRunId || controller.signal.aborted) return;
-    if (!response.ok) throw new Error("Не удалось проверить доступ. Проверьте интернет и повторите.");
+    if (!response.ok) {
+      // 5xx при лежащем бэке/прокси — недоступность сервера.
+      if (response.status >= 500) {
+        throw new NetworkUnavailableError();
+      }
+      throw new Error("Не удалось проверить доступ. Проверьте интернет и повторите.");
+    }
     const status = await response.json();
     if (runId !== refreshRunId || controller.signal.aborted) return;
     attemptsRemaining.value = Number(status?.attempts_remaining ?? 3);
@@ -283,6 +314,8 @@ async function refreshStatus(options: { retryUsername?: boolean } = {}) {
       return;
     }
     phase.value = status?.enabled && status?.required ? "required" : "hidden";
+    // Проверка прошла — сервер доступен.
+    emit("network-error", false);
   } catch (error) {
     if (runId !== refreshRunId) return;
     if (controller.signal.aborted) {
@@ -292,6 +325,14 @@ async function refreshStatus(options: { retryUsername?: boolean } = {}) {
     }
     errorMessage.value = error instanceof Error ? error.message : "Не удалось проверить доступ";
     phase.value = "error";
+    // Сервер недоступен: прокси/бэкенд лежит (5xx без JSON, TypeError
+    // «Failed to fetch», таймаут AbortError) — App.vue покажет оффлайн-
+    // заглушку вместо наших модалок.
+    const isNetworkFailure =
+      error instanceof NetworkUnavailableError ||
+      error instanceof TypeError ||
+      (error instanceof DOMException && error.name === "AbortError");
+    emit("network-error", isNetworkFailure);
   } finally {
     window.clearTimeout(timeout);
     if (activeRefreshController === controller) activeRefreshController = null;

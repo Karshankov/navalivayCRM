@@ -146,6 +146,9 @@ export const useCatalogStore = defineStore('catalog', () => {
   
   const isLoading = ref(false)
   const error = ref<string | null>(null)
+  /** Сервер недоступен: первичная загрузка каталога упала —
+   * App.vue показывает оффлайн-заглушку вместо контента. */
+  const offline = ref(false)
   
   // Pagination
   const currentPage = ref(0)
@@ -778,7 +781,16 @@ export const useCatalogStore = defineStore('catalog', () => {
       banners.value = []
     }
 
-    await Promise.all(loaders)
+    try {
+      await Promise.all(loaders)
+      // Каталог загрузился: оффлайн-заглушка больше не нужна.
+      offline.value = false
+    } catch (err) {
+      console.error('[catalog] initialize failed:', err)
+      // Сервер недоступен: App.vue заменит контент оффлайн-заглушкой.
+      offline.value = true
+      throw err
+    }
   }
 
   return {
@@ -795,6 +807,7 @@ export const useCatalogStore = defineStore('catalog', () => {
     crossSellProducts,
     isLoading,
     error,
+    offline,
     currentPage,
     hasMore,
     totalProducts,

@@ -176,6 +176,40 @@ describe('FavoritesView (карточки каталога LiquidLineTree)', () 
     wrapper.unmount()
   })
 
+  it('shows unavailable lineup missing from catalog as grey card with «Нет в наличии»', async () => {
+    // FAFF PRIME: сервер пометил группу недоступной (все вкусы
+    // закончились), а витрина скрывает такие группы из каталога —
+    // карточка должна строиться из данных избранного.
+    const gone = favoriteGroup({
+      groupId: 'grp_gone',
+      groupName: 'FAFF PRIME',
+      groupSlug: 'faff-prime',
+      groupCover: null,
+      groupUnavailable: true,
+      totalCount: 10,
+      items: [],
+    })
+    const wrapper = await mountView([gone])
+
+    expect(wrapper.find('.liquid-line-card').exists()).toBe(true)
+    expect(wrapper.text()).toContain('FAFF PRIME')
+    // Серая карточка с пометкой недоступности.
+    expect(wrapper.find('.liquid-line-card--unavailable').exists()).toBe(true)
+    expect(wrapper.text()).toContain('Нет в наличии')
+    wrapper.unmount()
+  })
+
+  it('marks lineup present in catalog but with no live items as unavailable', async () => {
+    // Группа есть в каталоге, но сервер не вернул живых вкусов —
+    // карточка серая, с пометкой.
+    const empty = favoriteGroup({ groupUnavailable: true, totalCount: 1, items: [] })
+    const wrapper = await mountView([empty])
+
+    expect(wrapper.find('.liquid-line-card--unavailable').exists()).toBe(true)
+    expect(wrapper.text()).toContain('Нет в наличии')
+    wrapper.unmount()
+  })
+
   it('renders catalog LiquidLineCard with group name', async () => {
     const wrapper = await mountView([favoriteGroup()])
 

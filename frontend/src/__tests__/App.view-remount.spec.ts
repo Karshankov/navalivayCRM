@@ -30,6 +30,13 @@ vi.mock("@/stores/user", () => ({
   useUserStore: () => ({ fetchProfile: vi.fn().mockResolvedValue(undefined) }),
 }));
 
+vi.mock("@/stores/catalog", () => ({
+  useCatalogStore: () => ({
+    offline: false,
+    categories: [{ id: "c1" }],
+  }),
+}));
+
 const mounted = { shell: 0, product: 0 };
 
 /** Двойник AdminView: тот же приём — вложенный <RouterView> внутри экрана. */

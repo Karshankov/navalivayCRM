@@ -57,7 +57,8 @@
              иначе «родитель + вложенная избранная» дублировались
              фантомами после сохранения. -->
         <template v-else>
-          <article v-for="group in liquidGroups" :key="group.id" :data-id="group.id" class="card">
+          <article v-for="group in liquidGroups" :key="group.id" :data-id="group.id" class="card"
+            :class="{ unavailable: group.unavailable }">
             <div class="card-hit">
               <div class="sort-controls">
                 <span class="handle" role="button"
@@ -80,6 +81,7 @@
               </div>
               <div class="card-body">
                 <h2 class="name">{{ group.name || 'Линейка' }}</h2>
+                <p v-if="group.unavailable" class="name-unavailable">Нет в наличии</p>
               </div>
             </div>
           </article>
@@ -140,6 +142,8 @@ interface LiquidGroup {
   isNew?: boolean
   newSince?: string | null
   mark?: ProductMark | null
+  /** Линейка закончилась: серая карточка с пометкой «Нет в наличии». */
+  unavailable?: boolean
   children: LiquidGroup[]
 }
 
@@ -211,6 +215,37 @@ const liquidGroups = computed<LiquidGroup[]>(() => {
     }
   }
 
+  // Недоступные линейки, которых НЕТ в каталоге: витрина скрывает
+  // группы с нулевым остатком (hide_empty/totalProductCount=0), поэтому
+  // из каталога карточка не построится. Строим серую карточку из данных
+  // избранного: имя, обложка, пометка «Нет в наличии».
+  const unavailableGroups = favoritesStore.groups.filter(
+    (g) => g.groupUnavailable && g.groupId && !builtIds.has(g.groupId),
+  )
+  for (const g of unavailableGroups) {
+    builtIds.add(g.groupId)
+    roots.push({
+      id: g.groupId,
+      name: g.groupName || 'Линейка',
+      slug: g.groupSlug || '',
+      order: 0,
+      // Обложку отдаёт сервер избранного (группа → категория).
+      coverImage: g.groupCover || null,
+      products: [],
+      productCount: 0,
+      badge: null,
+      badgeColor: null,
+      metaLabel: null,
+      metaValue: null,
+      strengthTier: null,
+      isNew: false,
+      newSince: null,
+      mark: null,
+      unavailable: true,
+      children: [],
+    })
+  }
+
   // Порядок карточек — как в favoritesStore.groups: сохранённый
   // drag-n-drop порядок (group_position) переживает перезаход.
   const position = new Map(favoritesStore.groups.map((g) => [g.groupId, g.groupPosition ?? Number.MAX_SAFE_INTEGER]))
@@ -265,6 +300,9 @@ function buildGroupTree(
     isNew: false,
     newSince: null,
     mark: null,
+    // Линейка есть в каталоге, но живых вкусов нет (сервер пометил
+    // группу недоступной): серая карточка с пометкой.
+    unavailable: groupProducts.length === 0 && children.length === 0,
     children,
   }
 }
@@ -695,6 +733,15 @@ button {
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
+}
+
+.name-unavailable {
+  margin: 0;
+  font-family: -apple-system, 'SF Pro Display', sans-serif;
+  font-weight: 600;
+  font-size: 13px;
+  line-height: 16px;
+  color: #888e99;
 }
 
 .unavailable {

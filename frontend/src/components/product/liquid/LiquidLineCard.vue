@@ -1,5 +1,5 @@
 <template>
-  <div class="liquid-line-card" :class="{ expanded }">
+  <div class="liquid-line-card" :class="{ expanded, 'liquid-line-card--unavailable': unavailable }">
     <NewLineupBadge v-if="isNew && showPromoBadges" />
     <div class="liquid-line-header" @click="toggle">
       <div
@@ -39,6 +39,15 @@
         </div>
         <div class="liquid-line-info">
           <h3 class="liquid-line-title">{{ title }}</h3>
+          <!-- Линейка закончилась: серая карточка + пометка (избранное). -->
+          <p v-if="unavailable" class="liquid-line-unavailable" role="status">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.6"/>
+              <path d="M8 4.8V8.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+              <circle cx="8" cy="11" r="0.9" fill="currentColor"/>
+            </svg>
+            Нет в наличии
+          </p>
           <p v-if="metaText" class="liquid-line-meta">{{ metaText }}</p>
           <ReviewRatingLink
             v-if="showReviewSummary"
@@ -383,9 +392,12 @@ const props = withDefaults(
     mark?: ProductMark | null;
     /** Плашки «акционный/новинка/топ/социальный»: в избранном скрыты. */
     showPromoBadges?: boolean;
+    /** Линейка закончилась: серая карточка с пометкой (избранное). */
+    unavailable?: boolean;
   }>(),
   {
     showPromoBadges: true,
+    unavailable: false,
   },
 );
 
@@ -1037,6 +1049,40 @@ function closeColorPreview() {
   border-radius: 20px;
   padding: 16px;
   margin-bottom: 0;
+}
+
+/* Линейка закончилась (избранное): приглушённая карточка. */
+.liquid-line-card--unavailable {
+  background: #f5f6f8;
+}
+
+.liquid-line-card--unavailable .liquid-line-title {
+  color: #aab2bd;
+}
+
+.liquid-line-card--unavailable .liquid-line-image img {
+  filter: grayscale(1);
+  opacity: 0.6;
+}
+
+.liquid-line-card--unavailable .liquid-line-image-placeholder svg {
+  opacity: 0.5;
+}
+
+.liquid-line-unavailable {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0 0;
+  font-family: -apple-system, "SF Pro Display", sans-serif;
+  font-weight: 600;
+  font-size: 13px;
+  line-height: 16px;
+  color: #98a1ad;
+}
+
+.liquid-line-card--unavailable .liquid-line-meta {
+  color: #b3bac4;
 }
 
 .liquid-line-card:last-of-type {

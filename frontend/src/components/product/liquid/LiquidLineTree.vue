@@ -17,6 +17,7 @@
       :expanded="isExpanded"
       :top-rank="topRank"
       :show-promo-badges="showPromoBadges"
+      :unavailable="group.unavailable ?? false"
       @toggle="toggleExpand"
       @show-toast="
         (msg: string, type: 'error' | 'success' | 'info') =>
@@ -83,6 +84,8 @@ interface LiquidGroup {
   isNew?: boolean;
   newSince?: string | null;
   mark?: ProductMark | null;
+  /** Линейка закончилась: серая карточка с пометкой (избранное). */
+  unavailable?: boolean;
   children: LiquidGroup[];
 }
 

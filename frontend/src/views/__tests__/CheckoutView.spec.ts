@@ -1400,7 +1400,11 @@ describe("CheckoutView order flows", () => {
     await flushPromises();
     expect(wrapper.find(".loyalty-card").exists()).toBe(false);
 
-    await wrapper.find(".promo-cancel-btn").trigger("click");
+    // Снятие кода: кнопка всегда видна («Промокод применён»), открывает
+    // модалку с применённым кодом; «Убрать промокод» — внутри модалки.
+    expect(wrapper.find(".promo-open-btn").text()).toContain("Промокод применён");
+    await wrapper.find(".promo-open-btn").trigger("click");
+    await wrapper.find('[data-test="promo-modal-remove"]').trigger("click");
     await flushPromises();
     expect(wrapper.find(".loyalty-card").exists()).toBe(true);
 
@@ -1858,10 +1862,13 @@ describe("CheckoutView order flows", () => {
       "x-wholesale-secret": "wholesale-secret",
     }));
 
-    await wrapper.find(".promo-cancel-btn").trigger("click");
+    // Снятие кода: кнопка открывает модалку с применённым кодом,
+    // «Убрать промокод» — внутри модалки.
+    await wrapper.find(".promo-open-btn").trigger("click");
+    await wrapper.find('[data-test="promo-modal-remove"]').trigger("click");
     await flushPromises();
-    // Код снят — на карточке снова кнопка, открываем модалку заново.
-    expect(wrapper.find(".promo-open-btn").exists()).toBe(true);
+    // Код снят — кнопка снова «У меня есть промокод».
+    expect(wrapper.find(".promo-open-btn").text()).toContain("У меня есть промокод");
     await wrapper.find(".promo-open-btn").trigger("click");
     await wrapper.find(".promo-input").setValue("REGULAR10");
     await wrapper.find(".promo-apply-btn").trigger("click");

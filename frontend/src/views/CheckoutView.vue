@@ -207,56 +207,9 @@
           </p>
         </div>
 
-        <!-- Промокод: вместо развёрнутого блока — компактная кнопка;
-             ввод переехал в модалку с предупреждением о блокировке. -->
-        <div class="promo-card" :class="{ 'promo-card-applied': promoResult, 'promo-card--frozen': discountBlocked }">
-          <p v-if="discountBlocked" class="promo-frozen-notice" role="status">
-            Скидки и ввод промокодов недоступны до {{ discountBlockedUntilLabel }}
-          </p>
-
-          <template v-else>
-            <!-- Применённый промокод: компактный чип с галочкой. -->
-            <div v-if="promoResult" class="promo-applied-row">
-              <div class="promo-applied-info">
-                <span class="promo-input-label">Промокод</span>
-                <div class="promo-code-display">
-                  <span class="promo-code-text">{{ promoCode.toUpperCase() }}</span>
-                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                    <path d="M2 7L5.5 10.5L12 3.5" stroke="#34c759" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                  </svg>
-                </div>
-              </div>
-              <button class="promo-cancel-btn" @click="handlePromoClear">Убрать</button>
-            </div>
-            <p v-if="promoResult" class="promo-discount-text">
-              <template v-if="wholesaleStore.isWholesale">
-                Подарок будет добавлен к заказу
-                <template v-if="promoResult.customer_description || promoResult.description">
-                  · {{ promoResult.customer_description || promoResult.description }}
-                </template>
-              </template>
-              <template v-else>
-                Скидка: -{{ formatPrice(promoResult.calculated_discount) }} BYN
-                <template v-if="promoResult.customer_description || promoResult.description">
-                  · {{ promoResult.customer_description || promoResult.description }}
-                </template>
-              </template>
-            </p>
-
-            <!-- Кнопка ввода промокода — открывает модалку. -->
-            <button
-              v-else
-              type="button"
-              class="promo-open-btn"
-              data-test="promo-open-btn"
-              @click="openPromoModal"
-            >
-              <span class="promo-open-btn__icon" aria-hidden="true">%</span>
-              <span class="promo-open-btn__label">Ввести промокод</span>
-            </button>
-          </template>
-        </div>
-
+        <!-- Промокод: ВСЁ внутри модалки (ввод, применённый код,
+             описание, снятие). На странице — только кнопка открытия
+             над «Оформить заказ» и скидка в итогах summary. -->
         <div v-if="!wholesaleStore.isWholesale && promoResult" class="summary-row">
           <span class="summary-label">Скидка по промокоду</span>
           <span class="summary-discount">-{{ formatPrice(promoResult.calculated_discount) }} BYN</span>
@@ -435,19 +388,41 @@
 
         <div v-if="errors.phone" class="submit-error">{{ errors.phone }}</div>
         <div v-if="errors.address" class="submit-error">{{ errors.address }}</div>
-
-        <button
-          @click="beginCheckout"
-          :disabled="isSubmitting || isCheckingCardPaymentStatus || checkoutCalculationPending || isWholesaleSubmitBlocked || shouldShowOpenInTelegramForWholesale"
-          class="submit-button"
-          type="button"
-          style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
-        >
-          {{ submitButtonLabel }}
-        </button>
-
-        <div v-if="submitError" class="submit-error">{{ submitError }}</div>
       </div>
+    </div>
+
+    <!-- Закреплённый низ экрана: кнопка промокода над «Оформить заказ».
+         Плашка всегда видна при прокрутке; контент получает отступ
+         снизу, чтобы последний блок не уходил под кнопки. -->
+    <div class="checkout-footer" v-if="cartStore.items.length">
+      <div v-if="submitError" class="submit-error">{{ submitError }}</div>
+
+      <!-- Кнопка промокода — сразу над «Оформить заказ».
+           Габариты и скругление — как у кнопки заказа (64px, 528px),
+           но чёрная: вторичная по смыслу. Всегда открывает модалку:
+           и для ввода, и для просмотра/снятия применённого кода.
+           При заморозке скидок — скрыта. -->
+      <button
+        v-if="!discountBlocked"
+        type="button"
+        class="promo-open-btn"
+        data-test="promo-open-btn"
+        @click="openPromoModal"
+      >
+        <span class="promo-open-btn__label">{{
+          promoResult ? 'Промокод применён' : 'У меня есть промокод'
+        }}</span>
+      </button>
+
+      <button
+        @click="beginCheckout"
+        :disabled="isSubmitting || isCheckingCardPaymentStatus || checkoutCalculationPending || isWholesaleSubmitBlocked || shouldShowOpenInTelegramForWholesale"
+        class="submit-button"
+        type="button"
+        style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
+      >
+        {{ submitButtonLabel }}
+      </button>
     </div>
 
     <MinDeliveryBanner
@@ -657,47 +632,88 @@
       </template>
     </CustomerModalShell>
 
-    <!-- Модалка ввода промокода: поле + предупреждение о блокировке
-         скидочной системы в стиле плашки из каталога расходников. -->
+    <!-- Модалка промокода: ВСЕ действия и вся информация здесь —
+         ввод, применённый код, описание скидки/подарка, снятие. -->
     <CustomerModalShell
       :open="showPromoModal"
-      title="Ввести промокод"
+      :title="promoResult ? 'Ваш промокод' : 'Ввести промокод'"
       close-label="Закрыть окно"
       @close="closePromoModal"
     >
       <div class="checkout-modal-copy">
-        <div class="promo-modal-input-row">
-          <input
-            ref="promoInputRef"
-            id="checkout-promo-code"
-            v-model="promoCode"
-            type="text"
-            class="promo-input"
-            placeholder="Введите промокод"
-            enterkeyhint="done"
-            :disabled="promoValidating"
-            :aria-describedby="promoError ? 'checkout-promo-error' : undefined"
-            data-test="promo-modal-input"
-            @keydown.enter="handlePromoApply"
-            @input="promoError = ''"
-          />
+        <!-- Применённый промокод: код с галочкой, описание и снятие. -->
+        <template v-if="promoResult">
+          <div class="promo-applied-row promo-applied-row--modal">
+            <div class="promo-applied-info">
+              <span class="promo-input-label">Промокод</span>
+              <div class="promo-code-display">
+                <span class="promo-code-text">{{ promoCode.toUpperCase() }}</span>
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <path d="M2 7L5.5 10.5L12 3.5" stroke="#34c759" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </div>
+            </div>
+          </div>
+          <p class="promo-discount-text">
+            <template v-if="wholesaleStore.isWholesale">
+              Подарок будет добавлен к заказу
+              <template v-if="promoResult.customer_description || promoResult.description">
+                · {{ promoResult.customer_description || promoResult.description }}
+              </template>
+            </template>
+            <template v-else>
+              Скидка: -{{ formatPrice(promoResult.calculated_discount) }} BYN
+              <template v-if="promoResult.customer_description || promoResult.description">
+                · {{ promoResult.customer_description || promoResult.description }}
+              </template>
+            </template>
+          </p>
           <button
-            class="promo-apply-btn"
-            :disabled="!promoCode.trim() || promoValidating"
-            data-test="promo-modal-apply"
-            @click="handlePromoApply"
+            type="button"
+            class="promo-remove-btn"
+            data-test="promo-modal-remove"
+            :disabled="promoValidating"
+            @click="handlePromoClear"
           >
-            {{ promoValidating ? '...' : 'Применить' }}
+            Убрать промокод
           </button>
-        </div>
-        <p
-          v-if="promoError"
-          id="checkout-promo-error"
-          class="promo-error-text"
-          role="alert"
-        >
-          {{ promoError }}
-        </p>
+        </template>
+
+        <!-- Ввод нового промокода. -->
+        <template v-else>
+          <div class="promo-modal-input-row">
+            <input
+              ref="promoInputRef"
+              id="checkout-promo-code"
+              v-model="promoCode"
+              type="text"
+              class="promo-input"
+              placeholder="Введите промокод"
+              enterkeyhint="done"
+              :disabled="promoValidating"
+              :aria-describedby="promoError ? 'checkout-promo-error' : undefined"
+              data-test="promo-modal-input"
+              @keydown.enter="handlePromoApply"
+              @input="promoError = ''"
+            />
+            <button
+              class="promo-apply-btn"
+              :disabled="!promoCode.trim() || promoValidating"
+              data-test="promo-modal-apply"
+              @click="handlePromoApply"
+            >
+              {{ promoValidating ? '...' : 'Применить' }}
+            </button>
+          </div>
+          <p
+            v-if="promoError"
+            id="checkout-promo-error"
+            class="promo-error-text"
+            role="alert"
+          >
+            {{ promoError }}
+          </p>
+        </template>
 
         <!-- Предупреждение в оформлении CompatibilityNotice (каталог
              расходников): красный градиентный квадрат с треугольником,
@@ -874,10 +890,13 @@ function openPromoModal() {
   if (discountBlocked.value) return;
   promoError.value = '';
   showPromoModal.value = true;
-  // Фокус в поле ввода после появления модалки.
-  nextTick(() => {
-    promoInputRef.value?.focus();
-  });
+  // Фокус в поле ввода — только когда модалка открыта для ввода
+  // (не для просмотра применённого кода).
+  if (!promoResult.value) {
+    nextTick(() => {
+      promoInputRef.value?.focus();
+    });
+  }
 }
 
 function closePromoModal() {
@@ -1325,9 +1344,8 @@ async function handlePromoApply() {
       if (isEditingOrder.value) {
         cartStore.setEditingPromoCode(code);
       }
-      // Промокод применён — модалку ввода закрываем: на карточке
-      // останется компактный чип с кодом.
-      showPromoModal.value = false;
+      // Модалку НЕ закрываем: применённый код, описание и кнопка
+      // «Убрать» показываются здесь же — клиент видит результат.
     } else {
       promoError.value = data.message || 'Недействительный промокод';
     }
@@ -2268,7 +2286,26 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
 .checkout-page {
   min-height: 100vh;
   background: #f5f7fa;
-  padding-bottom: 32px;
+  /* Место под закреплённый футер с кнопками (промокод + заказ). */
+  padding-bottom: calc(144px + env(safe-area-inset-bottom, 0px));
+}
+
+/* Закреплённые внизу экрана кнопки «У меня есть промокод» и
+ * «Оформить заказ»: без подложки, прямо на фоне страницы. */
+.checkout-footer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+}
+
+.checkout-footer .submit-error {
+  margin: 0 0 -4px;
 }
 
 .header-area {
@@ -2661,60 +2698,33 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   color: rgba(255, 255, 255, 0.55);
 }
 
-/* Обёртка промокода без визуальной подложки: кнопка и чип живут
- * прямо на фоне страницы. */
-.promo-card {
-  border-radius: 20px;
-  transition: border-color 0.2s ease;
-}
-
-.promo-card--frozen {
-  border-color: transparent;
-}
-
-/* Применённый промокод: чип с зелёной обводкой. */
-.promo-card-applied .promo-applied-row {
-  border-color: #34c759;
-}
-
-/* Кнопка «Ввести промокод» на карточке: компактная по высоте (40px),
- * но на всю ширину, в фирменном градиенте кнопки заказа. */
+/* Кнопка «У меня есть промокод»: габариты кнопки заказа (64px, 528px,
+ * Montserrat 16/500), чёрный фон — вторичное действие. */
 .promo-open-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 10px;
   width: 100%;
-  height: 40px;
-  padding: 0 18px;
+  height: 64px;
   border: none;
   border-radius: 528px;
-  background: linear-gradient(90deg, #f50302 0%, #a90f0e 100%);
+  background: #101010;
   color: #ffffff;
   font-family: "Montserrat", sans-serif;
   font-weight: 500;
-  font-size: 13px;
-  line-height: 16px;
+  font-size: 16px;
+  line-height: 20px;
   cursor: pointer;
   box-sizing: border-box;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .promo-open-btn:active {
-  opacity: 0.92;
-}
-
-.promo-open-btn__icon {
-  display: grid;
-  place-items: center;
-  width: 24px;
-  height: 24px;
-  flex-shrink: 0;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.22);
-  font-family: -apple-system, "SF Pro Display", sans-serif;
-  font-weight: 700;
-  font-size: 14px;
-  line-height: 1;
+  opacity: 0.9;
 }
 
 .promo-open-btn__label {
@@ -2796,18 +2806,6 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   letter-spacing: 0;
 }
 
-.promo-frozen-notice {
-  margin: 0 0 10px;
-  padding: 12px 14px;
-  border-radius: 12px;
-  background: linear-gradient(90deg, #f50302 0%, #a90f0e 100%);
-  color: #ffffff;
-  font-family: -apple-system, "SF Pro Display", sans-serif;
-  font-weight: 600;
-  font-size: 13px;
-  line-height: 1.45;
-}
-
 .promo-error-text {
   font-family: -apple-system, "SF Pro Display", sans-serif;
   font-weight: 400;
@@ -2883,6 +2881,11 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   padding-left: 16px;
 }
 
+/* Чип применённого кода внутри модалки: с зелёной обводкой. */
+.promo-applied-row--modal {
+  border-color: #34c759;
+}
+
 .promo-applied-info {
   flex: 1;
 }
@@ -2910,29 +2913,40 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   color: #34c759;
 }
 
-.promo-cancel-btn {
-  margin: 10px;
-  padding: 0 20px;
-  height: 44px;
-  background: #e6e9ed;
-  border: none;
+/* «Убрать промокод» в модалке: на всю ширину, как остальные
+ * вторичные кнопки модалок корзины. */
+.promo-remove-btn {
+  width: 100%;
+  min-height: 48px;
+  padding: 12px 18px;
+  border: 1px solid #e6e9ed;
   border-radius: 528px;
-  font-family: -apple-system, "SF Pro Display", sans-serif;
+  background: #ffffff;
+  font-family: "Montserrat", sans-serif;
   font-weight: 500;
   font-size: 14px;
-  line-height: 17px;
+  line-height: 18px;
   color: #191919;
   cursor: pointer;
-  white-space: nowrap;
+  box-sizing: border-box;
+}
+
+.promo-remove-btn:active:not(:disabled) {
+  background: #f0f2f5;
+}
+
+.promo-remove-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .promo-discount-text {
   font-family: -apple-system, "SF Pro Display", sans-serif;
   font-weight: 400;
-  font-size: 12px;
-  line-height: 14px;
+  font-size: 13px;
+  line-height: 16px;
   color: #34c759;
-  margin: 12px 0 0;
+  margin: 0;
 }
 
 .loyalty-section {

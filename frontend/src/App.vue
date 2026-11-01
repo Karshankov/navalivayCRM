@@ -10,10 +10,13 @@ import ReviewPromptModal from "@/components/reviews/ReviewPromptModal.vue";
 import ReferralAuthorizationGate from "@/components/ReferralAuthorizationGate.vue";
 import { useCustomerBlock } from "@/composables/useCustomerBlock";
 import { useUserStore } from "@/stores/user";
+import { useCatalogStore } from "@/stores/catalog";
+import OfflinePlaceholder from "@/components/OfflinePlaceholder.vue";
 import { topLevelViewKey } from "@/router/view-key";
 const route = useRoute();
 const { currentBlock, isBlocked, refreshBlock } = useCustomerBlock();
 const userStore = useUserStore();
+const catalogStore = useCatalogStore();
 const isAdminRoute = computed(() => route.path.startsWith("/admin"));
 // Клиентская часть закрыта до ответа сервера: каталог и цены даже не
 // монтируются, пока новый клиент не пройдёт обязательную авторизацию.
@@ -37,6 +40,32 @@ const showBlockedScreen = computed(
   () => isBlocked.value && !route.path.startsWith("/admin"),
 );
 
+/* ===== Оффлайн-заглушка =====
+ * Сервер недоступен: браузер без сети ИЛИ первичная загрузка каталога
+ * упала (offline-флаг стора). Заглушка с кнопкой «Попробовать снова»
+ * (полная перезагрузка) закрывает весь клиентский контент —
+ * в админке обычные механизмы ошибок. */
+const browserOffline = ref(
+  typeof navigator !== "undefined" ? !navigator.onLine : false,
+);
+
+function syncBrowserOffline() {
+  browserOffline.value = !navigator.onLine;
+}
+
+onMounted(() => {
+  window.addEventListener("offline", syncBrowserOffline);
+  window.addEventListener("online", syncBrowserOffline);
+});
+
+const showOfflinePlaceholder = computed(
+  () =>
+    !isAdminRoute.value &&
+    (browserOffline.value ||
+      gateNetworkError.value ||
+      (catalogStore.offline && !catalogStore.categories.length)),
+);
+
 const showTabBar = computed(() => {
   const path = route.path;
   if (path.startsWith("/admin")) return false;
@@ -50,12 +79,22 @@ const showTabBar = computed(() => {
 });
 
 const showReviewPrompt = computed(() => showTabBar.value);
+// Гейт авторизации нужен только при живом сервере: когда сеть лежит,
+// его модалки «Не удалось проверить доступ» перекрывают оффлайн-
+// заглушку. Гейт смонтируется после перезагрузки по кнопке.
 const showReferralGate = computed(
-  () => !isAdminRoute.value && !isBlocked.value,
+  () => !isAdminRoute.value && !isBlocked.value && !showOfflinePlaceholder.value,
 );
 
 function handleReferralGateActive(active: boolean) {
   referralGateActive.value = active;
+}
+
+/** Гейт не смог достучаться до сервера (сеть лежит) — показываем
+ * оффлайн-заглушку; false — сервер ответил, заглушка не нужна. */
+const gateNetworkError = ref(false);
+function handleGateNetworkError(failed: boolean) {
+  gateNetworkError.value = failed;
 }
 
 // Глобальный плавающий виджет рулетки. Показываем на всех customer-
@@ -94,7 +133,11 @@ onMounted(() => {
     :class="{ 'app-shell--with-tab-bar': showCustomerContent && showTabBar, 'app-shell--admin': isAdminRoute }"
     style="background: var(--app-page-background, #ffffff)"
   >
-    <div v-if="showCustomerContent" class="app-shell__protected">
+    <!-- Оффлайн-заглушка: сервер недоступен — вместо всего клиентского
+         контента макет с черепом и «Попробовать снова». -->
+    <OfflinePlaceholder v-if="showOfflinePlaceholder" />
+
+    <div v-else-if="showCustomerContent" class="app-shell__protected">
       <div class="app-shell__content">
         <RouterView v-slot="{ Component, route: viewRoute }">
           <Transition name="page-fade" mode="out-in">
@@ -110,6 +153,7 @@ onMounted(() => {
     <ReferralAuthorizationGate
       v-if="showReferralGate"
       @gate-active="handleReferralGateActive"
+      @network-error="handleGateNetworkError"
     />
     <BlockedScreen
       v-if="showBlockedScreen"
