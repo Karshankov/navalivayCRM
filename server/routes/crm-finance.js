@@ -1417,64 +1417,88 @@ crmFinanceRouter.get('/api/admin/crm/visit-logs', authMiddleware, (req, res) => 
 // =========================
 // GROUPS SEARCH FOR CRM (Поиск линеек для «добавить всю линейку» в закупку)
 // =========================
+// ВАЖНО: SQLite LOWER() без ICU не приводит кириллицу к нижнему регистру
+// («ПРИЗРАК» остаётся заглавным), поэтому регистронезависимый поиск по
+// названием групп делаем в JS — .toLowerCase() в Node умеет юникод.
 crmFinanceRouter.get('/api/admin/crm/groups/search', authMiddleware, (req, res) => {
   try {
     const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
     const limit = Math.min(Math.max(Number(req.query.limit || 25), 1), 100);
     const offset = Math.max(Number(req.query.offset || 0), 0);
+    const searchLower = search.toLowerCase();
 
-    const params = [];
-    let whereClause = '';
-    const orderParams = ['', ''];
-    if (search) {
-      whereClause = 'WHERE LOWER(g.name) LIKE ?';
-      params.push(`%${search.toLowerCase()}%`);
-      orderParams[0] = search.toLowerCase();
-      orderParams[1] = `${search.toLowerCase()}%`;
+    // Групп немного (~сотни): тянем все с деревом подгрупп и считаем
+    // товары в JS, фильтруя регистронезависимо.
+    const groupRows = db.prepare(`
+      SELECT id, name, slug, categoryId, parent_group_id
+      FROM category_groups
+    `).all();
+    const categoryNames = new Map(
+      db.prepare('SELECT id, name FROM categories').all()
+        .map((row) => [String(row.id), row.name]),
+    );
+    const productCounts = db.prepare(`
+      SELECT groupId, COUNT(*) AS count FROM products GROUP BY groupId
+    `).all();
+
+    // Дерево: дети по parent_group_id.
+    const childrenByParent = new Map();
+    for (const row of groupRows) {
+      if (row.parent_group_id) {
+        if (!childrenByParent.has(row.parent_group_id)) {
+          childrenByParent.set(row.parent_group_id, []);
+        }
+        childrenByParent.get(row.parent_group_id).push(String(row.id));
+      }
     }
+    const ownCount = new Map(
+      productCounts.map((row) => [String(row.groupId), Number(row.count ?? 0)]),
+    );
 
-    // Счётчик товаров — вместе с вложенными подгруппами (дерево по
-    // parent_group_id), как будет добавлять кнопка «всю линейку».
-    // Рекурсия — от каждой строки списка, поэтому per-group счёт честный.
-    const rows = db.prepare(`
-      SELECT
-        g.id,
-        g.name,
-        g.slug,
-        g.categoryId,
-        c.name AS category_name,
-        g.parent_group_id,
-        (
-          WITH RECURSIVE tree(group_id) AS (
-            SELECT g.id
-            UNION ALL
-            SELECT cg.id FROM category_groups cg
-            JOIN tree t ON cg.parent_group_id = t.group_id
-          )
-          SELECT COUNT(*) FROM products p WHERE p.groupId IN (SELECT group_id FROM tree)
-        ) AS product_count
-      FROM category_groups g
-      LEFT JOIN categories c ON c.id = g.categoryId
-      ${whereClause}
-      ORDER BY
-        CASE
-          WHEN LOWER(g.name) = ? THEN 0
-          WHEN LOWER(g.name) LIKE ? THEN 1
-          ELSE 2
-        END,
-        g.name ASC
-      LIMIT ? OFFSET ?
-    `).all(...params, ...orderParams, limit, offset);
+    // Счёт товаров всей ветки (группа + вложенные подгруппы).
+    const subtreeCount = (groupId) => {
+      const seen = new Set();
+      const stack = [groupId];
+      let total = 0;
+      while (stack.length) {
+        const current = stack.pop();
+        if (seen.has(current)) continue;
+        seen.add(current);
+        total += ownCount.get(current) ?? 0;
+        for (const child of childrenByParent.get(current) ?? []) {
+          if (!seen.has(child)) stack.push(child);
+        }
+      }
+      return total;
+    };
 
-    res.json(rows.map((row) => ({
+    let matches = groupRows.map((row) => ({
       id: String(row.id),
       name: row.name,
       slug: row.slug ?? null,
       categoryId: String(row.categoryId ?? ''),
-      categoryName: row.category_name ?? null,
+      categoryName: categoryNames.get(String(row.categoryId ?? '')) ?? null,
       parentGroupId: row.parent_group_id ?? null,
-      productCount: Number(row.product_count ?? 0),
-    })));
+      productCount: subtreeCount(String(row.id)),
+    }));
+
+    if (searchLower) {
+      matches = matches.filter((group) =>
+        group.name.toLowerCase().includes(searchLower),
+      );
+      // Точные совпадения и префиксы — выше в списке.
+      matches.sort((a, b) => {
+        const aName = a.name.toLowerCase();
+        const bName = b.name.toLowerCase();
+        const rank = (name) =>
+          name === searchLower ? 0 : name.startsWith(searchLower) ? 1 : 2;
+        const rankDiff = rank(aName) - rank(bName);
+        return rankDiff !== 0 ? rankDiff : a.name.localeCompare(b.name);
+      });
+    }
+
+    const rows = matches.slice(offset, offset + limit);
+    res.json(rows);
   } catch (error) {
     console.error('[crm] Groups search error:', error);
     res.status(500).json({ error: 'failed', message: error.message });
