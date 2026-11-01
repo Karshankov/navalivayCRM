@@ -59,9 +59,6 @@
           />
           <!-- Кнопка «Избранное» — в общем вертикальном контейнере,
               центрруемом по высоте карточки. -->
-          <div v-if="hasTelegramContext" class="liquid-line-favorite" @click.stop>
-            <FavoriteGroupHeart :group-id="groupId" />
-          </div>
         </div>
       </div>
       <div class="liquid-line-side">
@@ -331,7 +328,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch, nextTick } from "vue";
 import NewLineupBadge from "@/components/product/NewLineupBadge.vue";
-import FavoriteGroupHeart from "@/components/product/FavoriteGroupHeart.vue";
 import GroupReviewsModal from "@/components/reviews/GroupReviewsModal.vue";
 import ReviewRatingLink from "@/components/reviews/ReviewRatingLink.vue";
 import SignificanceMark from "@/components/product/SignificanceMark.vue";

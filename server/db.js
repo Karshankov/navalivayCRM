@@ -26,7 +26,6 @@ import { migrateProductVariants } from './migrations/add_product_variants.js';
 import { migrateProductListIndexes } from './migrations/add_product_list_indexes.js';
 import { addTelegramUsernameToOrders } from './migrations/add_telegram_username_to_orders.js';
 import { migrateCustomerFeedbacks } from './migrations/add_customer_feedbacks.js';
-import { migrateCustomerFavorites } from './migrations/add_customer_favorites.js';
 import { migrateArchivedToOrders } from './migrations/add_archived_to_orders.js';
 import { migrateAddBaseProductToOrderItems } from './migrations/add_base_product_to_order_items.js';
 import { migrateColorDisplayMode } from './migrations/add_color_display_mode.js';
@@ -279,7 +278,6 @@ export function initDb() {
   if (financialCloseEnabled) migrateFinancialDayClosures(db);
   migrateCustomReminders(db);
   migrateRevenueTriggers(db);
-  migrateCustomerFavorites();
 
   seedIfEmpty();
   seedDefaultLoyaltyData();
