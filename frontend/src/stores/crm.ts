@@ -680,6 +680,18 @@ export interface WriteOffItem {
   stock?: number;
 }
 
+/** Линейка в поиске для «добавить всю линейку» в закупку. */
+export interface CrmGroupSummary {
+  id: string;
+  name: string;
+  slug: string | null;
+  categoryId: string;
+  categoryName: string | null;
+  parentGroupId: string | null;
+  /** Товары линейки вместе с вложенными подгруппами. */
+  productCount: number;
+}
+
 export interface CrmProductSummary {
   id: string;
   productId?: string; // Для вариантов - ID базового товара
@@ -6066,7 +6078,7 @@ export const useCrmStore = defineStore("crm", () => {
   }
 
   async function searchCrmProducts(
-    params: { search?: string; offset?: number; limit?: number } = {},
+    params: { search?: string; offset?: number; limit?: number; groupId?: string } = {},
   ) {
     const query = new URLSearchParams();
     query.set("limit", String(params.limit ?? 25));
@@ -6075,6 +6087,9 @@ export const useCrmStore = defineStore("crm", () => {
     }
     if (params.search) {
       query.set("search", params.search);
+    }
+    if (params.groupId) {
+      query.set("group_id", params.groupId);
     }
 
     const response = await fetch(
@@ -6122,6 +6137,44 @@ export const useCrmStore = defineStore("crm", () => {
       imageUrl: product.imageUrl ?? null,
       image: product.image ?? null,
     })) as CrmProductSummary[];
+  }
+
+  /** Поиск линеек для «добавить всю линейку» в закупку. */
+  async function searchCrmGroups(
+    params: { search?: string; offset?: number; limit?: number } = {},
+  ) {
+    const query = new URLSearchParams();
+    query.set("limit", String(params.limit ?? 25));
+    if (params.offset) {
+      query.set("offset", String(params.offset));
+    }
+    if (params.search) {
+      query.set("search", params.search);
+    }
+
+    const response = await fetch(
+      `/api/admin/crm/groups/search?${query.toString()}`,
+      {
+        credentials: "include",
+      },
+    );
+
+    if (!response.ok) {
+      throw new Error("Не удалось загрузить линейки");
+    }
+
+    const rawGroups = await response.json();
+    const groupsArray = Array.isArray(rawGroups) ? rawGroups : [];
+
+    return groupsArray.map((group: any) => ({
+      id: String(group.id),
+      name: group.name ?? "Без названия",
+      slug: group.slug ?? null,
+      categoryId: String(group.categoryId ?? ""),
+      categoryName: group.categoryName ?? group.category_name ?? null,
+      parentGroupId: group.parentGroupId ?? group.parent_group_id ?? null,
+      productCount: Number(group.productCount ?? group.product_count ?? 0),
+    })) as CrmGroupSummary[];
   }
 
   // Generate message for order contact
@@ -6639,6 +6692,7 @@ export const useCrmStore = defineStore("crm", () => {
     refreshRestockState,
 
     searchCrmProducts,
+    searchCrmGroups,
     generateOrderMessage,
 
     // Message Templates

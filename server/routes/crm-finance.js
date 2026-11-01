@@ -1415,6 +1415,73 @@ crmFinanceRouter.get('/api/admin/crm/visit-logs', authMiddleware, (req, res) => 
 });
 
 // =========================
+// GROUPS SEARCH FOR CRM (Поиск линеек для «добавить всю линейку» в закупку)
+// =========================
+crmFinanceRouter.get('/api/admin/crm/groups/search', authMiddleware, (req, res) => {
+  try {
+    const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+    const limit = Math.min(Math.max(Number(req.query.limit || 25), 1), 100);
+    const offset = Math.max(Number(req.query.offset || 0), 0);
+
+    const params = [];
+    let whereClause = '';
+    const orderParams = ['', ''];
+    if (search) {
+      whereClause = 'WHERE LOWER(g.name) LIKE ?';
+      params.push(`%${search.toLowerCase()}%`);
+      orderParams[0] = search.toLowerCase();
+      orderParams[1] = `${search.toLowerCase()}%`;
+    }
+
+    // Счётчик товаров — вместе с вложенными подгруппами (дерево по
+    // parent_group_id), как будет добавлять кнопка «всю линейку».
+    // Рекурсия — от каждой строки списка, поэтому per-group счёт честный.
+    const rows = db.prepare(`
+      SELECT
+        g.id,
+        g.name,
+        g.slug,
+        g.categoryId,
+        c.name AS category_name,
+        g.parent_group_id,
+        (
+          WITH RECURSIVE tree(group_id) AS (
+            SELECT g.id
+            UNION ALL
+            SELECT cg.id FROM category_groups cg
+            JOIN tree t ON cg.parent_group_id = t.group_id
+          )
+          SELECT COUNT(*) FROM products p WHERE p.groupId IN (SELECT group_id FROM tree)
+        ) AS product_count
+      FROM category_groups g
+      LEFT JOIN categories c ON c.id = g.categoryId
+      ${whereClause}
+      ORDER BY
+        CASE
+          WHEN LOWER(g.name) = ? THEN 0
+          WHEN LOWER(g.name) LIKE ? THEN 1
+          ELSE 2
+        END,
+        g.name ASC
+      LIMIT ? OFFSET ?
+    `).all(...params, ...orderParams, limit, offset);
+
+    res.json(rows.map((row) => ({
+      id: String(row.id),
+      name: row.name,
+      slug: row.slug ?? null,
+      categoryId: String(row.categoryId ?? ''),
+      categoryName: row.category_name ?? null,
+      parentGroupId: row.parent_group_id ?? null,
+      productCount: Number(row.product_count ?? 0),
+    })));
+  } catch (error) {
+    console.error('[crm] Groups search error:', error);
+    res.status(500).json({ error: 'failed', message: error.message });
+  }
+});
+
+// =========================
 // PRODUCTS SEARCH FOR CRM (Поиск товаров для CRM)
 // =========================
 crmFinanceRouter.get('/api/admin/crm/products/search', authMiddleware, async (req, res) => {
@@ -1426,12 +1493,19 @@ crmFinanceRouter.get('/api/admin/crm/products/search', authMiddleware, async (re
       : req.query.location === 'retail'
         ? 'retail'
         : undefined;
+    // Фильтр по линейке: для «добавить всю линейку» в закупку.
+    const groupId = typeof req.query.group_id === 'string' && req.query.group_id.trim()
+      ? req.query.group_id.trim()
+      : (typeof req.query.groupId === 'string' && req.query.groupId.trim()
+        ? req.query.groupId.trim()
+        : undefined);
     const trimmedSearch = typeof search === 'string' ? search.trim() : '';
     const cleanProducts = await searchProductsForCrm({
       search: trimmedSearch,
       limit: Number(limit),
       offset: Number(offset),
       location,
+      groupId,
     });
     
     if (trimmedSearch) {

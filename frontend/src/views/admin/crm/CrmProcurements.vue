@@ -254,7 +254,7 @@
     <!-- В DOM активна только верхняя соседняя модалка: иначе Headless UI
          заставляет несколько ловушек фокуса спорить между собой. -->
     <AdminModal
-      v-if="!actorPromptOpen && !showQuickProductModal"
+      v-if="!actorPromptOpen && !showQuickProductModal && !showAddLineupModal"
       ref="createModalRef"
       :isOpen="showCreateModal"
       :title="editingProcurementId ? 'Редактирование закупки' : 'Новая закупка'"
@@ -302,13 +302,22 @@
                   вкусу.
                 </p>
               </div>
-              <button
-                type="button"
-                class="inline-flex items-center rounded-full border border-blue-200 px-3 py-1 text-xs font-semibold text-blue-600 transition hover:bg-blue-50"
-                @click="openQuickProductModal"
-              >
-                + Создать товар
-              </button>
+              <div class="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  class="inline-flex items-center rounded-full border border-blue-200 px-3 py-1 text-xs font-semibold text-blue-600 transition hover:bg-blue-50"
+                  @click="openAddLineupModal"
+                >
+                  + Добавить всю линейку
+                </button>
+                <button
+                  type="button"
+                  class="inline-flex items-center rounded-full border border-blue-200 px-3 py-1 text-xs font-semibold text-blue-600 transition hover:bg-blue-50"
+                  @click="openQuickProductModal"
+                >
+                  + Создать товар
+                </button>
+              </div>
             </div>
             <div class="mt-4">
               <input
@@ -780,6 +789,15 @@
       </div>
     </AdminModal>
 
+    <!-- Добавить всю линейку: выбор линейки → количество/цена → все
+         вкусы (товары) линейки вставляются в черновик закупки. -->
+    <AddLineupModal
+      ref="addLineupModalRef"
+      :isOpen="showAddLineupModal"
+      @close="closeAddLineupModal"
+      @confirm="handleAddLineupConfirm"
+    />
+
     <AdminModal
       v-if="showQuickProductModal && !showQuickCategoryModal && !showQuickGroupModal"
       ref="quickProductModalRef"
@@ -1210,9 +1228,11 @@ import {
   useCrmStore,
   type Procurement,
   type CrmProductSummary,
+  type CrmGroupSummary,
 } from "@/stores/crm";
 import { useAdminStore } from "@/stores/admin";
 import AdminModal from "@/components/AdminModal.vue";
+import AddLineupModal from "@/components/admin/crm/AddLineupModal.vue";
 import LowStockGroupsPanel from "@/components/admin/LowStockGroupsPanel.vue";
 import TotalControlPanel from "@/components/admin/TotalControlPanel.vue";
 import { LockClosedIcon } from "@heroicons/vue/24/outline";
@@ -1324,6 +1344,12 @@ const quickProductModalRef = ref<{ scrollContainer: HTMLElement | null } | null>
 const savedQuickProductModalScrollTop = ref(0);
 const quickProductSaving = ref(false);
 const quickProductError = ref("");
+
+// «Добавить всю линейку»: модалка выбора линейки и вставки всех её товаров.
+const showAddLineupModal = ref(false);
+const addLineupModalRef = ref<{ settle: (error?: string) => void } | null>(null);
+const lineupAdding = ref(false);
+
 const quickProduct = reactive({
   categoryId: "",
   groupId: "",
@@ -1881,6 +1907,146 @@ async function openQuickProductModal() {
   savedCreateModalScrollTop.value =
     createModalRef.value?.scrollContainer?.scrollTop ?? 0;
   showQuickProductModal.value = true;
+}
+
+function openAddLineupModal() {
+  showAddLineupModal.value = true;
+}
+
+function closeAddLineupModal() {
+  if (lineupAdding.value) return;
+  showAddLineupModal.value = false;
+}
+
+/**
+ * Загружает дерево групп категории и возвращает id группы со всеми
+ * её вложенными подгруппами. Дерево берём напрямую с API: в сторе
+ * лежат только корневые узлы (children не сохраняются).
+ */
+async function collectLineupGroupIds(
+  rootGroupId: string,
+  categoryId: string,
+): Promise<string[]> {
+  // Дерево может содержать нужную группу — тогда дети от неё; если
+  // категория неизвестна, тянем весь список и ищем по дереву.
+  const query = categoryId
+    ? `?categoryId=${encodeURIComponent(categoryId)}`
+    : "";
+  const response = await fetch(`/api/admin/category-groups${query}`, {
+    credentials: "include",
+  });
+  if (!response.ok) return [rootGroupId];
+  const tree = await response.json();
+  if (!Array.isArray(tree)) return [rootGroupId];
+
+  // Рекурсивный сбор поддерева: группа + все вложенные подгруппы.
+  const collectSubtree = (node: Record<string, any>): string[] => {
+    const result = [String(node.id ?? "")];
+    const children = Array.isArray(node.children) ? node.children : [];
+    for (const child of children) {
+      result.push(...collectSubtree(child));
+    }
+    return result;
+  };
+
+  const findAndCollect = (nodes: Array<Record<string, any>>): string[] | null => {
+    for (const node of nodes) {
+      if (String(node.id ?? "") === rootGroupId) {
+        return collectSubtree(node);
+      }
+      const children = Array.isArray(node.children) ? node.children : [];
+      const found = findAndCollect(children);
+      if (found) return found;
+    }
+    return null;
+  };
+
+  const subtree = findAndCollect(tree);
+  if (subtree) return subtree;
+
+  // Группа не в дереве (может, корень сам — ребёнок): вернём хотя бы её.
+  return [rootGroupId];
+}
+
+/**
+ * Confirm из модалки: грузит все товары выбранной линейки (включая
+ * вложенные подгруппы) и вставляет их в черновик закупки с
+ * указанными количеством и ценой за единицу. Уже добавленные
+ * позиции обновляются, дубликаты не создаются.
+ */
+async function handleAddLineupConfirm(payload: {
+  group: CrmGroupSummary;
+  quantity: number;
+  costPerUnit: number;
+}) {
+  if (lineupAdding.value) return;
+  lineupAdding.value = true;
+  try {
+    const groupIds = await collectLineupGroupIds(
+      payload.group.id,
+      payload.group.categoryId,
+    );
+    const products: CrmProductSummary[] = [];
+
+    // Пагинация: в линейке может быть больше товаров, чем лимит запроса.
+    for (const groupId of groupIds) {
+      let offset = 0;
+      for (;;) {
+        const batch = await crmStore.searchCrmProducts({
+          groupId,
+          limit: 200,
+          offset,
+        });
+        products.push(...batch);
+        if (batch.length < 200) break;
+        offset += 200;
+        if (offset > 2000) break; // страховка от бесконечного цикла
+      }
+    }
+
+    if (!products.length) {
+      addLineupModalRef.value?.settle(
+        `В линейке «${payload.group.name}» не нашлось товаров.`,
+      );
+      lineupAdding.value = false;
+      return;
+    }
+
+    let added = 0;
+    let updated = 0;
+    for (const product of products) {
+      const existing = draftItems.value.find(
+        (item) => item.product.id === product.id,
+      );
+      if (existing) {
+        existing.quantity += payload.quantity;
+        existing.costPerUnit = payload.costPerUnit;
+        updated++;
+      } else {
+        draftItems.value.push({
+          product,
+          quantity: payload.quantity,
+          costPerUnit: payload.costPerUnit,
+          warehouseQuantity: 0,
+        });
+        added++;
+      }
+    }
+
+    addLineupModalRef.value?.settle();
+    showAddLineupModal.value = false;
+    // В CrmProcurements нет toast-стека — нативное уведомление, как в
+    // handleBlockCreated (CrmOrders). Мигрируем при унификации тостов.
+    window.alert(
+      `Линейка «${payload.group.name}»: добавлено ${added}, обновлено ${updated} позиций по ${payload.quantity} шт за ${formatCurrency(payload.costPerUnit)} за единицу.`,
+    );
+  } catch (error: any) {
+    addLineupModalRef.value?.settle(
+      error?.message || "Не удалось добавить линейку в закупку.",
+    );
+  } finally {
+    lineupAdding.value = false;
+  }
 }
 
 function closeQuickProductModal() {
