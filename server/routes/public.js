@@ -819,6 +819,403 @@ publicRouter.get(
   },
 );
 
+// ===== Восстановлено после revert избранного: общие хелперы заказов =====
+// (случайно удалённые вместе с favorites-блоком; нужны заказам,
+// промокодам и заморозке скидочной системы)
+
+function discountBlockedError(status) {
+  return {
+    error: "discount_blocked",
+    message: "Скидки и промокоды временно недоступны",
+    block: {
+      blocked: true,
+      until: status.until,
+    },
+  };
+}
+
+function upsertPublicCustomer({
+  telegramId,
+  telegramUsername,
+  firstName,
+  lastName,
+  phone,
+}) {
+  if (!telegramId) {
+    return null;
+  }
+
+  const existing = db
+    .prepare("SELECT * FROM customers WHERE telegram_id = ?")
+    .get(telegramId);
+
+  if (existing) {
+    db.prepare(
+      `
+      UPDATE customers
+      SET telegram_username = ?,
+          first_name = ?,
+          last_name = ?,
+          phone = COALESCE(?, phone),
+          last_visit_at = DATETIME('now'),
+          updated_at = DATETIME('now')
+      WHERE id = ?
+    `,
+    ).run(
+      telegramUsername || null,
+      firstName || null,
+      lastName || null,
+      phone || null,
+      existing.id,
+    );
+
+    // Активация превентивных банов: если @username клиента сменился и
+    // именно по новому username админ повесил pending — переносим в активный блок.
+    activatePendingBansForCustomer({
+      id: existing.id,
+      telegram_username: telegramUsername || existing.telegram_username,
+    });
+    activatePendingNotesForCustomer({
+      id: existing.id,
+      telegram_username: telegramUsername || existing.telegram_username,
+    });
+    activatePendingInviteBanForCustomer({
+      id: existing.id,
+      telegram_username: telegramUsername || existing.telegram_username,
+    });
+    return existing.id;
+  }
+
+  const customerId = generateId("cust");
+  db.prepare(
+    `
+    INSERT INTO customers (
+      id, telegram_id, telegram_username, first_name, last_name, phone,
+      first_visit_at, last_visit_at, total_orders, total_spent
+    ) VALUES (?, ?, ?, ?, ?, ?, DATETIME('now'), DATETIME('now'), 0, 0)
+  `,
+  ).run(
+    customerId,
+    telegramId,
+    telegramUsername || null,
+    firstName || null,
+    lastName || null,
+    phone || null,
+  );
+
+  // Свежесозданный клиент: проверяем есть ли pending-бан по его @username
+  // (превентивный бан, оформленный админом до первого визита). Если есть —
+  // переносим в customer_blocks с реальным customer_id.
+  activatePendingBansForCustomer({
+    id: customerId,
+    telegram_username: telegramUsername,
+  });
+  activatePendingNotesForCustomer({
+    id: customerId,
+    telegram_username: telegramUsername,
+  });
+  activatePendingInviteBanForCustomer({
+    id: customerId,
+    telegram_username: telegramUsername,
+  });
+
+  return customerId;
+}
+
+function validatePublicOrderPreflight({
+  items,
+  customerId,
+  normalizedPromoCode,
+  wholesaleContext,
+  deliveryType,
+  discountBlocked = false,
+}) {
+  const orderBuild = buildPublicOrderItems({
+    items,
+    customerId,
+    promoCodeText: normalizedPromoCode,
+    wholesaleContext,
+    discountBlocked,
+  });
+
+  if (deliveryType === "delivery") {
+    const minDeliveryError = ensureMinDeliveryAmountSatisfied(orderBuild.totalAmount);
+    if (minDeliveryError) {
+      const error = new Error(minDeliveryError.message);
+      error.code = minDeliveryError.error;
+      error.payload = minDeliveryError;
+      throw error;
+    }
+  }
+
+  const wholesaleMinError = validateWholesaleMinimum(
+    orderBuild,
+    wholesaleContext,
+    { customerId: customerId || null },
+  );
+  if (wholesaleMinError) {
+    const error = new Error(wholesaleMinError.message);
+    error.code = wholesaleMinError.error;
+    error.payload = wholesaleMinError;
+    throw error;
+  }
+
+  if (normalizedPromoCode) {
+    const promoResult = validatePromoCodeForOrder(
+      normalizedPromoCode,
+      orderBuild.totalAmount,
+      {
+        expectedCustomerId: customerId || null,
+        isWholesale: Boolean(wholesaleContext),
+        requireCustomerForOwnedPromo: true,
+      },
+    );
+    if (!promoResult.valid) {
+      throwPromoValidationError(promoResult);
+    }
+  }
+
+  return orderBuild;
+}
+
+function buildPublicOrderItems({
+  items,
+  customerId = null,
+  promoCodeText = null,
+  existingOrderId = null,
+  wholesaleContext = null,
+  discountBlocked = false,
+}) {
+  let totalAmount = 0;
+  let totalCost = 0;
+
+  const preparedItems = items.map((item) => {
+    const product = db
+      .prepare("SELECT * FROM products WHERE id = ?")
+      .get(item.product_id);
+    if (!product) {
+      throw new Error(`Товар не найден: ${item.product_id}`);
+    }
+
+    const quantity = Number(item.quantity || 0);
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      throw new Error("invalid_item_quantity");
+    }
+
+    let stockToCheck = product.stock;
+    let variantData = null;
+
+    if (item.variant_id) {
+      variantData = db
+        .prepare("SELECT * FROM product_variants WHERE id = ?")
+        .get(item.variant_id);
+      if (!variantData) {
+        throw new Error(`Вариант не найден: ${item.variant_id}`);
+      }
+      stockToCheck = variantData.stock;
+    } else if (product.has_variants) {
+      stockToCheck = null;
+    }
+
+    if (stockToCheck !== null && Number(stockToCheck) < quantity) {
+      const itemTitle = item.variant_name
+        ? `${product.title} (${item.variant_name})`
+        : product.title;
+      throw new Error(`Недостаточно товара: ${itemTitle}`);
+    }
+
+    // Каталожная цена, какой она была бы без акции. Цену из тела запроса не
+    // берём даже в крайнем случае: это данные покупателя, а не каталога.
+    let basePricePerUnit = resolveCatalogUnitPrice(variantData?.price_rub, product.priceRub);
+    if (basePricePerUnit <= 0) {
+      const error = new Error(`Цена не найдена для товара: ${product.title}`);
+      error.code = "catalog_price_unavailable";
+      throw error;
+    }
+
+    let pricePerUnit = basePricePerUnit;
+    // Прямые товары (без линейки) не считаются в минимум опта;
+    // товары с флагом — тоже, их администратор помечает вручную.
+    const excludedFromWholesaleMin =
+      !product.groupId || Number(product.excluded_from_wholesale_min || 0) === 1;
+
+    if (wholesaleContext?.tier) {
+      if (product.groupId) {
+        const wholesalePrice = getWholesaleUnitPriceForProduct(
+          product,
+          wholesaleContext.tier.id,
+        );
+        if (!Number.isFinite(Number(wholesalePrice)) || Number(wholesalePrice) <= 0) {
+          const error = new Error(`Оптовая цена не найдена для товара: ${product.title}`);
+          error.code = "wholesale_price_unavailable";
+          throw error;
+        }
+        pricePerUnit = Number(wholesalePrice);
+        // Оптовику скидки каталога не показывают, значит и снимать с них нечего.
+        basePricePerUnit = pricePerUnit;
+      } else {
+        // Товар вне линейки: в опте продаётся по розничной цене, без скидок.
+        pricePerUnit = basePricePerUnit;
+      }
+    } else {
+      // Скидка каталога применяется только в рознице: у опта своя цена.
+      // Базовую цену товара при этом не трогаем, на разнице между ней и
+      // проданной ценой держится блокировка бонусов в loyalty.js.
+      pricePerUnit = applyDiscountToPrice(
+        pricePerUnit,
+        resolveDiscountPrice({
+          productId: product.id,
+          variantId: variantData?.id || null,
+          groupId: product.groupId || null,
+        }),
+      );
+    }
+
+    const costPerUnit = Number(product.cost_price || 0);
+    const groupName = product.groupId
+      ? db
+          .prepare("SELECT name FROM category_groups WHERE id = ?")
+          .get(product.groupId)?.name || null
+      : null;
+
+    totalAmount += Number(pricePerUnit) * quantity;
+    totalCost += costPerUnit * quantity;
+
+    return {
+      id: item.id || generateId("oi"),
+      product_id: item.product_id,
+      variant_id: item.variant_id || null,
+      product_title: item.variant_name
+        ? `${product.title} - ${item.variant_name}`
+        : product.title || "Без названия",
+      group_name: groupName,
+      base_product_title:
+        item.product_title || product.title || "Без названия",
+      base_product_id: item.product_id,
+      variant_name: item.variant_name || null,
+      quantity,
+      price_per_unit: Number(pricePerUnit),
+      base_price_per_unit: basePricePerUnit,
+      catalog_discount_per_unit: roundMoney(basePricePerUnit - Number(pricePerUnit)),
+      cost_per_unit: costPerUnit,
+      manual_discount_amount: 0,
+      loyalty_units_applied: Number(item.loyalty_units_applied || 0),
+      excludedFromWholesaleMin,
+    };
+  });
+
+  if (wholesaleContext?.tier) {
+    const finalizedItems = preparedItems.map((item) => ({
+      id: item.id,
+      product_id: item.product_id,
+      variant_id: item.variant_id || null,
+      product_title: item.product_title,
+      group_name: item.group_name || null,
+      base_product_title: item.base_product_title,
+      base_product_id: item.base_product_id,
+      variant_name: item.variant_name || null,
+      quantity: Number(item.quantity || 0),
+      price_per_unit: Number(item.price_per_unit || 0),
+      base_price_per_unit: Number(item.base_price_per_unit || 0),
+      catalog_discount_per_unit: Number(item.catalog_discount_per_unit || 0),
+      cost_per_unit: Number(item.cost_per_unit || 0),
+      manual_discount_amount: 0,
+      loyalty_discount_amount: 0,
+      loyalty_units_applied: 0,
+      discount_amount: 0,
+      total_price: Number(item.price_per_unit || 0) * Number(item.quantity || 0),
+      total_cost: Number(item.cost_per_unit || 0) * Number(item.quantity || 0),
+      excludedFromWholesaleMin: Boolean(item.excludedFromWholesaleMin),
+    }));
+
+    // Считаемые позиции: штуки товаров без флага исключения.
+    const countableUnits = finalizedItems.reduce(
+      (sum, item) => (item.excludedFromWholesaleMin
+        ? sum
+        : sum + Number(item.quantity || 0)),
+      0,
+    );
+
+    return {
+      items: finalizedItems,
+      totalAmount,
+      totalCost,
+      countableUnits,
+      totalLoyaltyDiscount: 0,
+      application: {
+        items: finalizedItems,
+        total_loyalty_discount: 0,
+      },
+    };
+  }
+
+  const application = buildLoyaltyApplication({
+    customerId,
+    items: preparedItems,
+    promoCodeText,
+    existingOrderId,
+    discountBlocked,
+  });
+
+  const finalizedItems = application.items.map((item) => ({
+    id: item.id,
+    product_id: item.product_id,
+    variant_id: item.variant_id || null,
+    product_title: item.product_title,
+    group_name: item.group_name || null,
+    base_product_title: item.base_product_title,
+    base_product_id: item.base_product_id,
+    variant_name: item.variant_name || null,
+    quantity: Number(item.quantity || 0),
+    price_per_unit: Number(item.price_per_unit || 0),
+    base_price_per_unit: Number(item.base_price_per_unit || 0),
+    catalog_discount_per_unit: Number(item.catalog_discount_per_unit || 0),
+    cost_per_unit: Number(item.cost_per_unit || 0),
+    manual_discount_amount: Number(item.manual_discount_amount || 0),
+    loyalty_discount_amount: Number(item.loyalty_discount_amount || 0),
+    loyalty_units_applied: Number(item.loyalty_units_applied || 0),
+    discount_amount: Number(item.discount_amount || 0),
+    total_price: Number(item.total_price || 0),
+    total_cost: Number(item.cost_per_unit || 0) * Number(item.quantity || 0),
+  }));
+
+  return {
+    items: finalizedItems,
+    totalAmount,
+    totalCost,
+    totalLoyaltyDiscount: Number(application.total_loyalty_discount || 0),
+    application,
+  };
+}
+
+// Create order (public endpoint)
+
+function requestUsesDiscountPrivileges({ items = [], promoCodeText = null } = {}) {
+  const hasLoyaltyUsage = (Array.isArray(items) ? items : []).some((item) =>
+    Number(item?.loyalty_units_applied || 0) > 0,
+  );
+  return hasLoyaltyUsage || Boolean(String(promoCodeText || "").trim());
+}
+
+function resolveCustomerIdFromVerifiedAuth(req) {
+  const telegramId = String(req.telegramAuth?.telegramId || "").trim();
+  if (!telegramId) return null;
+  return (
+    db.prepare("SELECT id FROM customers WHERE telegram_id = ?").get(telegramId)?.id || null
+  );
+}
+
+function resolveDiscountBlockForRequest(req) {
+  const telegramId = String(req.telegramAuth?.telegramId || "").trim();
+  if (!telegramId) return { blocked: false, until: null, comment: null };
+  const row = db
+    .prepare(
+      "SELECT discount_blocked_until, discount_block_comment FROM customers WHERE telegram_id = ?",
+    )
+    .get(telegramId);
+  return getDiscountBlockStatus(row);
+}
+
 publicRouter.get("/api/categories", (req, res) => {
   const wholesaleContext = resolveWholesaleContextOrSendError(req, res);
   if (!wholesaleContext && res.headersSent) {
