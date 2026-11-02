@@ -50,6 +50,7 @@ import { migrateInventoryChecks } from './migrations/add_inventory_checks.js';
 import { migrateSignificanceMarks } from './migrations/add_significance_marks.js';
 import { migrateManagerActionFields } from './migrations/add_manager_action_fields.js';
 import { migrateCustomerPhoto } from './migrations/add_customer_photo.js';
+import { migrateCustomerFavorites } from './migrations/add_customer_favorites.js';
 import { migratePromoCodes } from './migrations/add_promo_codes.js';
 import { migrateOrderItemDisplayFields } from './migrations/add_order_item_display_fields.js';
 import { migrateOrderItemCatalogPrice } from './migrations/add_order_item_catalog_price.js';
@@ -236,6 +237,7 @@ export function initDb() {
   migratePosSaleTransactionLink();
   migrateManagerActionFields();
   migrateCustomerPhoto();
+  migrateCustomerFavorites();
   migratePromoCodes();
   migrateLoyaltyTables();
   migrateCashPacingTables();

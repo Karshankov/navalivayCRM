@@ -4602,3 +4602,607 @@ publicRouter.post(
   },
 );
 
+// ===== Избранное клиента (мини-апп) =====
+// Одна запись — товар или конкретный вкус/вариант. Список отдаётся без
+// фильтра наличия: закончившийся товар клиент должен видеть в избранном.
+
+function validateFavoriteTarget({ productId, variantId }) {
+  const product = db
+    .prepare(
+      "SELECT id, groupId, has_variants AS hasVariants, priceRub, stock FROM products WHERE id = ?",
+    )
+    .get(productId);
+  if (!product) {
+    return { error: "product_not_found" };
+  }
+  if (variantId) {
+    const variant = db
+      .prepare("SELECT id, product_id, name, stock FROM product_variants WHERE id = ?")
+      .get(variantId);
+    if (!variant || variant.product_id !== productId) {
+      return { error: "variant_not_found" };
+    }
+  } else if (Number(product.hasVariants || 0) === 1) {
+    // У товара есть вкусы — звёздочка относится к конкретному варианту.
+    return { error: "variant_required" };
+  }
+  return { product };
+}
+
+function findCustomerFavoriteRow(customerId, productId, variantId) {
+  return (
+    db
+      .prepare(
+        `
+      SELECT id FROM customer_favorites
+      WHERE customer_id = ? AND product_id = ? AND variant_id IS ?
+    `,
+      )
+      .get(customerId, productId, variantId) || null
+  );
+}
+
+function resolveFavoriteDisplayPrice({ productRow, variantRow }) {
+  // Розничная логика каталога: цена варианта, если задана, иначе цена товара.
+  if (variantRow) {
+    const raw = variantRow.priceRub;
+    const n = raw != null && raw !== "" ? Number(raw) : NaN;
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return Number(productRow.priceRub ?? 0);
+}
+
+/**
+ * Цена избранного с каталогными скидками — та же логика, что в карточке
+ * товара: pickDiscountFromMaps + applyDiscountToPrice. Иначе карточка в
+ * избранном и корзина показывают цену до скидки при активной акции.
+ */
+function resolveFavoritePricedRub({ productRow, variantRow, activeDiscounts }) {
+  const base = resolveFavoriteDisplayPrice({ productRow, variantRow });
+  const discount = activeDiscounts
+    ? pickDiscountFromMaps(activeDiscounts, {
+        variantId: variantRow?.id || null,
+        productId: productRow.id,
+        groupId: productRow.groupId,
+      })
+    : null;
+  return applyDiscountToPrice(base, discount);
+}
+
+publicRouter.get(
+  "/api/favorites",
+  publicMiniAppReadLimiter,
+  requireTelegramMiniAppAuth({ allowInsecureFallback: allowInsecureTelegramFallback }),
+  (req, res) => {
+    try {
+      const telegramId = String(req.telegramAuth?.telegramId || "").trim();
+      const username = normalizeCardTelegramUsername(req.telegramAuth?.telegramUsername);
+      if (!telegramId) {
+        return res.status(401).json({ error: "telegram_identity_required" });
+      }
+
+      const rows = db
+        .prepare(
+          `
+        SELECT cf.id AS favoriteId, cf.product_id AS productId, cf.variant_id AS variantId,
+               cf.created_at AS createdAt, cf.added_group_id AS addedGroupId,
+               cf.group_position AS groupPosition
+        FROM customer_favorites cf
+        JOIN customers c ON c.id = cf.customer_id
+        WHERE c.telegram_id = ?
+        ORDER BY cf.created_at DESC, cf.id DESC
+      `,
+        )
+        .all(telegramId);
+
+      // Каталогные скидки применяются к цене так же, как в каталоге.
+      const activeDiscounts = loadActiveDiscounts();
+
+      // ОПТИМИЗАЦИЯ: батч-выборки вместо запроса на каждую запись (N+1).
+      // На линейке из 40 вкусов старый код делал ~200 запросов к SQLite
+      // и держал ответ сотни миллисекунд; теперь — четыре выборки всего.
+      const productIds = [...new Set(rows.map((r) => r.productId))];
+      const variantIds = [...new Set(rows.map((r) => r.variantId).filter(Boolean))];
+      const groupIdsAll = [...new Set(rows.map((r) => r.addedGroupId).filter(Boolean))];
+
+      const chunkArray = (arr, size = 500) => {
+        const out = [];
+        for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+        return out;
+      };
+
+      const productsById = new Map();
+      for (const chunk of chunkArray(productIds)) {
+        const placeholders = chunk.map(() => "?").join(",");
+        db.prepare(`
+          SELECT p.id, p.title, p.priceRub, p.stock, p.has_variants AS hasVariants,
+                 p.use_category_image AS useCategoryImage, p.groupId, p.strength,
+                 (SELECT cover_image FROM categories WHERE id = p.categoryId) AS categoryCover
+          FROM products p WHERE p.id IN (${placeholders})
+        `).all(...chunk).forEach((p) => productsById.set(p.id, p));
+      }
+
+      const variantsById = new Map();
+      for (const chunk of chunkArray(variantIds)) {
+        const placeholders = chunk.map(() => "?").join(",");
+        db.prepare(`
+          SELECT id, name, price_rub AS priceRub, stock, color_code AS colorCode
+          FROM product_variants WHERE id IN (${placeholders})
+        `).all(...chunk).forEach((v) => variantsById.set(v.id, v));
+      }
+
+      // Первая картинка товара (по позиции) — одной выборкой на все товары.
+      const firstImageByProduct = new Map();
+      for (const chunk of chunkArray(productIds)) {
+        const placeholders = chunk.map(() => "?").join(",");
+        db.prepare(`
+          SELECT productId, url FROM product_images
+          WHERE productId IN (${placeholders}) AND variant_id IS NULL
+          ORDER BY position ASC
+        `).all(...chunk).forEach((img) => {
+          if (!firstImageByProduct.has(img.productId)) {
+            firstImageByProduct.set(img.productId, img.url);
+          }
+        });
+      }
+
+      // Первая картинка варианта.
+      const firstImageByVariant = new Map();
+      for (const chunk of chunkArray(variantIds)) {
+        const placeholders = chunk.map(() => "?").join(",");
+        db.prepare(`
+          SELECT productId, variant_id AS variantId, url FROM product_images
+          WHERE variant_id IN (${placeholders})
+          ORDER BY position ASC
+        `).all(...chunk).forEach((img) => {
+          const key = String(img.variantId);
+          if (!firstImageByVariant.has(key)) {
+            firstImageByVariant.set(key, img.url);
+          }
+        });
+      }
+
+      // Группы: имя, слаг, обложка — одна выборка.
+      const groupsById = new Map();
+      for (const chunk of chunkArray(groupIdsAll)) {
+        const placeholders = chunk.map(() => "?").join(",");
+        db.prepare(`
+          SELECT id, name, slug, cover_image AS coverImage
+          FROM category_groups WHERE id IN (${placeholders})
+        `).all(...chunk).forEach((g) => groupsById.set(g.id, g));
+      }
+
+      const items = rows.map((row) => {
+        const productRow = productsById.get(row.productId);
+
+        if (!productRow) {
+          return {
+            product_id: row.productId,
+            variant_id: row.variantId,
+            created_at: row.createdAt,
+            deleted: true,
+            title: null,
+            variant_name: null,
+            priceRub: null,
+            image: null,
+            in_stock: false,
+          };
+        }
+
+        const variantRow = row.variantId ? variantsById.get(row.variantId) ?? null : null;
+        const variantName = variantRow?.name ?? null;
+
+        // Остаток по той же логике каталога: вариант — своим stock,
+        // товар без вариантов — stock товара; NULL = неограниченно.
+        let inStock;
+        let stock;
+        if (row.variantId) {
+          stock = variantRow ? (typeof variantRow.stock === "number" ? variantRow.stock : null) : 0;
+          inStock = variantRow ? (stock === null ? true : stock > 0) : false;
+        } else {
+          stock = typeof productRow.stock === "number" ? productRow.stock : null;
+          inStock = stock === null ? true : stock > 0;
+        }
+
+        let image = null;
+        if (row.variantId && variantRow) {
+          image = firstImageByVariant.get(String(row.variantId)) ?? null;
+        }
+        if (!image) {
+          image = firstImageByProduct.get(row.productId) ?? null;
+        }
+        // Как в каталоге: товары с useCategoryImage показывают обложку
+        // линейки (группы), не общую обложку категории.
+        if (!image && productRow.useCategoryImage) {
+          const groupIdForImage = row.addedGroupId || productRow.groupId || null;
+          if (groupIdForImage) {
+            image = groupsById.get(groupIdForImage)?.coverImage ?? null;
+          }
+          if (!image && productRow.categoryCover) {
+            image = productRow.categoryCover;
+          }
+        }
+
+        // Группа для сердец линеек: запись, добавленная через группу
+        // (в т.ч. родительскую с товарами в подгруппах), помечена ею;
+        // записи с отдельного товара — группа самого товара.
+        const groupId = row.addedGroupId || productRow.groupId || null;
+        const groupName = groupId ? groupsById.get(groupId)?.name ?? null : null;
+
+        return {
+          product_id: row.productId,
+          variant_id: row.variantId,
+          created_at: row.createdAt,
+          deleted: false,
+          title: productRow.title,
+          group_id: groupId,
+          group_name: groupName,
+          group_position: row.groupPosition ?? null,
+          variant_name: variantName,
+          strength: productRow.strength ?? null,
+          priceRub: resolveFavoritePricedRub({ productRow, variantRow, activeDiscounts }),
+          image,
+          stock,
+          in_stock: inStock,
+        };
+      });
+
+      // Избранное линейками: записи группируются по группе добавления
+      // (added_group_id). Вкусы/товары не в наличии ВНУТРИ группы не
+      // показываем (как в каталоге); если живых вкусов нет — группа
+      // остаётся карточкой «Нет в наличии» внизу списка.
+      const groupsMap = new Map();
+      for (const item of items) {
+        const gid = item.group_id;
+        if (!gid) continue;
+        if (!groupsMap.has(gid)) {
+          const groupRow = groupsById.get(gid);
+          groupsMap.set(gid, {
+            group_id: gid,
+            group_name: item.group_name || groupRow?.name || null,
+            group_slug: groupRow?.slug ?? null,
+            group_cover: groupRow?.coverImage ?? null,
+            group_position: item.group_position ?? null,
+            group_unavailable: false,
+            total_count: 0,
+            items: [],
+          });
+        }
+        const group = groupsMap.get(gid);
+        group.total_count++;
+        // Позиция группы: минимальная позиция её записей (все записи
+        // одной группы ставятся одним пакетом с одной позицией).
+        if (item.group_position != null) {
+          if (group.group_position == null || item.group_position < group.group_position) {
+            group.group_position = item.group_position;
+          }
+        }
+        // Недоступные вкусы не отдаём — только в счётчике.
+        if (!item.deleted && item.in_stock) {
+          group.items.push(item);
+        }
+      }
+
+      // Группа без единого живого вкуса: карточка с «Нет в наличии».
+      for (const group of groupsMap.values()) {
+        group.group_unavailable = group.items.length === 0;
+      }
+
+      const groups = [...groupsMap.values()].sort((a, b) => {
+        // Доступные — выше недоступных.
+        if (a.group_unavailable !== b.group_unavailable) {
+          return a.group_unavailable ? 1 : -1;
+        }
+        // Ручной порядок (drag-n-drop); NULL — по времени добавления.
+        const pa = a.group_position;
+        const pb = b.group_position;
+        if (pa != null && pb != null && pa !== pb) return pa - pb;
+        if (pa != null && pb == null) return -1;
+        if (pa == null && pb != null) return 1;
+        return 0;
+      });
+
+      // Позиции без группы (старые поштучные записи): каждой — своя
+      // мини-карточка; недоступные тоже не показываем.
+      const ungrouped = items.filter((item) => !item.group_id && item.in_stock && !item.deleted);
+
+      return res.json({ items, groups, ungrouped });
+    } catch (error) {
+      console.error("[public] List favorites error:", error);
+      return res.status(500).json({ error: "favorites_failed" });
+    }
+  },
+);
+
+/**
+ * Собирает цели избранного для пакетного добавления.
+ * - Один товар: { product_id, variant_id }.
+ * - Список: { items: [{ product_id, variant_id }, ...] }.
+ * - Вся линейка: { group_id } — каждый вкус/вариант каждого товара
+ *   группы становится отдельной записью (у товаров без вариантов —
+ *   запись товара).
+ */
+/**
+ * Группа со всеми вложенными подгруппами: для групповых операций
+ * избранного (добавить/убрать линейку целиком).
+ */
+function collectGroupTreeIds(groupId) {
+  const groupIds = [groupId];
+  let cursor = 0;
+  while (cursor < groupIds.length) {
+    const children = db
+      .prepare("SELECT id FROM category_groups WHERE parent_group_id = ?")
+      .all(groupIds[cursor]);
+    for (const child of children) {
+      if (!groupIds.includes(child.id)) groupIds.push(child.id);
+    }
+    cursor++;
+  }
+  return groupIds;
+}
+
+function resolveFavoriteTargetsFromRequest(body) {
+  const rawItems = Array.isArray(body?.items) ? body.items : null;
+  if (rawItems) {
+    if (rawItems.length > 500) {
+      return { error: "too_many_items" };
+    }
+    const targets = [];
+    for (const raw of rawItems) {
+      const productId = String(raw?.product_id || "").trim();
+      const variantId = String(raw?.variant_id || "").trim() || null;
+      if (!productId) {
+        return { error: "invalid_request" };
+      }
+      const target = validateFavoriteTarget({ productId, variantId });
+      if (target.error) {
+        return { error: target.error };
+      }
+      targets.push({ productId, variantId });
+    }
+    return { targets };
+  }
+
+  const groupId = String(body?.group_id || "").trim();
+  if (groupId) {
+    const groupIds = collectGroupTreeIds(groupId);
+
+    const products = db
+      .prepare(
+        `
+      SELECT id, has_variants AS hasVariants
+      FROM products
+      WHERE groupId IN (${groupIds.map(() => "?").join(",")})
+    `,
+      )
+      .all(...groupIds);
+
+    const targets = [];
+    for (const product of products) {
+      if (Number(product.hasVariants || 0) === 1) {
+        const variants = db
+          .prepare("SELECT id FROM product_variants WHERE product_id = ?")
+          .all(product.id);
+        for (const variant of variants) {
+          targets.push({ productId: product.id, variantId: variant.id });
+        }
+      } else {
+        targets.push({ productId: product.id, variantId: null });
+      }
+    }
+    if (targets.length === 0) {
+      return { error: "group_empty" };
+    }
+    return { targets, groupId };
+  }
+
+  const productId = String(body?.product_id || "").trim();
+  const variantId = String(body?.variant_id || "").trim() || null;
+  if (!productId) {
+    return { error: "invalid_request" };
+  }
+  const target = validateFavoriteTarget({ productId, variantId });
+  if (target.error) {
+    return { error: target.error };
+  }
+  return { targets: [{ productId, variantId }] };
+}
+
+publicRouter.post(
+  "/api/favorites",
+  publicMiniAppMutationLimiter,
+  requireTelegramMiniAppAuth({ allowInsecureFallback: allowInsecureTelegramFallback }),
+  (req, res) => {
+    try {
+      const telegramId = String(req.telegramAuth?.telegramId || "").trim();
+      const username = normalizeCardTelegramUsername(req.telegramAuth?.telegramUsername);
+      if (!telegramId) {
+        return res.status(401).json({ error: "telegram_identity_required" });
+      }
+
+      const resolved = resolveFavoriteTargetsFromRequest(req.body);
+      if (resolved.error) {
+        const status =
+          resolved.error === "invalid_request" || resolved.error === "too_many_items"
+            ? 400
+            : resolved.error === "group_empty"
+              ? 404
+              : 400;
+        return res.status(status).json({ error: resolved.error });
+      }
+
+      const customerId = upsertPublicCustomer({
+        telegramId,
+        telegramUsername: username,
+        firstName: req.telegramAuth?.firstName || null,
+        lastName: req.telegramAuth?.lastName || null,
+        phone: null,
+      });
+      if (!customerId) {
+        return res.status(401).json({ error: "telegram_identity_required" });
+      }
+
+      const result = db.transaction(() => {
+        let inserted = 0;
+        let already = 0;
+        let firstId = null;
+        for (const target of resolved.targets) {
+          const existing = findCustomerFavoriteRow(
+            customerId,
+            target.productId,
+            target.variantId,
+          );
+          if (existing) {
+            already++;
+            continue;
+          }
+          const favoriteId = generateId("fav");
+          db.prepare(
+            `
+          INSERT INTO customer_favorites (id, customer_id, product_id, variant_id, created_at, added_group_id)
+          VALUES (?, ?, ?, ?, DATETIME('now'), ?)
+        `,
+          ).run(
+            favoriteId,
+            customerId,
+            target.productId,
+            target.variantId,
+            resolved.groupId ?? null,
+          );
+          inserted++;
+          if (!firstId) firstId = favoriteId;
+        }
+        return { inserted, already, total: resolved.targets.length, firstId };
+      }).immediate();
+
+      return res.status(result.inserted > 0 ? 201 : 200).json({
+        success: true,
+        inserted: result.inserted,
+        already: result.already,
+        total: result.total,
+        id: result.firstId ?? null,
+      });
+    } catch (error) {
+      console.error("[public] Add favorite error:", error);
+      return res.status(500).json({ error: "favorites_failed" });
+    }
+  },
+);
+
+publicRouter.post(
+  "/api/favorites/reorder",
+  publicMiniAppMutationLimiter,
+  requireTelegramMiniAppAuth({ allowInsecureFallback: allowInsecureTelegramFallback }),
+  (req, res) => {
+    try {
+      const telegramId = String(req.telegramAuth?.telegramId || "").trim();
+      const username = normalizeCardTelegramUsername(req.telegramAuth?.telegramUsername);
+      if (!telegramId) {
+        return res.status(401).json({ error: "telegram_identity_required" });
+      }
+
+      const ordered = Array.isArray(req.body?.group_ids) ? req.body.group_ids : null;
+      if (!ordered || ordered.length === 0 || ordered.length > 500) {
+        return res.status(400).json({ error: "invalid_request" });
+      }
+      const ids = ordered.map((id) => String(id || "").trim()).filter(Boolean);
+      if (ids.length !== ordered.length) {
+        return res.status(400).json({ error: "invalid_request" });
+      }
+
+      const customerId = upsertPublicCustomer({
+        telegramId,
+        telegramUsername: username,
+        firstName: req.telegramAuth?.firstName || null,
+        lastName: req.telegramAuth?.lastName || null,
+        phone: null,
+      });
+      if (!customerId) {
+        return res.status(401).json({ error: "telegram_identity_required" });
+      }
+
+      // Позиция ставится записям, добавленным через эту группу
+      // (added_group_id). Все записи одной линейки получают один номер.
+      const update = db.prepare(
+        `UPDATE customer_favorites
+         SET group_position = ?
+         WHERE customer_id = ? AND added_group_id = ?`,
+      );
+      let updated = 0;
+      db.transaction(() => {
+        ids.forEach((gid, index) => {
+          updated += update.run(index, customerId, gid).changes;
+        });
+      }).immediate();
+
+      return res.json({ success: true, updated });
+    } catch (error) {
+      console.error("[public] Reorder favorites error:", error);
+      return res.status(500).json({ error: "favorites_failed" });
+    }
+  },
+);
+
+publicRouter.delete(
+  "/api/favorites",
+  publicMiniAppMutationLimiter,
+  requireTelegramMiniAppAuth({ allowInsecureFallback: allowInsecureTelegramFallback }),
+  (req, res) => {
+    try {
+      const telegramId = String(req.telegramAuth?.telegramId || "").trim();
+      if (!telegramId) {
+        return res.status(401).json({ error: "telegram_identity_required" });
+      }
+
+      const customerId = resolveCustomerIdFromVerifiedAuth(req);
+      if (!customerId) {
+        return res.json({ success: true, removed: 0 });
+      }
+
+      // Удаление всей линейки одной командой: с сердечка группы.
+      // Дерево подгрупп — то же, что при добавлении: товары могут лежать
+      // во вложенных линейках, а не в самой группе.
+      const groupId = String(req.body?.group_id || "").trim();
+      if (groupId) {
+        const groupIds = collectGroupTreeIds(groupId);
+        const result = db
+          .prepare(
+            `
+          DELETE FROM customer_favorites
+          WHERE customer_id = ?
+            AND product_id IN (
+              SELECT p.id FROM products p
+              WHERE p.groupId IN (${groupIds.map(() => "?").join(",")})
+            )
+        `,
+          )
+          .run(customerId, ...groupIds);
+        // Идемпотентно: записей уже нет — тоже успех.
+        return res.json({ success: true, removed: result.changes });
+      }
+
+      const productId = String(req.body?.product_id || "").trim();
+      const rawVariantId = String(req.body?.variant_id || "").trim();
+      const variantId = rawVariantId || null;
+      if (!productId) {
+        return res.status(400).json({ error: "invalid_request" });
+      }
+
+      const result = db
+        .prepare(
+          `
+        DELETE FROM customer_favorites
+        WHERE customer_id = ? AND product_id = ? AND variant_id IS ?
+      `,
+        )
+        .run(customerId, productId, variantId);
+
+      // Идемпотентно: записи уже нет — тоже успех.
+      return res.json({ success: true, removed: result.changes });
+    } catch (error) {
+      console.error("[public] Remove favorite error:", error);
+      return res.status(500).json({ error: "favorites_failed" });
+    }
+  },
+);
+

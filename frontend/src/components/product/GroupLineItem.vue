@@ -51,6 +51,9 @@
           />
           <!-- Кнопка «Избранное» — в общем вертикальном контейнере,
               центрируемом по высоте карточки. -->
+          <span v-if="hasTelegramContext" class="group-line-favorite" @click.stop>
+            <FavoriteGroupHeart :group-id="node.id" />
+          </span>
         </span>
       </span>
 
@@ -142,6 +145,7 @@ import { ChevronDownIcon } from "@heroicons/vue/24/outline";
 import { useCatalogStore, type Product } from "@/stores/catalog";
 import GroupLineItemContent from "@/components/product/GroupLineItemContent.vue";
 import { hasTelegramMiniAppUserContext } from "@/utils/telegramMiniAppContext";
+import FavoriteGroupHeart from "@/components/product/FavoriteGroupHeart.vue";
 import NewLineupBadge from "@/components/product/NewLineupBadge.vue";
 import DiscountBadge from "@/components/product/DiscountBadge.vue";
 import { getMinBasePriceForProducts, hasDiscountInTree } from "@/components/product/groupPrice";

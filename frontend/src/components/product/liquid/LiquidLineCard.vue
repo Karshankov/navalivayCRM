@@ -59,6 +59,9 @@
           />
           <!-- Кнопка «Избранное» — в общем вертикальном контейнере,
               центрруемом по высоте карточки. -->
+          <div v-if="hasTelegramContext" class="liquid-line-favorite" @click.stop>
+            <FavoriteGroupHeart :group-id="groupId" />
+          </div>
         </div>
       </div>
       <div class="liquid-line-side">
@@ -345,6 +348,7 @@ import {
 import { useCartStore } from "@/stores/cart";
 import { useCatalogStore, type Product, type ProductVariant } from "@/stores/catalog";
 import { hasTelegramMiniAppUserContext } from "@/utils/telegramMiniAppContext";
+import FavoriteGroupHeart from "@/components/product/FavoriteGroupHeart.vue";
 import ColorPreviewModal from "@/components/product/ColorPreviewModal.vue";
 import DiscountBadge from "@/components/product/DiscountBadge.vue";
 import {

@@ -15,6 +15,15 @@
     </div>
 
     <div class="main-content-wrapper">
+      <!-- Кнопка избранного под баннером (утверждённый макет) -->
+      <section
+        v-if="!wholesaleStore.isWholesale"
+        class="favorites-banner-section"
+        aria-label="Избранное"
+      >
+        <FavoritesBanner />
+      </section>
+
       <section v-if="wholesaleStore.isWholesale" class="px-4 pt-4">
         <div class="wholesale-mode-card">
           <p class="wholesale-mode-kicker">Оптовый режим</p>
@@ -136,6 +145,8 @@ import { useRouter } from "vue-router";
 import { useCatalogStore, type Category } from "@/stores/catalog";
 import { useCartStore } from "@/stores/cart";
 import { useWholesaleStore } from "@/stores/wholesale";
+import { useFavoritesStore } from "@/stores/favorites";
+import FavoritesBanner from "@/components/FavoritesBanner.vue";
 import SmokeParticles from "@/components/SmokeParticles.vue";
 import BannerCarousel from "@/components/BannerCarousel.vue";
 import DiscountBadge from "@/components/product/DiscountBadge.vue";
@@ -149,6 +160,7 @@ import {
 const catalogStore = useCatalogStore();
 const cartStore = useCartStore();
 const wholesaleStore = useWholesaleStore();
+const favoritesStore = useFavoritesStore();
 const router = useRouter();
 const activeOrder = ref<CustomerActiveOrder | null>(null);
 
@@ -233,6 +245,11 @@ async function refreshHomeState() {
 
 onMounted(async () => {
   await refreshHomeState();
+
+  // Избранное грузим один раз за сессию: сердечки и страница берут из стора.
+  if (!favoritesStore.isLoaded) {
+    void favoritesStore.fetchFavorites();
+  }
 
   // Персональный минимум мог смениться админом среди сессии.
   if (wholesaleStore.isWholesale) {
