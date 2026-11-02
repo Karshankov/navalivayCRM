@@ -112,3 +112,45 @@ curl -N -m 3 "https://navalivay.store/api/admin/crm/events?ticket=$TICKET"
 Если шаг не сделан, CRM не падает: фронт после трёх неудачных попыток
 откатывается к обычному 15-секундному polling (см. `startRealtime()` в
 `frontend/src/stores/crm.ts`).
+
+## Сжатие картинок (compress-uploads.js) — порядок на проде
+
+Код: `server/scripts/compress-uploads.js` + автосжатие при загрузке
+(`server/utils/upload-image-optimize.js`, включено в `upload.js`).
+
+Регламент (по шагам, каждый шаг отдельно):
+
+```bash
+cd /var/www/NAVALIVAY/server
+
+# 1) Снимок ДО всего
+./../ops/backup.sh   # БД + uploads + конфиги
+
+# 2) Dry-run: только отчёт, ничего не меняется
+node scripts/compress-uploads.js | tee /tmp/compress-dry-run.txt
+
+# 3) Тест на 5 файлах (с бэкапом оригиналов)
+node scripts/compress-uploads.js --apply --limit=5 \
+  --backup-dir=/var/backups/NAVALIVAY/uploads-originals-$(date +%Y%m%d)
+# -> проверить витрину глазами (карточки с большими фото), CRM, баннеры
+
+# 4) Полный прогон
+node scripts/compress-uploads.js --apply \
+  --backup-dir=/var/backups/NAVALIVAY/uploads-originals-$(date +%Y%m%d)
+
+# 5) Карантин осиротевших (после проверки, что витрина целая)
+node scripts/compress-uploads.js --cleanup          # dry-run отчёт
+node scripts/compress-uploads.js --cleanup --apply
+```
+
+Отчёт всегда сохраняйте (`tee`): там полный список файлов, битые ссылки
+(файлы, которых нет на диске — «чинить» их скрипт не будет), объём до/после.
+
+Откат: файлы — из `--backup-dir` (копируется исходная структура),
+ссылки БД — из бэкапа `ops/backup.sh` (navalivay.db). Рестартов API не нужно:
+меняются только файлы и строки в БД.
+
+Карантин `_quarantine/` НЕ раздаётся nginx'ом (см. `ops/nginx.conf`,
+`location ^~ /uploads/_quarantine/ { return 404; }` — добавить руками на
+сервере, как SSE-локейшн). Удалять карантин и бэкап оригиналов — не раньше
+чем через пару недель стабильной работы.

@@ -4,6 +4,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { authMiddleware } from './auth.js';
+import { optimizeUploadedImage } from './utils/upload-image-optimize.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -68,7 +69,7 @@ export const uploadRouter = express.Router();
 
 // Upload up to 10 files: field name 'files'
 uploadRouter.post('/api/admin/upload', authMiddleware, (req, res) => {
-  uploadMW.array('files', 10)(req, res, (error) => {
+  uploadMW.array('files', 10)(req, res, async (error) => {
     if (error) {
       const code = error.code === 'LIMIT_FILE_SIZE'
         ? 'file_too_large'
@@ -78,10 +79,22 @@ uploadRouter.post('/api/admin/upload', authMiddleware, (req, res) => {
       return res.status(400).json({ error: code });
     }
     const files = req.files || [];
-    const urls = files.map(f => {
-      const rel = path.relative(baseUploads, f.path).replace(/\\/g, '/');
-      return '/uploads/' + rel;
-    });
+
+    // Автосжатие: фото с телефона (2+ МБ) пересжимается в webp до
+    // витринных размеров. Best-effort: ошибка оставляет оригинал.
+    const target = String(req.query.target || '').trim();
+    const urls = [];
+    for (const f of files) {
+      let finalPath = f.path;
+      try {
+        const optimized = await optimizeUploadedImage(f.path, target);
+        if (optimized) finalPath = optimized;
+      } catch (err) {
+        console.error('[upload] optimize step failed, using original:', err?.message || err);
+      }
+      const rel = path.relative(baseUploads, finalPath).replace(/\\/g, '/');
+      urls.push('/uploads/' + rel);
+    }
     return res.json({ ok: true, urls });
   });
 });
