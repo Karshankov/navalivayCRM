@@ -4717,7 +4717,7 @@ publicRouter.get(
         db.prepare(`
           SELECT p.id, p.title, p.priceRub, p.stock, p.has_variants AS hasVariants,
                  p.use_category_image AS useCategoryImage, p.groupId, p.strength,
-                 (SELECT cover_image FROM categories WHERE id = p.categoryId) AS categoryCover
+                 p.categoryId
           FROM products p WHERE p.id IN (${placeholders})
         `).all(...chunk).forEach((p) => productsById.set(p.id, p));
       }
@@ -4804,6 +4804,12 @@ publicRouter.get(
           inStock = stock === null ? true : stock > 0;
         }
 
+        // Лёгкие картинки: у товаров-вкусов и вариантов — прямые URL
+        // файлов; товары с useCategoryImage показывают обложку линейки.
+        // Обложку отдаём URL-ом cover-роута (тот режет в webp-миниатюру
+        // и кэширует), а НЕ base64 из БД: на линейке из сотен вкусов
+        // base64-обложка (159 КБ) на каждый item раздувала ответ до
+        // 100+ МБ и вешала страницу избранного.
         let image = null;
         if (row.variantId && variantRow) {
           image = firstImageByVariant.get(String(row.variantId)) ?? null;
@@ -4811,15 +4817,13 @@ publicRouter.get(
         if (!image) {
           image = firstImageByProduct.get(row.productId) ?? null;
         }
-        // Как в каталоге: товары с useCategoryImage показывают обложку
-        // линейки (группы), не общую обложку категории.
         if (!image && productRow.useCategoryImage) {
           const groupIdForImage = row.addedGroupId || productRow.groupId || null;
           if (groupIdForImage) {
-            image = groupsById.get(groupIdForImage)?.coverImage ?? null;
+            image = `/api/category-groups/${encodeURIComponent(groupIdForImage)}/cover`;
           }
-          if (!image && productRow.categoryCover) {
-            image = productRow.categoryCover;
+          if (!image && productRow.categoryId) {
+            image = `/api/categories/${encodeURIComponent(productRow.categoryId)}/cover`;
           }
         }
 
@@ -4861,7 +4865,9 @@ publicRouter.get(
             group_id: gid,
             group_name: item.group_name || groupRow?.name || null,
             group_slug: groupRow?.slug ?? null,
-            group_cover: groupRow?.coverImage ?? null,
+            // Обложка — URL cover-роута (webp-миниатюра с кэшем),
+            // не base64 из БД: см. комментарий в items-сериализации.
+            group_cover: groupRow ? `/api/category-groups/${encodeURIComponent(gid)}/cover` : null,
             group_position: item.group_position ?? null,
             group_unavailable: false,
             total_count: 0,
@@ -5057,10 +5063,17 @@ publicRouter.post(
             continue;
           }
           const favoriteId = generateId("fav");
-          db.prepare(
+          // Двойная защита от дублей: WHERE NOT EXISTS гонит повторные
+          // вставки в пустышку (changes=0) — быстрые двойные тапы и
+          // параллельные запросы больше не создают дубликатов.
+          const result = db.prepare(
             `
           INSERT INTO customer_favorites (id, customer_id, product_id, variant_id, created_at, added_group_id)
-          VALUES (?, ?, ?, ?, DATETIME('now'), ?)
+          SELECT ?, ?, ?, ?, DATETIME('now'), ?
+          WHERE NOT EXISTS (
+            SELECT 1 FROM customer_favorites
+            WHERE customer_id = ? AND product_id = ? AND variant_id IS ?
+          )
         `,
           ).run(
             favoriteId,
@@ -5068,7 +5081,14 @@ publicRouter.post(
             target.productId,
             target.variantId,
             resolved.groupId ?? null,
+            customerId,
+            target.productId,
+            target.variantId,
           );
+          if (result.changes === 0) {
+            already++;
+            continue;
+          }
           inserted++;
           if (!firstId) firstId = favoriteId;
         }

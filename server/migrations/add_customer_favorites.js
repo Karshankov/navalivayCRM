@@ -69,6 +69,32 @@ export function migrateCustomerFavorites() {
           ON customer_favorites(customer_id)
       `).run();
       console.log('[migration] customer_favorites customer index ensured');
+
+      // Дубли защиты: быстрые повторные POST группы (двойной тап до
+      // ответа) могли вставить одни и те же вкусы дважды. Уникальный
+      // индекс по (customer_id, product_id, variant_id) с COALESCE
+      // от NULL-вариантов — SQLite не умеет частичный UNIQUE по
+      // выражению в старых версиях, поэтому дедуп делаем так:
+      // уникальный индекс на NOT NULL-часть невозможен, и дубли
+      // убираем кодом (INSERT ... SELECT WHERE NOT EXISTS) +
+      // чисткой старых дублей разовой миграцией ниже.
+      const duplicates = db.prepare(`
+        SELECT COUNT(*) AS n FROM (
+          SELECT customer_id, product_id, variant_id, COUNT(*) AS c
+          FROM customer_favorites
+          GROUP BY customer_id, product_id, variant_id
+          HAVING c > 1
+        )
+      `).get();
+      if (duplicates.n > 0) {
+        db.prepare(`
+          DELETE FROM customer_favorites WHERE rowid NOT IN (
+            SELECT MIN(rowid) FROM customer_favorites
+            GROUP BY customer_id, product_id, variant_id
+          )
+        `).run();
+        console.log(`[migration] customer_favorites: удалено дублей: ${duplicates.n}`);
+      }
     }).immediate();
 
     console.log('[migration] Customer favorites migration completed');

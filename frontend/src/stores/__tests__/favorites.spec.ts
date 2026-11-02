@@ -114,8 +114,8 @@ describe('favorites store', () => {
     expect(added).toBe(true)
     expect(store.isFavorite('prod1', null)).toBe(true)
     expect(addMock).toHaveBeenCalledWith('prod1', null)
-    // Ждём тихого рефетча после add.
-    await new Promise((r) => setTimeout(r, 0))
+    // Ждём debounced тихий рефетч после add (150мс debounce).
+    await new Promise((r) => setTimeout(r, 200))
     expect(store.isFavorite('prod1', null)).toBe(true)
     expect(store.items[0].title).toBe('Товар')
 
@@ -318,5 +318,106 @@ describe('favorites store', () => {
     expect(store.isGroupFavorite('grp_child')).toBe(true)
     // Незнакомая группа — нет.
     expect(store.isGroupFavorite('grp_other')).toBe(false)
+  })
+
+  // ===== Багфиксы: быстрый тап add/remove и гонки рефетчей =====
+
+  it('быстрый тап добавить-убрать: итог — убрано (порядок операций сохраняется)', async () => {
+    // Воспроизводит жалобу «быстро нажимать добавить и убрать — по итогу
+    // не убирается»: серверные ответы приходят в порядке вызовов.
+    fetchMock.mockResolvedValue({ items: [], groups: [], ungrouped: [] })
+    // Сервер отвечает с задержкой, но resolve-порядок FIFO.
+    let call = 0
+    addMock.mockImplementation(async () => {
+      call += 1
+      return call
+    })
+    removeMock.mockImplementation(async () => {
+      call += 1
+      return call
+    })
+
+    const store = useFavoritesStore()
+    await store.fetchFavorites()
+
+    const first = store.toggleFavorite('prod1', null) // add
+    const second = store.toggleFavorite('prod1', null) // remove
+    await Promise.all([first, second])
+
+    // Итоговое состояние = убрано.
+    expect(store.isFavorite('prod1', null)).toBe(false)
+    expect(addMock).toHaveBeenCalledWith('prod1', null)
+    expect(removeMock).toHaveBeenCalledWith('prod1', null)
+  })
+
+  it('гонка рефетчей: запоздалый ответ не возвращает снятое сердце', async () => {
+    // Воспроизводит «сердца сами добавляются после снятия»: рефетч,
+    // стартовавший ДО тапа, прилетает ПОСЛЕ — старый код перетирал
+    // оптимистичное состояние старым снимком.
+    const store = useFavoritesStore()
+
+    // Медленный рефетч: стартует с item, но разрешается поздно.
+    let resolveFetch: (v: any) => void
+    fetchMock.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveFetch = resolve
+        }),
+    )
+    // Первый (медленный) рефетч стартует и подвисает.
+    const slowFetch = store.fetchFavorites()
+    await Promise.resolve()
+
+    // Быстрый рефетч прилетает с item: стор знает prod1.
+    removeMock.mockResolvedValue(1)
+    fetchMock.mockImplementationOnce(async () => ({ items: [
+      {
+        productId: 'prod1',
+        variantId: null,
+        createdAt: '2026-01-01 10:00:00',
+        deleted: false,
+        title: 'Товар',
+        variantName: null,
+        priceRub: 10,
+        image: null,
+        stock: 5,
+        inStock: true,
+        groupId: null,
+        groupName: null,
+        groupPosition: null,
+        strength: null,
+      },
+    ], groups: [], ungrouped: [] } as never))
+    const okFetch = await store.fetchFavorites()
+    expect(store.isFavorite('prod1', null)).toBe(true)
+
+    // Снимаем сердце (оптимистично: мгновенно false).
+    await store.toggleFavorite('prod1', null)
+    expect(store.isFavorite('prod1', null)).toBe(false)
+
+    // Поздно прилетает МЕДЛЕННЫЙ рефетч, стартовавший раньше: в его
+    // снимке prod1 ещё есть. Стор обязан его проигнорировать.
+    resolveFetch!({ items: [
+      {
+        productId: 'prod1',
+        variantId: null,
+        createdAt: '2026-01-01 10:00:00',
+        deleted: false,
+        title: 'Товар',
+        variantName: null,
+        priceRub: 10,
+        image: null,
+        stock: 5,
+        inStock: true,
+        groupId: null,
+        groupName: null,
+        groupPosition: null,
+        strength: null,
+      },
+    ], groups: [], ungrouped: [] } as never)
+    await slowFetch
+
+    // Сердце остаётся снятым — гонка не роняет оптимистичное состояние.
+    expect(store.isFavorite('prod1', null)).toBe(false)
   })
 })
