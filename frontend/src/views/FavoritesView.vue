@@ -35,7 +35,7 @@
       <div class="toolbar">
         <button class="reorder" id="edit" type="button" :aria-pressed="isEditing ? 'true' : 'false'"
           :disabled="reorderPending" @click="toggleEditing">
-          {{ isEditing ? 'Сохранить изменения' : '↕ Изменить очередность' }}
+          {{ isEditing ? 'Сохранить изменения' : 'Изменить очередность' }}
         </button>
       </div>
 
