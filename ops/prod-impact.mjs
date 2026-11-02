@@ -122,6 +122,10 @@ function hasNoRuntimeImpact(file) {
     file === '.gitignore' ||
     file === '.gitattributes' ||
     file === 'server/dev-server.js' ||
+    // Операторские скрипты: запускаются руками по регламенту
+    // (см. docs/prod-hotfix-playbook.md), в графе запуска сервисов их нет,
+    // и это нормально — как у dev-server.js.
+    file.startsWith('server/scripts/') ||
     // Справочная копия боевого конфига nginx. Деплой её никуда не applies:
     // конфиг меняют на сервере руками. Настоящие инфраструктурные пути
     // (nginx/, ops/systemd/, deploy/) блокировку по-прежнему получают.
