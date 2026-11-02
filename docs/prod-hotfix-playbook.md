@@ -90,3 +90,25 @@ Defenses (all must stay in place):
 
 When intentionally upgrading Node major on prod, run
 `cd /var/www/NAVALIVAY/server && npm rebuild` before starting the service.
+
+## SSE для CRM (живой канбан) — ручной шаг nginx
+
+`/api/admin/crm/events` (Server-Sent Events) требует отдельного `location` в
+nginx ДО generic `location /api` — с `proxy_buffering off` и
+`proxy_read_timeout 300s` (см. `ops/nginx.conf`). Актуальная копия конфига
+лежит там; на сервере конфиг меняется руками, потом копия обновляется.
+
+Проверка после деплоя:
+
+```bash
+# 1) получить тикет (нужен админский токен)
+TICKET=$(curl -s -X POST -H "Authorization: Bearer <ADMIN_TOKEN>" \
+  https://navalivay.store/api/admin/crm/events/ticket | jq -r .ticket)
+# 2) стрим должен прийти немедленно и держаться открытым
+curl -N -m 3 "https://navalivay.store/api/admin/crm/events?ticket=$TICKET"
+# ожидание: event: summary + JSON в течение секунды, соединение живёт до -m
+```
+
+Если шаг не сделан, CRM не падает: фронт после трёх неудачных попыток
+откатывается к обычному 15-секундному polling (см. `startRealtime()` в
+`frontend/src/stores/crm.ts`).

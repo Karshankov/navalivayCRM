@@ -2010,8 +2010,11 @@ export const useCrmStore = defineStore("crm", () => {
   function setAutoRefreshEnabled(enabled: boolean) {
     autoRefreshEnabled.value = enabled;
     if (enabled) {
+      startRealtime();
+      // Страховка: если SSE не подключится, polling остаётся рабочим путём.
       startPolling();
     } else {
+      stopRealtime();
       stopPolling();
     }
   }
@@ -2427,6 +2430,128 @@ export const useCrmStore = defineStore("crm", () => {
       pollingTimer = null;
     }
     stopRestockDailyRefresh();
+  }
+
+  // ========== Realtime (SSE): живой канбан вместо 15-секундного polling ==========
+  //
+  // EventSource получает poll-summary событиями (~2.5 с после изменения) и
+  // подаёт их в ту же applyOrderPollSummary — уведомления, звук и
+  // syncKanbanBoardSince работают без изменений. Транспорт не умеет заголовки
+  // авторизации, поэтому сначала берётся одноразовый тикет. Любая проблема
+  // (нет EventSource, тикет не выдан, соединение оборвалось) откатывает к
+  // обычному polling: событие summary по SSE подавляет polling до reconnect.
+  let realtimeEventSource: EventSource | null = null;
+  let realtimeReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  let realtimeReconnectAttempt = 0;
+  let realtimeStoppedByUser = false;
+  const REALTIME_BACKOFF_MS = [5000, 10000, 20000];
+
+  function stopRealtime() {
+    realtimeStoppedByUser = true;
+    if (realtimeReconnectTimer) {
+      clearTimeout(realtimeReconnectTimer);
+      realtimeReconnectTimer = null;
+    }
+    if (realtimeEventSource) {
+      // close() без onerror-обработки: сначала отключаем колбэки.
+      realtimeEventSource.onmessage = null;
+      realtimeEventSource.onerror = null;
+      realtimeEventSource.close();
+      realtimeEventSource = null;
+    }
+  }
+
+  function scheduleRealtimeReconnect() {
+    if (realtimeStoppedByUser || realtimeEventSource) return;
+    if (realtimeReconnectAttempt >= REALTIME_BACKOFF_MS.length) {
+      // SSE недоступен (прокси не настроен, сервер старой версии) —
+      // работаем как раньше: обычный polling.
+      console.warn("[CRM] SSE unavailable, falling back to polling");
+      stopPolling();
+      startPolling();
+      return;
+    }
+    const delay = REALTIME_BACKOFF_MS[realtimeReconnectAttempt];
+    realtimeReconnectAttempt += 1;
+    realtimeReconnectTimer = setTimeout(() => {
+      realtimeReconnectTimer = null;
+      void connectRealtime();
+    }, delay);
+  }
+
+  async function connectRealtime() {
+    if (realtimeStoppedByUser || realtimeEventSource) return;
+
+    let ticket: string | null = null;
+    try {
+      const response = await fetchAPI<{ ticket: string }>(
+        `${API_BASE}/events/ticket`,
+        { method: "POST" },
+      );
+      ticket = response?.ticket || null;
+    } catch {
+      ticket = null;
+    }
+    if (!ticket || realtimeStoppedByUser) {
+      scheduleRealtimeReconnect();
+      return;
+    }
+
+    let source: EventSource;
+    try {
+      source = new EventSource(
+        `${API_BASE}/events?ticket=${encodeURIComponent(ticket)}`,
+      );
+    } catch {
+      scheduleRealtimeReconnect();
+      return;
+    }
+    realtimeEventSource = source;
+
+    source.addEventListener("summary", (event) => {
+      try {
+        const summary = JSON.parse((event as MessageEvent).data) as OrderPollSummary;
+        applyOrderPollSummary(summary);
+        // Живой канал подтверждён: polling больше не нужен.
+        stopPolling();
+        startRestockDailyRefreshOnly();
+      } catch (error) {
+        console.error("[CRM] SSE summary parse failed:", error);
+      }
+    });
+
+    source.onopen = () => {
+      realtimeReconnectAttempt = 0;
+    };
+
+    source.onerror = () => {
+      // EventSource сам реконнектит, но с тем же (уже потраченным) тикетом —
+      // это 401 и вечный цикл. Закрываем и берём новый тикет с backoff.
+      if (realtimeEventSource === source) {
+        realtimeEventSource = null;
+        source.close();
+        scheduleRealtimeReconnect();
+      }
+    };
+  }
+
+  /**
+   * Restock-обновление живёт в startPolling вместе с polling-таймером.
+   * При живом SSE и подавленном polling суточный рефреш всё равно нужен.
+   */
+  function startRestockDailyRefreshOnly() {
+    scheduleRestockDailyRefresh();
+  }
+
+  function startRealtime() {
+    if (!autoRefreshEnabled.value) return;
+    if (realtimeEventSource) return; // уже подключено
+    realtimeStoppedByUser = false;
+    realtimeReconnectAttempt = 0;
+    // Страховка на время подключения: пока SSE не подтверждён первым
+    // сообщением, polling продолжает работать (stopPolling вызывается из
+    // обработчика summary). Полностью остановим его после коннекта.
+    void connectRealtime();
   }
 
   function markOrderAsSeen(orderId: string) {
@@ -6341,6 +6466,8 @@ export const useCrmStore = defineStore("crm", () => {
     setAutoRefreshEnabled,
     startPolling,
     stopPolling,
+    startRealtime,
+    stopRealtime,
     subscribeOrderActivity,
     checkForNewOrders,
     checkForActionRequired,

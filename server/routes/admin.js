@@ -45,6 +45,7 @@ import {
 import { syncGroupParking, syncParkingFromFlattened } from '../utils/group-parking.js';
 import { invalidateRestockCache } from '../utils/restock-candidates.js';
 import { searchProductsForAdmin, searchProductsForCrm, syncProductSearchIndex } from '../services/product-search-service.js';
+import { bumpCatalogRevision } from '../utils/catalog-revision.js';
 import { resolveFirstImageThumbnail } from '../services/image-thumbnail-service.js';
 import {
   COMPLETENESS_FIELD_LABELS,
@@ -176,6 +177,9 @@ function refreshProductSearchIndex(context) {
   } catch (error) {
     console.error(`[admin] product search index refresh failed after ${context}:`, error);
   }
+  // Та же точка — скачок ревизии витрины, чтобы клиентский кэш каталога
+  // (mini app) увидел правки, не видимые агрегатам (title, description, порядок).
+  bumpCatalogRevision(db, context);
 }
 
 function getProfitPasswordHash() {
@@ -1217,6 +1221,7 @@ adminRouter.post('/api/admin/products/:id/images/attach', authMiddleware, (req, 
     for (const u of rows) { stmt.run(id, u, pos++); }
   });
   tx(urls, cur);
+  bumpCatalogRevision(db, 'product images attach');
   res.json({ ok: true });
 });
 
@@ -2333,7 +2338,8 @@ adminRouter.post('/api/admin/banners', authMiddleware, (req, res) => {
   // Создаём баннер
   db.prepare('INSERT INTO banners (id, title, image, href, active, [order], openInNewTab) VALUES (?, ?, ?, ?, ?, ?, ?)')
     .run(id, title || null, image, href || null, active ? 1 : 0, finalOrder, openInNewTab ? 1 : 0);
-  
+  bumpCatalogRevision(db, 'banner create');
+
   // Возвращаем полные данные созданного баннера
   res.json({
     id,
@@ -2378,6 +2384,7 @@ adminRouter.patch('/api/admin/banners/reorder', authMiddleware, (req, res) => {
     })
     
     tx(banners)
+    bumpCatalogRevision(db, 'banners reorder')
     console.log('🔥 [server] Banners reordered successfully!')
     res.json({ success: true, message: 'Banners reordered' })
   } catch (error) {
@@ -2401,10 +2408,11 @@ adminRouter.patch('/api/admin/banners/:id', authMiddleware, (req, res) => {
       (href !== undefined ? href : cur.href), 
       (active !== undefined ? (active ? 1 : 0) : cur.active), 
       (Number.isFinite(order) ? order : cur.order),
-      (openInNewTab !== undefined ? (openInNewTab ? 1 : 0) : (cur.openInNewTab || 0)), 
+      (openInNewTab !== undefined ? (openInNewTab ? 1 : 0) : (cur.openInNewTab || 0)),
       id
     );
-  
+  bumpCatalogRevision(db, 'banner update');
+
   // Возвращаем обновлённые данные
   const updated = db.prepare('SELECT * FROM banners WHERE id = ?').get(id);
   res.json({
@@ -2421,6 +2429,7 @@ adminRouter.patch('/api/admin/banners/:id', authMiddleware, (req, res) => {
 adminRouter.delete('/api/admin/banners/:id', authMiddleware, (req, res) => {
   const id = req.params.id;
   db.prepare('DELETE FROM banners WHERE id = ?').run(id);
+  bumpCatalogRevision(db, 'banner delete');
   res.json({ ok: true });
 });
 

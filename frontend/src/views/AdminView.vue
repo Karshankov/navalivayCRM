@@ -3347,13 +3347,16 @@ onMounted(async () => {
     // Загружаем данные для текущей вкладки
     await ensureTabData(activeTab.value)
     updateManagerForm()
-    // Запускаем глобальный polling новых заказов
+    // Запускаем живые обновления: SSE, с откатом к polling
+    crmStore.startRealtime()
+    // Страховка: пока SSE не подтверждён первым сообщением, polling работает
     crmStore.startPolling()
   }
 })
 
 onUnmounted(() => {
-  // Останавливаем polling при выходе из админки
+  // Останавливаем realtime и polling при выходе из админки
+  crmStore.stopRealtime()
   crmStore.stopPolling()
   // Чистим debounce-таймер поиска по топ-линейкам, чтобы callback
   // не выполнился на размонтированном компоненте

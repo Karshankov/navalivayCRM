@@ -1,5 +1,6 @@
 import { db } from './db.js';
 import { roundMoney } from './utils/money.js';
+import { bumpCatalogRevision } from './utils/catalog-revision.js';
 
 const WHOLESALE_CODE_HEADER = 'x-wholesale-code';
 const WHOLESALE_SECRET_HEADER = 'x-wholesale-secret';
@@ -406,6 +407,9 @@ export function saveGroupWholesalePrices(groupId, wholesalePrices = {}) {
 
     upsertStmt.run(normalizedGroupId, tier.id, price);
   }
+
+  // Оптовые цены — часть витрины: кэш каталога должен увидеть смену тарифа.
+  bumpCatalogRevision(db, 'group wholesale prices save');
 }
 
 export function getGroupWholesalePrices(groupId) {

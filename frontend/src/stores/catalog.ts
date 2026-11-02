@@ -598,6 +598,11 @@ export const useCatalogStore = defineStore('catalog', () => {
         if (allProducts.value.length) {
           const { useCartStore } = await import('./cart')
           useCartStore().syncItemPricesFromCatalog()
+          // Товары только что перезагружены по сети — обновляем кэш каталога,
+          // если он есть (снимаем снапшот актуальных refs).
+          if (readCatalogCache()) {
+            writeCatalogCache(null)
+          }
         }
       } catch (err) {
         console.error('Error fetching all products for counts:', err)
@@ -766,9 +771,141 @@ export const useCatalogStore = defineStore('catalog', () => {
   }
 
 
+  // ===== Кэш каталога в localStorage (мгновенное повторное открытие) =====
+  //
+  // Каталог меняется редко, а мини-апп открывают часто. При старте гидрируем
+  // стор из кэша, затем одной дешёвой проверкой ревизии
+  // (`/api/catalog/version`) решаем: тянуть каталог заново или нет.
+  // Кэш раздельён по ключу опта (розница/`code:secret`) — тот же ключ, что у
+  // fetchAllProducts, чтобы оптовые цены и товары не смешивались с розницей.
+
+  /** Версия формата кэша: изменение структуры — сброс старых записей. */
+  const CATALOG_CACHE_SCHEMA = 1
+  const CATALOG_CACHE_PREFIX = `navalivay_catalog_v${CATALOG_CACHE_SCHEMA}:`
+
+  type CatalogCache = {
+    revision: string
+    savedAt: number
+    categories: Category[]
+    allProducts: Product[]
+    banners: Banner[]
+  }
+
+  function getCatalogCacheKey(): string {
+    return CATALOG_CACHE_PREFIX + getAllProductsFetchKey()
+  }
+
+  function readCatalogCache(): CatalogCache | null {
+    try {
+      const raw = localStorage.getItem(getCatalogCacheKey())
+      if (!raw) return null
+      const parsed = JSON.parse(raw) as CatalogCache
+      if (
+        !parsed
+        || typeof parsed.revision !== 'string'
+        || !Array.isArray(parsed.categories)
+        || !Array.isArray(parsed.allProducts)
+        || !Array.isArray(parsed.banners)
+      ) {
+        return null
+      }
+      return parsed
+    } catch {
+      return null
+    }
+  }
+
+  function writeCatalogCache(revision: string | null) {
+    try {
+      const resolvedRevision = revision || readCatalogCache()?.revision || ''
+      if (!resolvedRevision) return
+      localStorage.setItem(
+        getCatalogCacheKey(),
+        JSON.stringify({
+          revision: resolvedRevision,
+          savedAt: Date.now(),
+          categories: categories.value,
+          allProducts: allProducts.value,
+          banners: banners.value,
+        } satisfies CatalogCache),
+      )
+      // Гигиена: не копим чужие wholesale-ключи (розничный ключ не трогаем).
+      try {
+        const currentKey = getCatalogCacheKey()
+        const retailKey = CATALOG_CACHE_PREFIX + '__retail__'
+        for (let i = localStorage.length - 1; i >= 0; i--) {
+          const key = localStorage.key(i)
+          if (
+            key !== null
+            && key.startsWith(CATALOG_CACHE_PREFIX)
+            && key !== currentKey
+            && key !== retailKey
+          ) {
+            localStorage.removeItem(key)
+          }
+        }
+      } catch {
+        /* очистка — best-effort */
+      }
+    } catch {
+      // QuotaExceededError или недоступный localStorage: кэш не критичен.
+    }
+  }
+
+  /** Ревизия витрины с сервера; null — сервер недоступен/ответ невалиден. */
+  async function fetchCatalogRevision(): Promise<string | null> {
+    try {
+      const response = await fetch('/api/catalog/version', {
+        headers: getWholesaleHeaders(),
+      })
+      if (!response.ok) return null
+      const data = await response.json()
+      return typeof data?.revision === 'string' && data.revision ? data.revision : null
+    } catch {
+      return null
+    }
+  }
+
   // Initialize
   async function initialize() {
     const wholesaleStore = useWholesaleStore()
+
+    // 1) Мгновенная гидрация из кэша, если он есть.
+    const cached = readCatalogCache()
+    let cacheIsFresh = false
+    if (cached) {
+      categories.value = cached.categories
+      allProducts.value = cached.allProducts
+      banners.value = wholesaleStore.isWholesale ? [] : cached.banners
+    }
+
+    // 2) Проверка ревизии: без изменений — каталог по сети не тянем вовсе.
+    // Запрашиваем всегда: без ответа нечем пометить свежезаписанный кэш.
+    const serverRevision = await fetchCatalogRevision()
+    if (cached && serverRevision !== null) {
+      if (serverRevision === cached.revision) {
+        offline.value = false
+        cacheIsFresh = true
+      }
+      // Ревизия другая — cacheIsFresh остаётся false: перезагружаем каталог.
+    } else if (cached && serverRevision === null) {
+      // Сети нет, но кэш есть — показываем закэшированный каталог,
+      // оффлайн-заглушку не включаем.
+      offline.value = false
+      cacheIsFresh = true
+    }
+
+    if (cacheIsFresh) {
+      // Продуктовая пагинация и счётчики не «протухают»: products — только
+      // первая страница, категории/счётчики уже из кэша.
+      if (!products.value.length && cached) {
+        products.value = cached.allProducts.slice(0, itemsPerPage.value)
+      }
+      const { useCartStore } = await import('./cart')
+      useCartStore().syncItemPricesFromCatalog()
+      return
+    }
+
     const loaders: Array<Promise<unknown>> = [
       fetchCategories(),
       fetchProducts(),
@@ -785,6 +922,11 @@ export const useCatalogStore = defineStore('catalog', () => {
       await Promise.all(loaders)
       // Каталог загрузился: оффлайн-заглушка больше не нужна.
       offline.value = false
+      // Фетчеры ловят ошибки сами и не бросают, поэтому записи кэша
+      // предшествует проверка: были ли данные.
+      if (categories.value.length || allProducts.value.length) {
+        writeCatalogCache(serverRevision)
+      }
     } catch (err) {
       console.error('[catalog] initialize failed:', err)
       // Сервер недоступен: App.vue заменит контент оффлайн-заглушкой.

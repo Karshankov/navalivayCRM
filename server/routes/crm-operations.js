@@ -35,6 +35,11 @@ import {
   cancelPendingSignificanceNotifications,
 } from "../utils/significance-notify.js";
 import { buildCrmOrderPollSummary } from "../utils/crm-order-polling.js";
+import {
+  addCrmEventsClient,
+  consumeCrmEventsTicket,
+  createCrmEventsTicket,
+} from "../utils/crm-events-hub.js";
 import { buildCrmOrdersSearch } from "../utils/crm-order-search.js";
 import {
   describeAutoNotifyReason,
@@ -530,6 +535,40 @@ crmOperationsRouter.get("/api/admin/crm/orders/poll-summary", authMiddleware, (r
     console.error("[crm] Get orders poll summary error:", error);
     res.status(500).json({ error: "failed", message: error.message });
   }
+});
+
+// ===== Realtime (SSE) для CRM =====
+//
+// Живой канбан: клиент открывает EventSource и получает poll-summary событиями
+// в течение ~2.5 с после изменения вместо тика раз в 15 секунд. Заголовки
+// авторизации EventSource передать не может, поэтому сначала выдаётся
+// одноразовый 30-секундный тикет (POST ниже, с обычными заголовками), а сам
+// SSE-роут авторизует тикетом из query. Без EventSource/тиket клиент
+// деградирует к обычному polling — см. startRealtime() в crm.ts.
+
+crmOperationsRouter.post("/api/admin/crm/events/ticket", authMiddleware, (_req, res) => {
+  res.json(createCrmEventsTicket());
+});
+
+crmOperationsRouter.get("/api/admin/crm/events", (req, res) => {
+  const ticket = req.query.ticket ? String(req.query.ticket) : null;
+  if (!ticket || !consumeCrmEventsTicket(ticket)) {
+    // Тикет протух, уже использован или отсутствует. 401 + обычный JSON:
+    // EventSource по ошибке пойдёт в onerror и фронт откатится к polling.
+    return res.status(401).json({ error: "unauthorized", message: "invalid or expired ticket" });
+  }
+
+  // SSE-заголовки. X-Accel-Buffering: no отключает буферизацию nginx,
+  // иначе события доходят пачками по заполнению буфера.
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-store",
+    Connection: "keep-alive",
+    "X-Accel-Buffering": "no",
+  });
+  res.flushHeaders?.();
+
+  addCrmEventsClient(db, res);
 });
 
 // Канбан: только релевантные заказы (без delivered/completed), полный payload для карточек.

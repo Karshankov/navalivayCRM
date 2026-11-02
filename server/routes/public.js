@@ -1,6 +1,7 @@
 import express from "express";
 import rateLimit from "express-rate-limit";
 import { db } from "../db.js";
+import { getCatalogRevision } from "../utils/catalog-revision.js";
 import { snapshotOrder, recordOrderAudit, verifiedRequestAuditActor } from "../utils/order-audit.js";
 import {
   applyOrderLoyaltyReservations,
@@ -2278,6 +2279,20 @@ publicRouter.get("/api/cross-sells", (req, res) => {
   });
 
   res.json(payload);
+});
+
+// Ревизия витрины для клиентского кэша каталога (mini app).
+// Дёшево (агрегатные запросы), без авторизации, всегда свежее — чтобы клиент
+// при повторном открытии решал одним запросом, тянуть каталог заново или нет.
+publicRouter.get("/api/catalog/version", (req, res) => {
+  try {
+    const revision = getCatalogRevision(db);
+    res.setHeader("Cache-Control", "no-store");
+    res.json({ revision, generatedAt: new Date().toISOString() });
+  } catch (error) {
+    console.error("[public] Get catalog version error:", error);
+    res.status(500).json({ error: "failed", message: error.message });
+  }
 });
 
 // Public settings (only specific settings that are safe to expose)
