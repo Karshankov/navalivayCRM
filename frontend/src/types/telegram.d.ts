@@ -48,6 +48,10 @@ declare global {
         isActive?: boolean
         requestFullscreen?(): void | Promise<void>
         exitFullscreen?(): void | Promise<void>
+        // Vertical swipes control (Bot API 7.6+): свайп вниз сворачивает
+        // мини-аппу; отключается на drag-экранах.
+        disableVerticalSwipes?(): void
+        enableVerticalSwipes?(): void
         safeAreaInset?: {
           top: number
           bottom: number

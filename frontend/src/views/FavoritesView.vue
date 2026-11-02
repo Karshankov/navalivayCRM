@@ -332,6 +332,16 @@ const reduceMotion =
   typeof window !== 'undefined' &&
   window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
+/**
+ * Глушит нативный touch-скролл ПОКА идёт drag. iOS Telegram WebView
+ * не уважает touch-action:none «задним числом»: когда жест уже начат
+ * как скролл, предотвратить «резину» можно только отменой touchmove
+ * с passive:false. Вне drag — прозрачный обработчик.
+ */
+function preventNativeTouchScroll(event: TouchEvent) {
+  if (drag) event.preventDefault()
+}
+
 function plural(value: number, one: string, few: string, many: string): string {
   const mod10 = value % 10
   const mod100 = value % 100
@@ -577,9 +587,26 @@ onMounted(async () => {
   }
   // Свежие остатки при каждом входе на экран.
   void favoritesStore.fetchFavorites()
+  // iOS Telegram WebView игнорирует touch-action:none при активном
+  // нативном скролле: пока идёт drag, глушим touchmove на уровне
+  // документа ({passive:false}) — только это отменяет «резину»
+  // (окно «тянется вниз» вместо карточки).
+  document.addEventListener('touchmove', preventNativeTouchScroll, { passive: false })
+  // Свайп вниз по WebView в Telegram сворачивает мини-аппу — на экране
+  // сортировки это ломает drag. Отключаем на время экрана, возвращаем
+  // при уходе (API >= 8.0, безопасно на старых клиентах).
+  const webapp = window.Telegram?.WebApp
+  if (webapp?.disableVerticalSwipes) {
+    webapp.disableVerticalSwipes()
+  }
 })
 
 onBeforeUnmount(() => {
+  document.removeEventListener('touchmove', preventNativeTouchScroll)
+  const webapp = window.Telegram?.WebApp
+  if (webapp?.enableVerticalSwipes) {
+    webapp.enableVerticalSwipes()
+  }
   if (drag) {
     drag.floating.remove()
     drag.row.classList.remove('dragging')
