@@ -440,11 +440,21 @@ function onPointerDown(event: PointerEvent) {
 
 function onPointerMove(event: PointerEvent) {
   if (!drag || drag.id !== event.pointerId || !listEl.value) return
-  const dy = event.clientY - drag.startY
+  // Ограничиваем вертикаль перемещения границами списка: раньше карточку
+  // можно было утащить к самому верху окна — edge-скролл вытягивал страницу
+  // выше, и Telegram WebView резиновым скроллом «сворачивал» приложение.
+  const listRect = listEl.value.getBoundingClientRect()
+  const minClientY = listRect.top + drag.offset
+  const maxClientY = Math.max(
+    minClientY,
+    listRect.bottom - (drag.rect.height - drag.offset),
+  )
+  const clientY = Math.min(Math.max(event.clientY, minClientY), maxClientY)
+  const dy = clientY - drag.startY
   // Перемещение без transition: карточка точно следует за указателем.
   drag.floating.style.transform = `translateY(${dy}px)`
 
-  const center = event.clientY - drag.offset + drag.rect.height / 2
+  const center = clientY - drag.offset + drag.rect.height / 2
   const others = [...listEl.value.children].filter(
     (row) => row !== drag!.row,
   ) as HTMLElement[]
@@ -454,9 +464,16 @@ function onPointerMove(event: PointerEvent) {
   )
   placeRow(drag.row, next ?? null)
 
+  // Автоскролл только внутри реально скроллируемой области: если
+  // scrollY уже 0 — вверх тянуть нечего, и WebView не дёргается.
   const edge = 80
-  if (event.clientY < edge) window.scrollBy(0, -12)
-  else if (event.clientY > window.innerHeight - edge) window.scrollBy(0, 12)
+  const canScrollUp = window.scrollY > 0
+  const canScrollDown =
+    document.documentElement.scrollHeight > window.innerHeight + window.scrollY
+  if (event.clientY < edge && canScrollUp) window.scrollBy(0, -12)
+  else if (event.clientY > window.innerHeight - edge && canScrollDown) {
+    window.scrollBy(0, 12)
+  }
 }
 
 function endDrag(event: PointerEvent, cancelled = false) {

@@ -89,7 +89,7 @@ async function apiCall(method, url, body, headers) {
     headers: headers ?? authHeaders(),
     body: body === undefined ? undefined : JSON.stringify(body),
   });
-  return { status: response.status, payload: await response.json().catch(() => null) };
+  return { status: response.status, payload: await response.json().catch(() => null), headers: response.headers };
 }
 
 console.log('\n=== customer favorites ===\n');
@@ -103,6 +103,18 @@ console.log('--- F1: авторизация обязательна ---');
   ok(add.status === 401, 'POST без auth → 401');
   const remove = await apiCall('DELETE', '/api/favorites', { product_id: 'prod_simple' }, { 'Content-Type': 'application/json' });
   ok(remove.status === 401, 'DELETE без auth → 401');
+}
+
+console.log('--- F1b: список без HTTP-кэша (304 чинил «линейки не убираются») ---');
+{
+  seedCatalog();
+  const list = await apiCall('GET', '/api/favorites');
+  ok(list.status === 200, 'GET со списком → 200');
+  const cacheControl = String(list.headers?.get?.('cache-control') ?? '');
+  ok(
+    /no-store|no-cache/.test(cacheControl),
+    `Cache-Control запрещает кэш (получено: ${cacheControl || 'пусто'})`,
+  );
 }
 
 console.log('--- F2: добавление и список ---');

@@ -4674,6 +4674,9 @@ publicRouter.get(
   publicMiniAppReadLimiter,
   requireTelegramMiniAppAuth({ allowInsecureFallback: allowInsecureTelegramFallback }),
   (req, res) => {
+    // Без кэша: express-ETag + HTTP-кэш WebView отдавали 304 со СТАРЫМ
+    // списком после удаления — «линейки не убираются из избранного».
+    res.set("Cache-Control", "no-cache, no-store, must-revalidate");
     try {
       const telegramId = String(req.telegramAuth?.telegramId || "").trim();
       const username = normalizeCardTelegramUsername(req.telegramAuth?.telegramUsername);

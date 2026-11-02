@@ -143,6 +143,7 @@ export interface FavoritesPayload {
 
 export async function fetchFavoritesApi(): Promise<FavoritesPayload> {
   const response = await fetch("/api/favorites", {
+    cache: "no-store",
     headers: withTelegramAuthHeaders(),
   });
   const data = await parseFavoritesResponse(response);
@@ -159,6 +160,7 @@ export async function addFavoriteApi(
   variantId: string | null,
 ): Promise<void> {
   const response = await fetch("/api/favorites", {
+    cache: "no-store",
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -172,6 +174,7 @@ export async function addFavoriteApi(
 /** Добавить в избранное всю линейку: каждый вкус — отдельной записью. */
 export async function addFavoriteGroupApi(groupId: string): Promise<number> {
   const response = await fetch("/api/favorites", {
+    cache: "no-store",
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -189,6 +192,7 @@ export async function addFavoriteGroupApi(groupId: string): Promise<number> {
 /** Убрать из избранного все записи линейки одним запросом. */
 export async function removeFavoriteGroupApi(groupId: string): Promise<number> {
   const response = await fetch("/api/favorites", {
+    cache: "no-store",
     method: "DELETE",
     headers: {
       "Content-Type": "application/json",
@@ -203,6 +207,7 @@ export async function removeFavoriteGroupApi(groupId: string): Promise<number> {
 /** Сохранить ручной порядок линеек после drag-n-drop. */
 export async function reorderFavoritesApi(groupIds: string[]): Promise<void> {
   const response = await fetch("/api/favorites/reorder", {
+    cache: "no-store",
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -218,6 +223,7 @@ export async function removeFavoriteApi(
   variantId: string | null,
 ): Promise<void> {
   const response = await fetch("/api/favorites", {
+    cache: "no-store",
     method: "DELETE",
     headers: {
       "Content-Type": "application/json",
