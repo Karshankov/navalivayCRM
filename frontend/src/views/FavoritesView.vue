@@ -394,13 +394,20 @@ function placeRow(row: HTMLElement, next: HTMLElement | null) {
 
 function onPointerDown(event: PointerEvent) {
   const target = event.target as HTMLElement
-  const handle = target.closest<HTMLElement>('.handle')
-  if (!isEditing.value || !handle || drag || !event.isPrimary || event.button !== 0) return
+  // В режиме сортировки тянется ВСЯ карточка: маленькая ручка-иконка
+  // (32×48) — промахиваешься мимо, жест уходил браузеру и WebView
+  // «сворачивал» окно резиновым скроллом. Ручка остаётся как индикатор,
+  // но стартовать drag можно с любой точки карточки.
+  // Кнопки внутри (сердце, стрелки) drag не перехватывают.
+  const interactive = target.closest<HTMLElement>('button, a, [role="button"]:not(.handle)')
+  const row = target.closest<HTMLElement>('.card')
+  if (!isEditing.value || !row || interactive || drag || !event.isPrimary || event.button !== 0) {
+    return
+  }
   if (!listEl.value) return
   event.preventDefault()
 
-  const row = handle.closest<HTMLElement>('.card')
-  if (!row) return
+  const handle = row.querySelector<HTMLElement>('.handle')
   const rect = row.getBoundingClientRect()
 
   const floating = row.cloneNode(true) as HTMLElement
@@ -420,7 +427,7 @@ function onPointerDown(event: PointerEvent) {
 
   drag = {
     id: event.pointerId,
-    handle,
+    handle: handle ?? row,
     row,
     floating,
     startY: event.clientY,
@@ -666,6 +673,16 @@ button {
   border-radius: 24px;
   background: #fff;
   overflow: hidden;
+}
+
+/* В режиме сортировки перетаскивается вся карточка: touch-action: none
+   держит жест за собой — браузер не перехватывает его в скролл и
+   WebView не «тянет окно вниз» вместо карточки. */
+.editing .card {
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: grab;
 }
 
 /* Кликабельная шапка карточки: повторяет грид макета. */
