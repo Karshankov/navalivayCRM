@@ -205,6 +205,8 @@ export function planImpact(changedFiles, oldGraph = {}, newGraph = {}) {
       file === 'ops/prod-impact.mjs' ||
       file === 'ops/check-prod-runtime.sh' ||
       file === 'ops/monitor.sh' ||
+      // Скрипт бета-канала: операторский, как prod.sh (см. docs/beta-testing.md).
+      file === 'ops/deploy-beta.sh' ||
       file === 'ops/README.md'
     ) {
       continue
