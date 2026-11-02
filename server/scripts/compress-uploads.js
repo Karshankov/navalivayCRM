@@ -35,8 +35,18 @@
 import 'dotenv/config';
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
+
+/** Хэш источника миниатюры — тем же правилом, что image-thumbnail-service. */
+function sourceHashOf(url) {
+  try {
+    return crypto.createHash('sha256').update(String(url)).digest('hex');
+  } catch {
+    return null;
+  }
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -114,6 +124,22 @@ function collectReferencedUrls() {
     db.prepare("SELECT key, value FROM settings WHERE value LIKE '/uploads/%'").all()
       .forEach((r) => add('settings', 'value', { key: r.key }, r.value));
   } catch { /* нет таблицы */ }
+  // Фото сотрудников CRM (avatar_url, каталог uploads/staff).
+  try {
+    db.prepare("SELECT id, avatar_url FROM employees WHERE avatar_url LIKE '/uploads/%'").all()
+      .forEach((r) => add('employees', 'avatar_url', { id: r.id }, r.avatar_url));
+  } catch { /* нет таблицы/колонки */ }
+  // Товары кассы (uploads/pos).
+  try {
+    db.prepare("SELECT id, image_url FROM pos_products WHERE image_url LIKE '/uploads/%'").all()
+      .forEach((r) => add('pos_products', 'image_url', { id: r.id }, r.image_url));
+  } catch { /* нет таблицы/колонки */ }
+  // Снимки позиций перемещений склада: основная масса — base64 в БД
+  // (обслуживается своими механизмами), но /uploads-ссылки тоже учитываем.
+  try {
+    db.prepare("SELECT id, image_url FROM stock_transfer_items WHERE image_url LIKE '/uploads/%'").all()
+      .forEach((r) => add('stock_transfer_items', 'image_url', { id: r.id }, r.image_url));
+  } catch { /* нет таблицы/колонки */ }
 
   return occurrences;
 }
@@ -180,6 +206,9 @@ async function compressFile(cand) {
     wheel_prizes: (occ) => db.prepare('UPDATE wheel_prizes SET image_url = ? WHERE id = ?'),
     product_variants: (occ) => db.prepare('UPDATE product_variants SET color_image = ? WHERE id = ?'),
     settings: (occ) => db.prepare('UPDATE settings SET value = ? WHERE key = ?'),
+    employees: (occ) => db.prepare('UPDATE employees SET avatar_url = ? WHERE id = ?'),
+    pos_products: (occ) => db.prepare('UPDATE pos_products SET image_url = ? WHERE id = ?'),
+    stock_transfer_items: (occ) => db.prepare('UPDATE stock_transfer_items SET image_url = ? WHERE id = ?'),
   };
   const tx = db.transaction(() => {
     for (const occ of cand.occurrences) {
@@ -193,6 +222,14 @@ async function compressFile(cand) {
         make(occ).run(newUrl, occ.pk.id);
       }
     }
+    // Обновляем кэш миниатюр: URL-ключ поменялся, старая запись больше
+    // не резолвится — удаляем, новая создастся при первом запросе.
+    try {
+      const sourceHash = sourceHashOf(cand.url);
+      if (sourceHash) {
+        db.prepare('DELETE FROM image_thumbnail_cache WHERE source_hash = ?').run(sourceHash);
+      }
+    } catch { /* кэша может не быть */ }
   });
   tx();
 
