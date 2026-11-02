@@ -81,16 +81,20 @@ onMounted(() => {
 
 .smoke-particle {
   position: absolute;
+  /* Мягкий край задаёт сам градиент: filter: blur() на анимированном
+     элементе заставляет Android WebView пересчитывать размытие каждый кадр
+     и роняет FPS прокрутки. Без blur — та же картинка, но на GPU-композиторе. */
   background: radial-gradient(
     circle,
-    rgba(255, 255, 255, 0.15) 0%,
-    rgba(255, 255, 255, 0.08) 40%,
-    transparent 70%
+    rgba(255, 255, 255, 0.13) 0%,
+    rgba(255, 255, 255, 0.06) 35%,
+    rgba(255, 255, 255, 0.02) 60%,
+    transparent 75%
   );
   border-radius: 50%;
   opacity: 0;
   animation: smoke-rise 4s ease-out infinite;
-  filter: blur(8px);
+  will-change: transform, opacity;
 }
 
 @keyframes smoke-rise {

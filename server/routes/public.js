@@ -37,6 +37,7 @@ import {
   fetchCustomerPhotoBytes,
   readCustomerPhotoFromDisk,
   refreshCustomerPhotoIfStale,
+  shouldRefreshCustomerPhoto,
   warmCustomerPhotoFromInitData,
 } from "../utils/customer-photo-refresh.js";
 import {
@@ -1732,23 +1733,19 @@ publicRouter.get("/api/products", (req, res) => {
     : db.prepare(countSql).get().total;
 
   const sql = `
-    SELECT 
-      p.id, 
-      p.categoryId, 
+    SELECT
+      p.id,
+      p.categoryId,
       p.groupId,
-      p.title, 
-      p.priceRub, 
+      p.title,
+      p.priceRub,
       ${effectivePriceExpr} AS effectivePriceRub,
-      p.description, 
       p.variant AS variant,
       p.strength AS strength,
-      p.cost_price AS costPrice,
       p.stock AS stock,
-      p.min_stock AS minStock,
       p.use_category_image AS useCategoryImage,
       p.has_variants AS hasVariants,
       p.excluded_from_wholesale_min AS excludedFromWholesaleMin,
-      p.createdAt,
       g.slug as groupSlug,
       g.name as groupName
     FROM products p
@@ -1850,10 +1847,10 @@ publicRouter.get("/api/products", (req, res) => {
   // Оптовым покупателям скидки каталога не показываем: у них своя цена.
   const activeDiscounts = wholesaleContext?.tier ? null : loadActiveDiscounts();
 
-  // Пометки значимости линеек: одна выборка на страницу товаров.
-  const marksByGroupIdForProducts = getPublicMarksByGroupIds(
-    products.map((p) => p.groupId).filter(Boolean),
-  );
+  // Пометки значимости отдаём только в /api/categories (для карточек линеек)
+  // и в карточке товара /api/product/:id. В списке товаров mark не читается
+  // фронтом, а весил ~640 КБ: одна и та же пометка (иконка base64)
+  // размножалась на каждый товар линейки.
 
   const enriched = products
     .map((p) => {
@@ -1878,8 +1875,6 @@ publicRouter.get("/api/products", (req, res) => {
         oldPriceRub: hasDiscount ? basePrice : null,
         hasDiscount,
         stock: stockValue,
-        costPrice: typeof p.costPrice === "number" ? p.costPrice : null,
-        minStock: typeof p.minStock === "number" ? p.minStock : null,
         badges: badgesByProduct.get(p.id) ?? [],
         isAvailable: stockValue === null ? true : stockValue > 0,
         links: linksByProduct.get(p.id) ?? [],
@@ -1895,7 +1890,6 @@ publicRouter.get("/api/products", (req, res) => {
         excludedFromWholesaleMin: p.groupId
           ? Number(p.excludedFromWholesaleMin || 0) === 1
           : true,
-        mark: p.groupId ? marksByGroupIdForProducts.get(String(p.groupId)) || null : null,
       };
 
       if (p.hasVariants) {
@@ -1978,9 +1972,7 @@ publicRouter.get("/api/product/:id", (req, res) => {
       p.description,
       p.variant AS variant,
       p.strength AS strength,
-      p.cost_price AS costPrice,
       p.stock AS stock,
-      p.min_stock AS minStock,
       p.use_category_image AS useCategoryImage,
       p.has_variants AS hasVariants,
       p.excluded_from_wholesale_min AS excludedFromWholesaleMin,
@@ -2034,8 +2026,6 @@ publicRouter.get("/api/product/:id", (req, res) => {
     oldPriceRub: discountedPrice < effectivePrice ? effectivePrice : null,
     hasDiscount: discountedPrice < effectivePrice,
     stock: stockValue,
-    costPrice: typeof p.costPrice === "number" ? p.costPrice : null,
-    minStock: typeof p.minStock === "number" ? p.minStock : null,
     badges: badges.map((badge) => ({
       type: badge.type || null,
       label: badge.label || null,
@@ -2875,15 +2865,38 @@ publicRouter.get(
         FROM customers
         WHERE id = ?
       `).get(customer.id);
+      const effectivePhotoUrl = latestCustomer?.photo_url || customer.photo_url;
+      const photoUpdatedAt = latestCustomer?.photo_updated_at || customer.photo_updated_at;
 
-      const photoUrl = await refreshCustomerPhotoIfStale(
-        { ...customer, photo_url: latestCustomer?.photo_url || customer.photo_url },
-        {
-          token: TELEGRAM_BOT_TOKEN,
-          fetchTelegramChat,
-          db,
-        },
-      );
+      // Обновление фото — НЕ в пути ответа: Telegram getChat+getFile занимал
+      // 0.5-1.2 с, и мини-аппа ждала профиль, пока сервер ходит за аватаром.
+      // Отдаём текущее фото сразу; фоновое обновление подхватится следующим
+      // запросом. Отдельный маршрут /api/customer-photo/:id по-прежнему
+      // обновляет синхронно (там это и нужно: он сам картинка).
+      if (
+        TELEGRAM_BOT_TOKEN
+        && shouldRefreshCustomerPhoto({
+          photoUrl: effectivePhotoUrl,
+          photoUpdatedAt,
+        })
+      ) {
+        const refreshPromise = refreshCustomerPhotoIfStale(
+          { ...customer, photo_url: effectivePhotoUrl, photo_updated_at: photoUpdatedAt },
+          {
+            token: TELEGRAM_BOT_TOKEN,
+            fetchTelegramChat,
+            db,
+          },
+        ).catch((error) => {
+          console.warn(
+            "[customer-photo] Background refresh failed:",
+            error?.message || error,
+          );
+        });
+        // Не держать процесс и ответ на промисе фоновой задачи.
+        refreshPromise.finally?.(() => {}).catch(() => {});
+        void refreshPromise;
+      }
 
       // bot_verified: клиент считается верифицированным, если у него есть
       // bot_verified_at либо хотя бы один заказ (старые клиенты). Используем
@@ -2892,7 +2905,7 @@ publicRouter.get(
       const botVerified = isCustomerVerified(customer.telegram_id);
       const storedPhotoUrl = db.prepare(
         'SELECT photo_url FROM customers WHERE id = ?',
-      ).get(customer.id)?.photo_url || photoUrl;
+      ).get(customer.id)?.photo_url || effectivePhotoUrl;
 
       res.json({
         found: true,

@@ -265,6 +265,10 @@ onBeforeUnmount(() => {
 <style scoped>
 .liquid-tree-item {
   @apply mb-2;
+  /* Пропуск рендера вне вьюпорта: в «Жидкостях» десятки линеек, и
+     одновременный рендер всех карточек фризил первый скролл. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 88px;
 }
 
 .liquid-tree-children-wrapper {

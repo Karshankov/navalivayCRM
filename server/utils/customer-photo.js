@@ -1,5 +1,8 @@
 export const PHOTO_CACHE_MS = 24 * 60 * 60 * 1000;
-export const PHOTO_RETRY_WHEN_NULL_MS = 60 * 60 * 1000;
+// Пользователь без аватара: повторная проверка раз в сутки, не раз в час.
+// У тысячи таких клиентов ежечасный retry держал /api/customer/me по
+// 0.5–1.2 c, ожидая Telegram getChat, который почти всегда отвечает «нет фото».
+export const PHOTO_RETRY_WHEN_NULL_MS = 24 * 60 * 60 * 1000;
 
 export function shouldRefreshCustomerPhoto({
   photoUrl,

@@ -12,6 +12,7 @@ import {
 import { applyTelegramHttpProxy, hasTelegramHttpProxy } from './telegram-http-proxy.js';
 
 export { readCustomerPhotoFromDisk } from './customer-photo-disk.js';
+export { shouldRefreshCustomerPhoto } from './customer-photo.js';
 
 export async function warmCustomerPhotoFromInitData(customerId, initPhotoUrl, db) {
   if (!customerId || !String(initPhotoUrl || '').trim().startsWith('https://')) {

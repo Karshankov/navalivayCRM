@@ -38,21 +38,21 @@ console.log('=== customer photo: shouldRefreshCustomerPhoto ===');
   assert.equal(
     shouldRefreshCustomerPhoto({
       photoUrl: null,
-      photoUpdatedAt: '2026-06-22T11:30:00.000Z',
+      photoUpdatedAt: '2026-06-22T00:00:00.000Z',
       now: NOW,
     }),
     false,
-    'null photo retries only after 1h',
+    'null photo retries only after a day',
   );
 
   assert.equal(
     shouldRefreshCustomerPhoto({
       photoUrl: null,
-      photoUpdatedAt: '2026-06-22T10:00:00.000Z',
+      photoUpdatedAt: '2026-06-21T10:00:00.000Z',
       now: NOW,
     }),
     true,
-    'null photo retries hourly',
+    'null photo retried after a day',
   );
 }
 

@@ -412,6 +412,9 @@ onBeforeUnmount(() => {
   border-radius: 20px;
   padding: 16px;
   margin-bottom: 0;
+  /* Пропуск рендера карточек вне вьюпорта — плавный скролл длинных категорий. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 120px;
 }
 
 .group-line-card:last-of-type {

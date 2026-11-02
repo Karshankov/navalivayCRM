@@ -87,19 +87,21 @@ defineExpose({
 
 .smoke-particle {
   position: absolute;
+  /* Без filter: blur(): пересчёт размытия на каждый кадр анимации в
+     Android WebView фризил прокрутку. Мягкий край — расширенным градиентом. */
   background: radial-gradient(
     circle,
-    rgba(240, 240, 245, 0.85) 0%,
-    rgba(220, 220, 230, 0.6) 30%,
-    rgba(200, 200, 220, 0.3) 60%,
-    transparent 100%
+    rgba(240, 240, 245, 0.55) 0%,
+    rgba(225, 225, 235, 0.35) 30%,
+    rgba(210, 210, 225, 0.15) 55%,
+    rgba(200, 200, 220, 0.05) 75%,
+    transparent 92%
   );
   border-radius: 50%;
   opacity: 0;
   animation: vape-smoke-rise cubic-bezier(0.33, 0.66, 0.66, 1) forwards;
-  filter: blur(10px);
   mix-blend-mode: screen;
-  will-change: transform;
+  will-change: transform, opacity;
   /* Performance: использовать GPU compositing */
   transform: translateZ(0);
   backface-visibility: hidden;
