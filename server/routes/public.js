@@ -2858,7 +2858,9 @@ publicRouter.get(
       }
 
       const initPhotoUrl = String(req.telegramAuth?.photoUrl || "").trim();
-      await warmCustomerPhotoFromInitData(customer.id, initPhotoUrl, db);
+      // Прогрев фото в фоне: cacheCustomerPhotoToDisk качает картинку с t.me
+      // (до 8с таймаут) — это не должно держать ответ профиля.
+      warmCustomerPhotoFromInitData(customer.id, initPhotoUrl, db).catch(() => {});
 
       const latestCustomer = db.prepare(`
         SELECT photo_url, photo_updated_at
@@ -3122,7 +3124,8 @@ publicRouter.post(
       }
 
       const initPhotoUrl = String(req.telegramAuth?.photoUrl || "").trim();
-      await warmCustomerPhotoFromInitData(customer.id, initPhotoUrl, db);
+      // Прогрев фото в фоне: не держать ответ (качает с t.me до 8с).
+      warmCustomerPhotoFromInitData(customer.id, initPhotoUrl, db).catch(() => {});
 
       const {
         order_id: orderId,
@@ -3241,7 +3244,8 @@ publicRouter.get(
 
       const initPhotoUrl = String(req.telegramAuth?.photoUrl || "").trim();
       if (viewer) {
-        await warmCustomerPhotoFromInitData(viewer.id, initPhotoUrl, db);
+        // Прогрев фото в фоне: не держать ответ (качает с t.me до 8с).
+        warmCustomerPhotoFromInitData(viewer.id, initPhotoUrl, db).catch(() => {});
       }
 
       return res.json(getPublicGroupReviews(groupId, {
