@@ -3,9 +3,7 @@ import { RouterView } from "vue-router";
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import VapeSmoke from "@/components/VapeSmoke.vue";
-import BottomTabBar from "@/components/BottomTabBar.vue";
 import BlockedScreen from "@/components/BlockedScreen.vue";
-import WheelHomeWidget from "@/components/wheel/WheelHomeWidget.vue";
 import ReviewPromptModal from "@/components/reviews/ReviewPromptModal.vue";
 import ReferralAuthorizationGate from "@/components/ReferralAuthorizationGate.vue";
 import { useCustomerBlock } from "@/composables/useCustomerBlock";
@@ -66,18 +64,24 @@ const showOfflinePlaceholder = computed(
       (catalogStore.offline && !catalogStore.categories.length)),
 );
 
+/** Экраны с каруселью вкладок (TabShell сам рисует шапку и таб-бар). */
+const TAB_SHELL_PATHS = new Set(["/", "/liquids", "/disposables", "/pods", "/accessories"]);
+
+const isTabShellRoute = computed(() => TAB_SHELL_PATHS.has(route.path));
+
+/**
+ * Анимация перехода между топ-уровневыми экранами: глубокие экраны
+ * (товар, чекаут, профиль) въезжают слайдом справа и уезжают обратно;
+ * между вкладками карусели анимации нет — их живёт свайп.
+ */
+const pageTransitionName = computed(() => (isTabShellRoute.value ? "shell-fade" : "page-slide"));
+
 const showTabBar = computed(() => {
-  const path = route.path;
-  if (path.startsWith("/admin")) return false;
-  if (path === "/checkout") return false;
-  if (path === "/my-order") return false;
-  if (path === "/favorites") return false;
-  // Опт получает свой набор табов вместо скрытого футера -
-  // см. docs/wholesale-rules.md и спецификацию рулетки.
-  return true;
+  // Таб-бар живёт внутри TabShell; на остальных customer-экранах его нет.
+  return false;
 });
 
-const showReviewPrompt = computed(() => showTabBar.value);
+const showReviewPrompt = computed(() => isTabShellRoute.value);
 // Гейт авторизации нужен только при живом сервере: когда сеть лежит,
 // его модалки «Не удалось проверить доступ» перекрывают оффлайн-
 // заглушку. Гейт смонтируется после перезагрузки по кнопке.
@@ -96,20 +100,9 @@ function handleGateNetworkError(failed: boolean) {
   gateNetworkError.value = failed;
 }
 
-// Глобальный плавающий виджет рулетки. Показываем на всех customer-
-// экранах, кроме самой рулетки, чекаута, оформленного заказа,
-// админки и лендинга опт-ссылки (/opt/...).
-const showWheelWidget = computed(() => {
-  const path = route.path;
-  if (path.startsWith("/admin")) return false;
-  if (path === "/wheel" || path.startsWith("/wheel/")) return false;
-  if (path === "/checkout") return false;
-  if (path === "/my-order") return false;
-  if (path === "/favorites") return false;
-  if (path.startsWith("/profile/orders")) return false;
-  if (path.startsWith("/opt")) return false;
-  return true;
-});
+// Глобальный плавающий виджет рулетки. В новом шелле вход на рулетку —
+// иконка в шапке главной вкладки, плавающий виджет отключаем.
+const showWheelWidget = computed(() => false);
 
 onMounted(() => {
   if (typeof window !== "undefined" && window.Telegram?.WebApp) {
@@ -139,15 +132,15 @@ onMounted(() => {
     <div v-else-if="showCustomerContent" class="app-shell__protected">
       <div class="app-shell__content">
         <RouterView v-slot="{ Component, route: viewRoute }">
-          <Transition name="page-fade" mode="out-in">
-            <component :is="Component" :key="topLevelViewKey(viewRoute)" />
-          </Transition>
+          <KeepAlive>
+            <Transition :name="pageTransitionName" mode="out-in">
+              <component :is="Component" :key="topLevelViewKey(viewRoute)" />
+            </Transition>
+          </KeepAlive>
         </RouterView>
       </div>
       <VapeSmoke />
-      <BottomTabBar v-if="showTabBar" />
       <ReviewPromptModal v-if="showReviewPrompt" />
-      <WheelHomeWidget v-if="showWheelWidget" />
     </div>
     <ReferralAuthorizationGate
       v-if="showReferralGate"
@@ -165,8 +158,8 @@ onMounted(() => {
 <style>
 :root {
   --app-screen-max-width: 393px;
-  --app-bottom-tab-bar-height: 130px;
-  --app-cart-bottom-offset: var(--app-bottom-tab-bar-height, 130px);
+  --app-bottom-tab-bar-height: 52px;
+  --app-cart-bottom-offset: var(--app-bottom-tab-bar-height, 52px);
   --app-page-background: #f5f7fa;
 }
 
@@ -219,5 +212,52 @@ body,
 .page-fade-enter-from,
 .page-fade-leave-to {
   opacity: 0;
+}
+
+/* Возврат к карусели вкладок — короткий фейд, без слайда. */
+.shell-fade-enter-active {
+  transition: opacity 0.22s ease-out;
+}
+
+.shell-fade-leave-active {
+  transition: opacity 0.18s ease-in;
+}
+
+.shell-fade-enter-from,
+.shell-fade-leave-to {
+  opacity: 0;
+}
+
+/* Глубокие экраны (товар, чекаут, профиль) — слайд справа. */
+.page-slide-enter-active {
+  transition: transform 0.28s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.28s ease-out;
+}
+
+.page-slide-leave-active {
+  transition: transform 0.22s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.22s ease-in;
+}
+
+.page-slide-enter-from {
+  transform: translateX(30%);
+  opacity: 0;
+}
+
+.page-slide-leave-to {
+  transform: translateX(30%);
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-slide-enter-active,
+  .page-slide-leave-active,
+  .shell-fade-enter-active,
+  .shell-fade-leave-active {
+    transition: opacity 0.15s ease;
+  }
+
+  .page-slide-enter-from,
+  .page-slide-leave-to {
+    transform: none;
+  }
 }
 </style>

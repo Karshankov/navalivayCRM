@@ -39,6 +39,11 @@ vi.mock("@/stores/catalog", () => ({
   }),
 }));
 
+/**
+ * Новый шелл: таб-бар и шапка живут внутри TabShell (роут-компонент,
+ * здесь застаблен RouterView), App.vue их больше не монтирует сам.
+ * Плавающий виджет рулетки удалён — вход через иконку в шапке.
+ */
 describe("App shell visibility", () => {
   beforeEach(() => {
     routePath.value = "/";
@@ -51,9 +56,7 @@ describe("App shell visibility", () => {
       global: {
         stubs: {
           VapeSmoke: true,
-          BottomTabBar: true,
           ReviewPromptModal: true,
-          WheelHomeWidget: true,
           BlockedScreen: true,
           ReferralAuthorizationGate: unlockCustomerContent
             ? {
@@ -75,43 +78,21 @@ describe("App shell visibility", () => {
 
     expect(wrapper.find(".referral-gate-stub").exists()).toBe(true);
     expect(wrapper.find(".router-view-stub").exists()).toBe(false);
-    expect(wrapper.find("bottom-tab-bar-stub").exists()).toBe(false);
-    expect(wrapper.find("wheel-home-widget-stub").exists()).toBe(false);
 
     wrapper.unmount();
   });
 
-  it("shows review prompt modal host and wheel widget on home", async () => {
+  it("shows review prompt modal host on tab shell routes", async () => {
+    routePath.value = "/";
     const wrapper = mountApp();
     await flushPromises();
 
     expect(wrapper.find("review-prompt-modal-stub").exists()).toBe(true);
-    expect(wrapper.find("wheel-home-widget-stub").exists()).toBe(true);
 
     wrapper.unmount();
   });
 
-  it("hides wheel widget on order history routes", async () => {
-    routePath.value = "/profile/orders";
-    const wrapper = mountApp();
-    await flushPromises();
-
-    expect(wrapper.find("wheel-home-widget-stub").exists()).toBe(false);
-
-    wrapper.unmount();
-  });
-
-  it("hides tab bar on checkout", async () => {
-    routePath.value = "/checkout";
-    const wrapper = mountApp();
-    await flushPromises();
-
-    expect(wrapper.find("bottom-tab-bar-stub").exists()).toBe(false);
-
-    wrapper.unmount();
-  });
-
-  it("hides review prompt modal host when tab bar is hidden", async () => {
+  it("hides review prompt modal host on deep screens", async () => {
     for (const hiddenPath of ["/checkout", "/my-order", "/admin/crm/orders"]) {
       routePath.value = hiddenPath;
       const wrapper = mountApp();
@@ -122,38 +103,18 @@ describe("App shell visibility", () => {
     }
   });
 
-  it("applies tab bar padding reserve class on customer routes", async () => {
-    routePath.value = "/";
-    const wrapper = mountApp();
-    await flushPromises();
-
-    expect(wrapper.find(".app-shell--with-tab-bar").exists()).toBe(true);
-    wrapper.unmount();
-  });
-
   it("uses the desktop admin shell only on admin routes", async () => {
     for (const path of ["/admin", "/admin/crm/orders", "/admin/crm/orders/order-1"]) {
       routePath.value = path;
       const wrapper = mountApp();
       await flushPromises();
       expect(wrapper.get(".app-shell").classes()).toContain("app-shell--admin");
-      expect(wrapper.get(".app-shell").classes()).not.toContain("app-shell--with-tab-bar");
       wrapper.unmount();
     }
     routePath.value = "/";
     const wrapper = mountApp();
     await flushPromises();
     expect(wrapper.get(".app-shell").classes()).not.toContain("app-shell--admin");
-    expect(wrapper.get(".app-shell").classes()).toContain("app-shell--with-tab-bar");
-    wrapper.unmount();
-  });
-
-  it("does not apply tab bar padding reserve on checkout", async () => {
-    routePath.value = "/checkout";
-    const wrapper = mountApp();
-    await flushPromises();
-
-    expect(wrapper.find(".app-shell--with-tab-bar").exists()).toBe(false);
     wrapper.unmount();
   });
 
@@ -166,7 +127,6 @@ describe("App shell visibility", () => {
     // Заглушка вместо контента: череп + кнопка «Попробовать снова».
     expect(wrapper.find(".offline-page").exists()).toBe(true);
     expect(wrapper.find(".router-view-stub").exists()).toBe(false);
-    expect(wrapper.find("bottom-tab-bar-stub").exists()).toBe(false);
 
     wrapper.unmount();
   });

@@ -2,8 +2,9 @@
   <div class="min-h-screen" style="background: #f5f7fa">
     <SmokeParticles :count="4" area="full" />
 
-    <!-- Хедер категории -->
-    <div class="liquid-category-header">
+    <!-- Хедер категории: только в полноэкранном режиме.
+         В карусели вкладок заголовок рисует общий AppHeader. -->
+    <div v-if="!embedded" class="liquid-category-header">
       <div class="liquid-category-header-content">
         <button class="liquid-back-button" @click="goBack" aria-label="Назад">
           <svg
@@ -382,8 +383,21 @@ import SingleProductCard from "@/components/product/SingleProductCard.vue";
 import { useProductCardLayout } from "@/composables/useProductCardLayout";
 import { useCategoryFilters } from "@/composables/useCategoryFilters";
 
-const props = defineProps<{
-  slug: string;
+const props = withDefaults(
+  defineProps<{
+    slug: string;
+    /**
+     * Режим внутри карусели вкладок (TabShell): без собственного хедера
+     * с «назад» и с паддингом под новый нижний бар. Полноэкранный режим
+     * со старым хедером остаётся для прямых заходов на /category/:slug.
+     */
+    embedded?: boolean;
+  }>(),
+  { embedded: false },
+);
+
+const emit = defineEmits<{
+  (event: "scroll-change", scrollTop: number): void;
 }>();
 
 const catalogStore = useCatalogStore();
@@ -1257,6 +1271,12 @@ watch(
   padding: 0 0 130px 0;
   position: relative;
   z-index: 10;
+}
+
+/* В карусели вкладок паддинг под новый нижний бар (52px + safe-area). */
+.category-pane .main-content-wrapper,
+:global(.category-pane) .main-content-wrapper {
+  padding-bottom: calc(var(--app-bottom-tab-bar-height, 52px) + 16px);
 }
 
 /* Liquid Category Header Styles - Figma Redesign */

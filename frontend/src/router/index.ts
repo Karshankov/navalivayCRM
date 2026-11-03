@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from "vue-router";
 import HomeView from "../views/HomeView.vue";
 import { useAdminStore } from "@/stores/admin";
+import { legacyTabPath } from "@/components/shell/tabs";
 
 const requireAdminAuth = (to: any, from: any, next: any) => {
   const adminStore = useAdminStore();
@@ -57,13 +58,35 @@ const router = createRouter({
     {
       path: "/",
       name: "home",
-      component: HomeView,
+      component: () => import("../components/shell/TabShell.vue"),
     },
     {
+      // Вкладки карусели живут внутри TabShell — свайпы и табы
+      // переключают корневой URL через router.replace().
+      path: "/liquids",
+      name: "tab-liquids",
+      component: () => import("../components/shell/TabShell.vue"),
+    },
+    {
+      path: "/disposables",
+      name: "tab-disposables",
+      component: () => import("../components/shell/TabShell.vue"),
+    },
+    {
+      path: "/pods",
+      name: "tab-pods",
+      component: () => import("../components/shell/TabShell.vue"),
+    },
+    {
+      path: "/accessories",
+      name: "tab-accessories",
+      component: () => import("../components/shell/TabShell.vue"),
+    },
+    {
+      // Прямой заход (кнопки бота, сохранённые ссылки) — редирект на вкладку.
       path: "/category/:slug",
       name: "category",
-      component: () => import("../views/CategoryView.vue"),
-      props: true,
+      redirect: (to) => legacyTabPath(String(to.params.slug ?? "")) ?? "/",
     },
     {
       path: "/p/:id",

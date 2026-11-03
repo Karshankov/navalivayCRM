@@ -11,6 +11,10 @@ const routerPush = vi.hoisted(() => vi.fn())
 
 vi.mock('vue-router', () => ({
   useRouter: () => ({ push: routerPush }),
+  RouterLink: {
+    props: ['to'],
+    template: '<a><slot /></a>',
+  },
 }))
 
 vi.mock('@/utils/customerOrders', () => ({
@@ -25,6 +29,10 @@ vi.mock('@/utils/favoritesApi', () => ({
   FavoritesAuthError: class extends Error {},
 }))
 
+/**
+ * Новая главная вкладка: избранное и рулетка — быстрые ссылки-карточки,
+ * а не отдельный баннер FavoritesBanner.
+ */
 describe('HomeView favorites banner', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
@@ -38,56 +46,34 @@ describe('HomeView favorites banner', () => {
     vi.spyOn(catalogStore, 'initialize').mockResolvedValue(undefined)
   })
 
-  it('renders the favorites banner button below the banner area', async () => {
-    const wrapper = mount(HomeView, {
-      global: {
-        stubs: {
-          SmokeParticles: { template: '<div />' },
-          BannerCarousel: { template: '<div />' },
-          FloatingCartBar: { template: '<div />' },
-        },
-      },
-    })
+  it('renders the favorites quick link on the home pane', async () => {
+    const wrapper = mount(HomeView)
 
     await flushPromises()
 
-    const banner = wrapper.find('.favorites')
-    expect(banner.exists()).toBe(true)
-    expect(banner.attributes('aria-label')).toBe('Открыть избранное')
-    expect(wrapper.find('.favorites__title').text()).toBe('Избранное')
+    const link = wrapper.findAll('.quick-link')[0]
+    expect(link.exists()).toBe(true)
+    expect(link.attributes('to')).toBe('/favorites')
+    expect(wrapper.find('.quick-link__title').text()).toBe('Избранное')
 
     wrapper.unmount()
   })
 
-  it('navigates to /favorites on click', async () => {
-    const wrapper = mount(HomeView, {
-      global: {
-        stubs: {
-          SmokeParticles: { template: '<div />' },
-          BannerCarousel: { template: '<div />' },
-          FloatingCartBar: { template: '<div />' },
-        },
-      },
-    })
+  it('renders the wheel quick link on the home pane', async () => {
+    const wrapper = mount(HomeView)
 
     await flushPromises()
 
-    await wrapper.find('.favorites').trigger('click')
-    expect(routerPush).toHaveBeenCalledWith({ name: 'favorites' })
+    const links = wrapper.findAll('.quick-link')
+    expect(links).toHaveLength(2)
+    expect(links[1].attributes('to')).toBe('/wheel')
+    expect(links[1].find('.quick-link__title').text()).toBe('Рулетка')
 
     wrapper.unmount()
   })
 
   it('loads favorites once on mount', async () => {
-    mount(HomeView, {
-      global: {
-        stubs: {
-          SmokeParticles: { template: '<div />' },
-          BannerCarousel: { template: '<div />' },
-          FloatingCartBar: { template: '<div />' },
-        },
-      },
-    })
+    mount(HomeView)
 
     await flushPromises()
 
