@@ -35,24 +35,33 @@ export function useAppPreload() {
   }
 
   /** Предзагрузка списка URL картинок через decode браузера. */
-  async function preloadImages(urls: readonly string[], onBatchDone: () => void): Promise<void> {
+  async function preloadImages(
+    urls: readonly string[],
+    onBatchDone: () => void,
+    timeoutMs = 6000,
+  ): Promise<void> {
     const unique = [...new Set(urls.filter(Boolean))];
     // Картинки греем пачками, чтобы не забивать сеть.
     const BATCH = 24;
     for (let i = 0; i < unique.length; i += BATCH) {
       const batch = unique.slice(i, i + BATCH);
-      await Promise.all(
-        batch.map(
-          (url) =>
-            new Promise<void>((resolve) => {
-              const img = new Image();
-              img.onload = () => resolve();
-              img.onerror = () => resolve();
-              img.decoding = "async";
-              img.src = url;
-            }),
+      await Promise.race([
+        Promise.all(
+          batch.map(
+            (url) =>
+              new Promise<void>((resolve) => {
+                const img = new Image();
+                img.onload = () => resolve();
+                img.onerror = () => resolve();
+                img.decoding = "async";
+                img.src = url;
+                // Предохранитель: зависший запрос не вешает сплэш.
+                setTimeout(resolve, timeoutMs);
+              }),
+          ),
         ),
-      );
+        new Promise<void>((resolve) => setTimeout(resolve, timeoutMs + 500)),
+      ]);
       onBatchDone();
     }
   }
@@ -74,9 +83,13 @@ export function useAppPreload() {
     const loyaltyStore = useLoyaltyStore();
     const favoritesStore = useFavoritesStore();
 
-    const auxiliary = Promise.allSettled([
-      loyaltyStore.fetchSnapshot().catch(() => undefined),
-      favoritesStore.fetchFavorites().catch(() => undefined),
+    const auxiliary = Promise.race([
+      Promise.allSettled([
+        loyaltyStore.fetchSnapshot().catch((e) => console.warn("[preload] loyalty failed:", e)),
+        favoritesStore.fetchFavorites().catch((e) => console.warn("[preload] favorites failed:", e)),
+      ]),
+      // Предохранитель: сеть молчит — не держим сплэш дольше 3.5с.
+      new Promise<unknown[]>((resolve) => setTimeout(resolve, 3500)),
     ]).then(() => {
       advance(30, "Проверяем бонусы и избранное...");
     });

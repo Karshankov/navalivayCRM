@@ -46,28 +46,30 @@ describe('HomeView favorites banner', () => {
     vi.spyOn(catalogStore, 'initialize').mockResolvedValue(undefined)
   })
 
-  it('renders the favorites quick link on the home pane', async () => {
+  it('renders the favorites button (favorites.html design) on the home pane', async () => {
     const wrapper = mount(HomeView)
 
     await flushPromises()
 
-    const link = wrapper.findAll('.quick-link')[0]
+    const link = wrapper.find('.favorites')
     expect(link.exists()).toBe(true)
     expect(link.attributes('to')).toBe('/favorites')
-    expect(wrapper.find('.quick-link__title').text()).toBe('Избранное')
+    expect(link.find('.favorites__title').text()).toBe('Избранное')
+    // Стикер-череп из макета подключен
+    expect(link.find('.favorites__sticker').exists()).toBe(true)
 
     wrapper.unmount()
   })
 
-  it('renders the wheel quick link on the home pane', async () => {
+  it('renders the wheel mini card on the home pane', async () => {
     const wrapper = mount(HomeView)
 
     await flushPromises()
 
-    const links = wrapper.findAll('.quick-link')
-    expect(links).toHaveLength(2)
-    expect(links[1].attributes('to')).toBe('/wheel')
-    expect(links[1].find('.quick-link__title').text()).toBe('Рулетка')
+    const wheel = wrapper.find('.wheel-mini')
+    expect(wheel.exists()).toBe(true)
+    expect(wheel.attributes('to')).toBe('/wheel')
+    expect(wheel.find('.wheel-mini__title').text()).toBe('Рулетка')
 
     wrapper.unmount()
   })

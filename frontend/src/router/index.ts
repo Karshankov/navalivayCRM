@@ -93,6 +93,11 @@ const router = createRouter({
       component: () => import("../components/shell/TabShell.vue"),
     },
     {
+      path: "/search",
+      name: "search-results",
+      component: () => import("../views/SearchView.vue"),
+    },
+    {
       // Прямой заход (кнопки бота, сохранённые ссылки) — редирект на вкладку.
       path: "/category/:slug",
       name: "category",

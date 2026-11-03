@@ -113,6 +113,7 @@
             v-else-if="groupCards.length && !showLiquidShowcase"
             key="group-list"
             class="group-list-container"
+            v-reveal-children="40"
           >
             <GroupLineItem
               v-for="group in filteredGroupCards"
@@ -150,6 +151,7 @@
           v-if="showLiquidShowcase"
           class="liquid-showcase-container"
           ref="ungroupedContainer"
+          v-reveal-children="40"
         >
           <!-- NiCa Booster - always first -->
           <SingleProductCard

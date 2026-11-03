@@ -1,5 +1,34 @@
 <template>
   <div ref="paneRef" class="home-pane">
+    <!-- Поиск -->
+    <section class="home-section">
+      <form class="home-search" role="search" @submit.prevent="submitSearch">
+        <span class="home-search__icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+            <circle cx="10.5" cy="10.5" r="6.5" stroke="#8A94A0" stroke-width="1.8" />
+            <line
+              x1="15.5"
+              y1="15.5"
+              x2="20"
+              y2="20"
+              stroke="#8A94A0"
+              stroke-width="1.8"
+              stroke-linecap="round"
+            />
+          </svg>
+        </span>
+        <input
+          v-model="searchText"
+          class="home-search__input"
+          type="search"
+          inputmode="search"
+          placeholder="Поиск по каталогу"
+          aria-label="Поиск по каталогу"
+          enterkeyhint="search"
+        />
+      </form>
+    </section>
+
     <!-- Лояльность: мини-прогресс скидочной системы -->
     <section v-if="loyaltyCard" class="home-section">
       <button class="loyalty-mini" @click="router.push('/profile')">
@@ -90,61 +119,54 @@
       </div>
     </section>
 
-    <!-- Быстрые ссылки: избранное с фирменным черепом, рулетка -->
-    <section v-if="!wholesaleStore.isWholesale" class="home-section home-quick-links">
-      <router-link to="/favorites" class="quick-link">
-        <span class="quick-link__icon quick-link__icon--skull">
-          <!-- Фирменный вейп-череп -->
-          <svg viewBox="0 0 24 24" fill="none" width="24" height="24">
-            <path
-              d="M12 3C7.5 3 5 6 5 9.5C5 11.3 5.8 12.5 6.7 13.3L7 15.6C7 16.7 7.8 17.5 8.9 17.5H9.5V19C9.5 19.55 9.95 20 10.5 20H13.5C14.05 20 14.5 19.55 14.5 19V17.5H15.1C16.2 17.5 17 16.7 17 15.6L17.3 13.3C18.2 12.5 19 11.3 19 9.5C19 6 16.5 3 12 3Z"
-              fill="#191919"
-            />
-            <ellipse cx="9.6" cy="10.4" rx="1.7" ry="2" fill="#fff" />
-            <ellipse cx="14.4" cy="10.4" rx="1.7" ry="2" fill="#fff" />
-            <path d="M11 12.2L12 13.7L13 12.2H11Z" fill="#fff" />
-            <path
-              d="M11.5 15.5V17M12.5 15.5V17"
-              stroke="#fff"
-              stroke-width="0.8"
-              stroke-linecap="round"
-            />
-          </svg>
-        </span>
-        <span class="quick-link__copy">
-          <strong class="quick-link__title">Избранное</strong>
-          <span v-if="favoritesCount > 0" class="quick-link__text">
-            {{ favoritesCount }} {{ pluralFavorites(favoritesCount) }}
-          </span>
-          <span v-else class="quick-link__text">Пока пусто</span>
-        </span>
-        <svg class="quick-link__chevron" width="8" height="14" viewBox="0 0 8 14" fill="none">
-          <path
-            d="M1 1L7 7L1 13"
-            stroke="#AAB2BD"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          />
+    <!-- Быстрые ссылки: избранное по макету favorites.html + рулетка-мини -->
+    <section v-if="!wholesaleStore.isWholesale" class="home-section">
+      <!-- Избранное: утверждённый макет 1в1 -->
+      <router-link
+        to="/favorites"
+        class="favorites"
+        aria-label="Открыть избранное"
+      >
+        <img
+          class="favorites__sticker"
+          src="/img/favorites-sticker.webp"
+          alt=""
+          draggable="false"
+        />
+        <span class="favorites__title">Избранное</span>
+        <svg
+          class="favorites__arrow"
+          viewBox="0 0 24 42"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <path d="M3 3 21 21 3 39" />
         </svg>
       </router-link>
 
-      <router-link to="/wheel" class="quick-link">
-        <span class="quick-link__icon">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-            <circle cx="12" cy="12" r="8.5" stroke="#191919" stroke-width="1.7" />
-            <circle cx="12" cy="12" r="4.5" stroke="#191919" stroke-width="1.7" />
-            <line x1="12" y1="3.5" x2="12" y2="7.5" stroke="#191919" stroke-width="1.7" />
-            <line x1="12" y1="16.5" x2="12" y2="20.5" stroke="#191919" stroke-width="1.7" />
-            <line x1="3.5" y1="12" x2="7.5" y2="12" stroke="#191919" stroke-width="1.7" />
-            <line x1="16.5" y1="12" x2="20.5" y2="12" stroke="#191919" stroke-width="1.7" />
+      <!-- Мини-рулетка: баланс спинов + компактное колесо -->
+      <router-link to="/wheel" class="wheel-mini">
+        <span class="wheel-mini__wheel" aria-hidden="true">
+          <svg viewBox="0 0 64 64" fill="none">
+            <circle cx="32" cy="32" r="29" stroke="#191919" stroke-width="3" />
+            <g class="wheel-mini__spokes">
+              <line x1="32" y1="3" x2="32" y2="61" stroke="#191919" stroke-width="2" />
+              <line x1="3" y1="32" x2="61" y2="32" stroke="#191919" stroke-width="2" />
+              <line x1="11" y1="11" x2="53" y2="53" stroke="#191919" stroke-width="2" />
+              <line x1="53" y1="11" x2="11" y2="53" stroke="#191919" stroke-width="2" />
+            </g>
+            <circle cx="32" cy="32" r="7" fill="#F50302" />
+            <circle cx="32" cy="32" r="7" stroke="#191919" stroke-width="2" />
           </svg>
         </span>
-        <span class="quick-link__copy">
-          <strong class="quick-link__title">Рулетка</strong>
-          <span class="quick-link__text">Крути и выигрывай призы</span>
+        <span class="wheel-mini__copy">
+          <strong class="wheel-mini__title">Рулетка</strong>
+          <span v-if="wheelSpins > 0" class="wheel-mini__text">
+            {{ wheelSpins }} {{ pluralSpins(wheelSpins) }} — крути!
+          </span>
+          <span v-else class="wheel-mini__text">Выигрывай призы каждый день</span>
         </span>
-        <svg class="quick-link__chevron" width="8" height="14" viewBox="0 0 8 14" fill="none">
+        <svg class="wheel-mini__chevron" width="8" height="14" viewBox="0 0 8 14" fill="none">
           <path
             d="M1 1L7 7L1 13"
             stroke="#AAB2BD"
@@ -155,6 +177,42 @@
         </svg>
       </router-link>
     </section>
+
+    <!-- Лента «Чаще покупают»: топ товаров, свайпается как сторис -->
+    <section v-if="!wholesaleStore.isWholesale && topProducts.length" class="home-section">
+      <h2 class="home-row-title">Чаще покупают</h2>
+      <div class="top-products" ref="topRowRef">
+        <button
+          v-for="product in topProducts"
+          :key="product.id"
+          class="top-product"
+          @click="openProduct(product)"
+        >
+          <span
+            class="top-product__media"
+            :style="product.image ? { backgroundImage: `url(${product.image})` } : {}"
+          >
+            <svg
+              v-if="!product.image"
+              width="30"
+              height="30"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="#C7CDD4"
+              stroke-width="1.5"
+            >
+              <rect x="3" y="3" width="18" height="18" rx="3" />
+              <circle cx="8.5" cy="8.5" r="1.5" />
+              <path d="M21 15l-5-5L5 21" />
+            </svg>
+          </span>
+          <span class="top-product__copy">
+            <strong class="top-product__name">{{ product.title }}</strong>
+            <span class="top-product__price">{{ product.priceLabel }}</span>
+          </span>
+        </button>
+      </div>
+    </section>
   </div>
 </template>
 
@@ -162,11 +220,12 @@
 import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 
-import { useCatalogStore } from "@/stores/catalog";
+import { useCatalogStore, type Product } from "@/stores/catalog";
 import { useCartStore } from "@/stores/cart";
 import { useWholesaleStore } from "@/stores/wholesale";
 import { useFavoritesStore } from "@/stores/favorites";
 import { useLoyaltyStore, type LoyaltySnapshotCategory } from "@/stores/loyalty";
+import { useWheelStore } from "@/stores/wheel";
 import {
   fetchMyActiveOrder,
   getTelegramIdentity,
@@ -174,9 +233,9 @@ import {
 } from "@/utils/customerOrders";
 
 /**
- * Главная вкладка карусели: мини-статус лояльности, активный заказ,
- * оптовая плашка, быстрые ссылки (избранное с черепом, рулетка).
- * Баннеров больше нет. Аватар и корзина — в общем AppHeader.
+ * Главная вкладка: поиск, лояльность, активный заказ, опт-плашка,
+ * избранное (макет favorites.html 1в1), мини-рулетка, топ-товары.
+ * Все данные предзагружены сплэшем — рендер мгновенный.
  */
 defineProps<{
   isActive?: boolean;
@@ -187,13 +246,72 @@ const cartStore = useCartStore();
 const wholesaleStore = useWholesaleStore();
 const favoritesStore = useFavoritesStore();
 const loyaltyStore = useLoyaltyStore();
+const wheelStore = useWheelStore();
 const router = useRouter();
 const paneRef = ref<HTMLElement | null>(null);
+const topRowRef = ref<HTMLElement | null>(null);
 const activeOrder = ref<CustomerActiveOrder | null>(null);
+const searchText = ref("");
 
 const favoritesCount = computed(() => favoritesStore.inStockItems.length);
 
-/* ===== Мини-прогресс лояльности ===== */
+/* ===== Поиск ===== */
+
+function submitSearch() {
+  const query = searchText.value.trim();
+  if (!query) return;
+  router.push({ name: "search-results", query: { q: query } });
+}
+
+/* ===== Рулетка ===== */
+
+const wheelSpins = computed(() => wheelStore.balance.spins_available);
+
+function pluralSpins(value: number) {
+  const mod10 = value % 10;
+  const mod100 = value % 100;
+  if (mod10 === 1 && mod100 !== 11) return "спин";
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return "спина";
+  return "спинов";
+}
+
+/* ===== Топ-товары ===== */
+
+interface TopProductCard {
+  id: string;
+  title: string;
+  priceLabel: string;
+  image: string | null;
+  product: Product;
+}
+
+const topProducts = computed<TopProductCard[]>(() => {
+  // Из предзагруженного каталога: товары в наличии, сортировка —
+  // простая эвристика (наличие вариантов/популярность недоступна без
+  // отдельного API на главной — берём товары с фото).
+  const products = catalogStore.allProducts
+    .filter((p) => p.minStock === null || p.minStock === undefined || p.minStock > 0)
+    .filter((p) => p.images?.[0])
+    .slice(0, 12);
+
+  return products.map((product) => {
+    const price = product.variants?.[0]?.priceRub ?? product.priceRub ?? 0;
+    return {
+      id: product.id,
+      title: product.title,
+      priceLabel: `${Number(price).toFixed(2)} BYN`,
+      image: product.images?.[0] ?? null,
+      product,
+    };
+  });
+});
+
+function openProduct(card: TopProductCard) {
+  catalogStore.currentProduct = card.product;
+  router.push({ name: "product", params: { id: card.product.id } });
+}
+
+/* ===== Лояльность ===== */
 
 const LOYALTY_CATEGORY_ORDER = ["liquids", "disposables", "devices"];
 
@@ -221,8 +339,6 @@ const loyaltyProgressPercent = computed(() => {
   if (!card) return 0;
   const threshold = Number(card.threshold || 0);
   if (!threshold) return 0;
-  // Прогресс текущего цикла: balance по модулю threshold.
-  // balance=10, threshold=10 → цикл полный (скидка готова).
   const balance = Number(card.balance || 0);
   const current = balance % threshold === 0 && balance > 0 ? threshold : balance % threshold;
   return Math.round((current / threshold) * 100);
@@ -271,7 +387,6 @@ function pluralPositions(value: number) {
   return "позиций";
 }
 
-// «Не хватает N …» — родительный падеж.
 function genitivePositions(value: number) {
   const mod10 = value % 10;
   const mod100 = value % 100;
@@ -279,17 +394,7 @@ function genitivePositions(value: number) {
   return "позиций";
 }
 
-function pluralFavorites(value: number) {
-  const mod10 = value % 10;
-  const mod100 = value % 100;
-  if (mod10 === 1 && mod100 !== 11) return "товар";
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return "товара";
-  return "товаров";
-}
-
 async function refreshHomeState() {
-  // Каталог и лояльность уже предзагружены сплэшем — здесь только
-  // свежесть активного заказа.
   if (!catalogStore.categories.length) {
     await catalogStore.initialize();
   }
@@ -309,7 +414,11 @@ async function refreshHomeState() {
 onMounted(async () => {
   await refreshHomeState();
 
-  // Персональный минимум мог смениться админом среди сессии.
+  // Баланс рулетки подтягиваем тихо (кэшируется в сторе).
+  if (!wheelStore.lastFetchedAt) {
+    void wheelStore.fetchState().catch(() => undefined);
+  }
+
   if (wholesaleStore.isWholesale) {
     void wholesaleStore.refreshEffectiveMinimum();
   }
@@ -324,22 +433,34 @@ onMounted(async () => {
 .home-pane {
   min-height: 100%;
   background: #f5f7fa;
-  padding: 16px 16px calc(var(--app-bottom-tab-bar-height, 52px) + 24px);
+  padding: 14px 16px calc(var(--app-bottom-tab-bar-height, 52px) + 24px);
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
 }
 
 .home-section {
-  animation: home-rise 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: home-rise 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .home-section:nth-child(2) {
-  animation-delay: 0.06s;
+  animation-delay: 0.05s;
 }
 
 .home-section:nth-child(3) {
-  animation-delay: 0.12s;
+  animation-delay: 0.1s;
+}
+
+.home-section:nth-child(4) {
+  animation-delay: 0.15s;
+}
+
+.home-section:nth-child(5) {
+  animation-delay: 0.2s;
+}
+
+.home-section:nth-child(6) {
+  animation-delay: 0.25s;
 }
 
 @keyframes home-rise {
@@ -359,7 +480,49 @@ onMounted(async () => {
   }
 }
 
-/* ===== Мини-лояльность ===== */
+/* ===== Поиск ===== */
+
+.home-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 44px;
+  padding: 0 14px;
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+  transition: box-shadow 0.2s ease;
+}
+
+.home-search:focus-within {
+  box-shadow: 0 2px 12px rgba(16, 24, 40, 0.08);
+}
+
+.home-search__icon {
+  display: flex;
+  flex: 0 0 auto;
+}
+
+.home-search__input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: none;
+  font-size: 15px;
+  color: #191919;
+  font-family: inherit;
+}
+
+.home-search__input::placeholder {
+  color: #98a1ac;
+}
+
+.home-search__input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+}
+
+/* ===== Лояльность ===== */
 
 .loyalty-mini {
   display: flex;
@@ -388,7 +551,6 @@ onMounted(async () => {
   width: 34px;
   height: 34px;
   border-radius: 11px;
-  /* Красный акцент — единственный на странице, по канону бренда */
   background: linear-gradient(135deg, #f50302, #d30707);
   flex: 0 0 auto;
 }
@@ -437,7 +599,6 @@ onMounted(async () => {
   height: 100%;
   border-radius: 2px;
   background: linear-gradient(90deg, #f50302, #d30707);
-  /* Плавное заполнение при появлении */
   transition: width 0.6s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
@@ -453,47 +614,131 @@ onMounted(async () => {
   flex: 0 0 auto;
 }
 
-/* ===== Быстрые ссылки ===== */
+/* ===== Избранное: макет favorites.html 1в1 ===== */
 
-.home-quick-links {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+.favorites {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 778 / 146;
+  padding: 0;
+  border: 0;
+  border-radius: 4.756% / 25.342%;
+  background: #fff;
+  color: #080808;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+  cursor: pointer;
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+  appearance: none;
+  container-type: inline-size;
+  transition: transform 0.15s ease;
 }
 
-.quick-link {
+.favorites:active {
+  transform: scale(0.98);
+}
+
+.favorites:focus-visible {
+  outline: 3px solid #ed0000;
+  outline-offset: 4px;
+}
+
+.favorites__sticker {
+  position: absolute;
+  left: 7.712%;
+  top: 2.74%;
+  width: 16.71%;
+  height: 94.52%;
+  display: block;
+  overflow: hidden;
+  pointer-events: none;
+  object-fit: cover;
+}
+
+.favorites__title {
+  position: absolute;
+  left: 31.105%;
+  top: 50%;
+  transform: translateY(-50%);
+  margin: 0;
+  white-space: nowrap;
+  font-size: 5.6555cqi;
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: -0.08cqi;
+}
+
+.favorites__arrow {
+  position: absolute;
+  left: 92.03%;
+  top: 35.62%;
+  width: 3.085%;
+  height: 28.77%;
+  fill: none;
+  stroke: #969696;
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* ===== Мини-рулетка ===== */
+
+.wheel-mini {
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 14px 16px;
+  padding: 12px 16px;
   background: #fff;
   border-radius: 16px;
   text-decoration: none;
   -webkit-tap-highlight-color: transparent;
-  transition: transform 0.15s ease, box-shadow 0.2s ease;
+  transition: transform 0.15s ease;
   box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
 }
 
-.quick-link:active {
+.wheel-mini:active {
   transform: scale(0.98);
 }
 
-.quick-link__icon {
+.wheel-mini__wheel {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
   background: #f5f7fa;
   flex: 0 0 auto;
 }
 
-.quick-link__icon--skull {
-  background: #f5f7fa;
+.wheel-mini__wheel svg {
+  width: 40px;
+  height: 40px;
 }
 
-.quick-link__copy {
+/* Живое колесо: постоянное медленное вращение спиц */
+.wheel-mini__spokes {
+  animation: wheel-rotate 9s linear infinite;
+  transform-origin: 32px 32px;
+}
+
+@keyframes wheel-rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wheel-mini__spokes {
+    animation: none;
+  }
+}
+
+.wheel-mini__copy {
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -501,14 +746,14 @@ onMounted(async () => {
   flex: 1;
 }
 
-.quick-link__title {
+.wheel-mini__title {
   font-size: 15px;
   font-weight: 600;
   color: #191919;
   letter-spacing: -0.01em;
 }
 
-.quick-link__text {
+.wheel-mini__text {
   font-size: 13px;
   color: #7b8794;
   white-space: nowrap;
@@ -516,7 +761,87 @@ onMounted(async () => {
   text-overflow: ellipsis;
 }
 
-.quick-link__chevron {
+.wheel-mini__chevron {
   flex: 0 0 auto;
+}
+
+/* ===== Топ-товары ===== */
+
+.home-row-title {
+  margin: 6px 2px 0;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #191919;
+}
+
+.top-products {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 10px 2px 6px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.top-products::-webkit-scrollbar {
+  display: none;
+}
+
+.top-product {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  width: 128px;
+  border: none;
+  background: #fff;
+  border-radius: 16px;
+  padding: 0 0 10px;
+  cursor: pointer;
+  text-align: left;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.15s ease;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+  overflow: hidden;
+}
+
+.top-product:active {
+  transform: scale(0.96);
+}
+
+.top-product__media {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 128px;
+  height: 128px;
+  background: #f5f7fa center / cover no-repeat;
+}
+
+.top-product__copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 10px 0;
+  min-width: 0;
+}
+
+.top-product__name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #191919;
+  line-height: 1.25;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.top-product__price {
+  font-size: 13px;
+  font-weight: 700;
+  color: #191919;
 }
 </style>

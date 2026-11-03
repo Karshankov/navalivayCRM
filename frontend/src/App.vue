@@ -159,11 +159,11 @@ onMounted(() => {
     <div v-else-if="showCustomerContent" class="app-shell__protected">
       <div class="app-shell__content">
         <RouterView v-slot="{ Component, route: viewRoute }">
-          <KeepAlive>
-            <Transition :name="pageTransitionName" mode="out-in">
+          <Transition :name="pageTransitionName" mode="out-in">
+            <KeepAlive>
               <component :is="Component" :key="topLevelViewKey(viewRoute)" />
-            </Transition>
-          </KeepAlive>
+            </KeepAlive>
+          </Transition>
         </RouterView>
       </div>
       <VapeSmoke />
