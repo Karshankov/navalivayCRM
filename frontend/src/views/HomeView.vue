@@ -474,6 +474,113 @@ onMounted(async () => {
   }
 }
 
+/* ===== Активный заказ ===== */
+
+.active-order-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 16px;
+  background: #fff;
+  border: 1px solid rgba(25, 25, 25, 0.06);
+  border-radius: 16px;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.15s ease, box-shadow 0.2s ease;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+}
+
+.active-order-banner:active {
+  transform: scale(0.98);
+}
+
+.active-order-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+
+.active-order-kicker {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #f50302;
+}
+
+.active-order-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #191919;
+  letter-spacing: -0.01em;
+}
+
+.active-order-text {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: #7b8794;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.active-order-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 10px;
+  background: #191919;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+/* ===== Оптовая плашка ===== */
+
+.wholesale-mode-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  padding: 14px 16px;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+}
+
+.wholesale-mode-kicker {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #f50302;
+}
+
+.wholesale-mode-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: #191919;
+  letter-spacing: -0.01em;
+}
+
+.wholesale-mode-text {
+  margin: 2px 0 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #7b8794;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .home-section {
     animation: none;

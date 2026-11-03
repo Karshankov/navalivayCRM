@@ -108,10 +108,30 @@ watch(
   },
 );
 
-/* Свайп закончился на другом pane — URL обновляем без записи в историю. */
+/* Свайп закончился на другом pane — URL обновляем без записи в истории.
+ * Программный smooth-скролл (тап по табу, диплинк) не считается:
+ * во время анимации onScroll видел бы ПРОМЕЖУТОЧНЫЕ позиции и
+ * переключал вкладку «по пути» (тап «Одноразки» из главной ловил
+ * позицию «Снюс» и активировал её). Ждём завершения скролла. */
+const isProgrammaticScroll = ref(false);
+let programmaticScrollTimer: ReturnType<typeof setTimeout> | null = null;
+
+function beginProgrammaticScroll() {
+  isProgrammaticScroll.value = true;
+  if (programmaticScrollTimer) clearTimeout(programmaticScrollTimer);
+  // Smooth-скролл ~500мс; страховка, если scrollend не поддержан.
+  programmaticScrollTimer = setTimeout(() => {
+    isProgrammaticScroll.value = false;
+  }, 700);
+}
+
 function onScroll() {
   const carousel = carouselRef.value;
   if (!carousel || isDragging.value) return;
+  // Промежуточные позиции программной анимации пропускаем:
+  // цель уже известна (activeIndex выставлен до scrollToIndex).
+  if (isProgrammaticScroll.value) return;
+
   const index = Math.round(carousel.scrollLeft / carousel.clientWidth);
   if (index === activeIndex.value) return;
 
@@ -127,6 +147,16 @@ function onScroll() {
 function scrollToIndex(index: number, behavior: ScrollBehavior = "auto") {
   const carousel = carouselRef.value;
   if (!carousel) return;
+  if (behavior === "smooth") {
+    beginProgrammaticScroll();
+    carousel.addEventListener(
+      "scrollend",
+      () => {
+        isProgrammaticScroll.value = false;
+      },
+      { once: true, passive: true },
+    );
+  }
   carousel.scrollTo({ left: index * carousel.clientWidth, behavior });
 }
 
@@ -155,6 +185,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  if (programmaticScrollTimer) clearTimeout(programmaticScrollTimer);
   const carousel = carouselRef.value;
   if (!carousel) return;
   carousel.removeEventListener("touchstart", onTouchStart);

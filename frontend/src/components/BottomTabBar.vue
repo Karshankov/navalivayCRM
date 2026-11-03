@@ -11,11 +11,11 @@
       class="tab-item"
       :class="[
         { 'tab-item--active': tab.id === activeId },
-        visibilityClass(index),
+        { 'tab-item--collapsed': isCollapsed(index) },
       ]"
       :aria-label="tab.label"
       :aria-current="tab.id === activeId ? 'page' : undefined"
-      :tabindex="isCollapsed(index) ? -1 : 0"
+      :aria-hidden="isCollapsed(index) ? 'true' : undefined"
       @click="emit('select', tab.id)"
     >
       <span class="tab-icon-wrap">
@@ -244,10 +244,6 @@ function isCollapsed(index: number): boolean {
 // Пояснение: окно НЕ центрируется жёстко, а следует за активной
 // вкладкой — на краях видны крайние иконки (как карусель контекста).
 
-function visibilityClass(index: number): string {
-  return isCollapsed(index) ? "tab-item--collapsed" : "tab-item--visible";
-}
-
 const bottomTabBarRef = ref<HTMLElement | null>(null);
 let resizeObserver: ResizeObserver | null = null;
 
@@ -313,27 +309,28 @@ onBeforeUnmount(() => {
   padding: 0;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
-  transition: opacity 0.22s ease, transform 0.22s ease, width 0.22s ease;
+  transition: opacity 0.2s ease;
 }
 
 .tab-item:active {
   opacity: 0.6;
-  transform: scale(0.9);
 }
 
-/* Коллапс краёв: крайняя вкладка сжимается и растворяется,
- * появляется только при приближении свайпа — бар всегда лёгкий. */
-.tab-item--collapsed {
-  width: 0;
+/* Коллапс краёв: ШИРИНА сохраняется (позиции стабильны, клики
+ * попадают в свои кнопки), растворяется только иконка —
+ * fade + scale на обёртке иконки, layout не дёргается. */
+.tab-item--collapsed .tab-icon-wrap {
   opacity: 0;
-  transform: scale(0.6);
+  transform: scale(0.55);
   pointer-events: none;
-  overflow: hidden;
 }
 
-.tab-item--visible {
-  width: 42px;
+.tab-item--collapsed {
   opacity: 1;
+}
+
+.tab-icon-wrap {
+  transition: opacity 0.22s ease, transform 0.22s cubic-bezier(0.34, 1.2, 0.64, 1);
 }
 
 .tab-icon-wrap {
