@@ -16,7 +16,7 @@ import { useCatalogStore } from "@/stores/catalog";
  * хедер с «назад» и сообщает наверх позицию скролла для стеклянной шапки.
  */
 const props = defineProps<{
-  tabId: "liquids" | "disposables" | "pods" | "accessories";
+  tabId: "liquids" | "disposables" | "devices" | "accessories";
   isActive?: boolean;
   /** Несколько категорий внутри одной вкладки (жидкости). */
   slugs?: readonly string[];

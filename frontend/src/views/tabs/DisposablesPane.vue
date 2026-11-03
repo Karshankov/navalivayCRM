@@ -13,7 +13,7 @@ withDefaults(
   { isActive: false },
 );
 
-const SLUGS = ["disposable-vapes"] as const;
+const SLUGS = ["odnorazki"] as const;
 </script>
 
 <style scoped></style>

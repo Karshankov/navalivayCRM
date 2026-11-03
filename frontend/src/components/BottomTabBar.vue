@@ -89,7 +89,7 @@
 
         <!-- POD-системы: pod-картридж -->
         <svg
-          v-else-if="tab.icon === 'pods'"
+          v-else-if="tab.icon === 'devices'"
           class="tab-icon"
           width="26"
           height="26"

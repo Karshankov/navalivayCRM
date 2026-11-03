@@ -8,11 +8,13 @@
  * Порядок вкладок и их маппинг на категории каталога живёт здесь, в одном
  * месте. Добавление/перестановка вкладки — правка этого файла.
  *
- * «Жидкости» — объединённая вкладка: две категории (солевые и обычные)
- * переключаются внутренними подтабами внутри pane (см. LiquidPane).
+ * Slug-ы категорий — реальные из продовой БД (/api/categories):
+ * zhidkosti, odnorazki, ustroyjstva, rashodniki, snyus-i-plastiny, kalyanka.
  */
 
-export type TabId = "liquids" | "disposables" | "home" | "pods" | "accessories";export interface TabDefinition {
+export type TabId = "liquids" | "disposables" | "home" | "devices" | "accessories";
+
+export interface TabDefinition {
   id: TabId;
   /** URL вкладки для роутера (двусторонняя синхронизация со свайпом). */
   path: string;
@@ -21,7 +23,7 @@ export type TabId = "liquids" | "disposables" | "home" | "pods" | "accessories";
   /** Название, которое показывается в шапке когда вкладка активна. */
   headerTitle: string;
   /** Иконка таба: id svg-иконки в BottomTabBar. */
-  icon: "liquids" | "disposables" | "home" | "pods" | "accessories";
+  icon: "liquids" | "disposables" | "home" | "devices" | "accessories";
 }
 
 /** Порядок слева направо — он же порядок pane-ов в карусели. */
@@ -48,11 +50,11 @@ export const TABS: readonly TabDefinition[] = [
     icon: "home",
   },
   {
-    id: "pods",
-    path: "/pods",
-    label: "POD-системы",
-    headerTitle: "POD-системы",
-    icon: "pods",
+    id: "devices",
+    path: "/devices",
+    label: "Устройства",
+    headerTitle: "Устройства",
+    icon: "devices",
   },
   {
     id: "accessories",
@@ -77,33 +79,35 @@ export function tabById(id: TabId): TabDefinition {
 
 /**
  * Slug-ы категорий каталога (backend /api/categories), сгруппированные
- * по вкладкам. Вкладка может объединять несколько категорий (жидкости)
- * или резервировать slug, который сейчас в БД зовётся иначе.
+ * по вкладкам. Вкладка может объединять несколько категорий: тогда
+ * внутри pane они переключаются внутренним переключателем.
+ *
+ * «Снюс и кальянка» остаются без отдельных вкладок — прямые заходы
+ * на /category/snyus-i-plastiny и /category/kalyanka продолжают работать
+ * в полноэкранном режиме.
  */
 export const CATEGORY_SLUGS_BY_TAB: Record<TabId, readonly string[]> = {
-  liquids: ["salt-liquids", "freebase-liquids", "liquids"],
-  disposables: ["disposable-vapes", "disposables", "odnorazki"],
+  liquids: ["zhidkosti"],
+  disposables: ["odnorazki"],
   home: [],
-  pods: ["pod-systems", "pods"],
-  accessories: ["rashodniki", "accessories", "raskhodniki"],
+  devices: ["ustrojstva"],
+  accessories: ["rashodniki"],
 };
 
-/** Старые пути /category/:slug → новая вкладка. */
+/** Старые пути /category/:slug → новая вкладка (если есть маппинг). */
 const LEGACY_PATH_BY_SLUG: Record<string, string> = {
+  zhidkosti: "/liquids",
+  liquids: "/liquids",
   "salt-liquids": "/liquids",
   "freebase-liquids": "/liquids",
-  liquids: "/liquids",
-  "disposable-vapes": "/disposables",
-  disposables: "/disposables",
   odnorazki: "/disposables",
-  "pod-systems": "/pods",
-  pods: "/pods",
+  "disposable-vapes": "/disposables",
+  ustroyjstva: "/devices",
+  "pod-systems": "/devices",
   rashodniki: "/accessories",
   accessories: "/accessories",
-  raskhodniki: "/accessories",
 };
 
 export function legacyTabPath(slug: string): string | undefined {
   return LEGACY_PATH_BY_SLUG[slug];
 }
-

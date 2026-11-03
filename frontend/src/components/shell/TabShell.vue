@@ -53,14 +53,14 @@ const LiquidsPane = defineAsyncComponent(() => import("../../views/tabs/LiquidsP
 const DisposablesPane = defineAsyncComponent(
   () => import("../../views/tabs/DisposablesPane.vue"),
 );
-const PodsPane = defineAsyncComponent(() => import("../../views/tabs/PodsPane.vue"));
+const DevicesPane = defineAsyncComponent(() => import("../../views/tabs/DevicesPane.vue"));
 const AccessoriesPane = defineAsyncComponent(() => import("../../views/tabs/AccessoriesPane.vue"));
 
 const PANE_COMPONENTS: Record<TabId, ReturnType<typeof defineAsyncComponent>> = {
   liquids: LiquidsPane,
   disposables: DisposablesPane,
   home: HomePane,
-  pods: PodsPane,
+  devices: DevicesPane,
   accessories: AccessoriesPane,
 };
 
@@ -205,10 +205,12 @@ function onTouchEnd() {
 </script>
 
 <style scoped>
+/* Шелл занимает ровно один экран: шапка + карусель + таб-бар.
+ * Контент скроллится ВНУТРИ каждого pane (overflow-y: auto),
+ * документ не скроллится вовсе — Instagram-модель. */
 .tab-shell {
-  position: relative;
-  height: 100%;
-  min-height: 100dvh;
+  position: fixed;
+  inset: 0;
   display: flex;
   flex-direction: column;
   background: #f5f7fa;
@@ -224,7 +226,9 @@ function onTouchEnd() {
   scrollbar-width: none;
   -ms-overflow-style: none;
   overscroll-behavior-x: contain;
-  touch-action: pan-x;
+  /* Обе оси: горизонталь — свайп вкладок (snap), вертикаль уходит
+   * в скролл активного pane (его контент скроллится внутри). */
+  touch-action: pan-x pan-y;
   -webkit-overflow-scrolling: touch;
 }
 
@@ -240,11 +244,12 @@ function onTouchEnd() {
   flex: 0 0 100%;
   width: 100%;
   height: 100%;
-  min-height: 100dvh;
   overflow-y: auto;
   scroll-snap-align: start;
   scroll-snap-stop: always;
-  touch-action: pan-y;
+  /* Обе оси: вертикаль скроллит контент pane, горизонталь уходит
+   * родительскому carousel с scroll-snap. */
+  touch-action: pan-x pan-y;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
 }

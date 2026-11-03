@@ -73,8 +73,8 @@ const router = createRouter({
       component: () => import("../components/shell/TabShell.vue"),
     },
     {
-      path: "/pods",
-      name: "tab-pods",
+      path: "/devices",
+      name: "tab-devices",
       component: () => import("../components/shell/TabShell.vue"),
     },
     {

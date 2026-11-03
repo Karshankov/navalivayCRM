@@ -65,7 +65,7 @@ const showOfflinePlaceholder = computed(
 );
 
 /** Экраны с каруселью вкладок (TabShell сам рисует шапку и таб-бар). */
-const TAB_SHELL_PATHS = new Set(["/", "/liquids", "/disposables", "/pods", "/accessories"]);
+const TAB_SHELL_PATHS = new Set(["/", "/liquids", "/disposables", "/devices", "/accessories"]);
 
 const isTabShellRoute = computed(() => TAB_SHELL_PATHS.has(route.path));
 
@@ -174,6 +174,13 @@ body,
 .app-shell {
   min-height: 100vh;
   overflow-x: hidden;
+}
+
+/* Новый шелл вкладок фиксирован на экран (position: fixed), документ
+ * под ним не скроллится. Документ-скролл оставляем только глубоким
+ * экранам — их контент в обычном потоке. */
+.app-shell:has(> .app-shell__protected > .app-shell__content > *) {
+  min-height: 100vh;
 }
 
 .app-shell--with-tab-bar {
