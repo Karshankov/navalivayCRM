@@ -802,6 +802,8 @@ onMounted(async () => {
   -webkit-tap-highlight-color: transparent;
   transition: transform 0.15s ease;
   box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+  /* Зазор от карточки «Избранное» над нами (в одном section). */
+  margin-top: 14px;
 }
 
 .wheel-mini:active {

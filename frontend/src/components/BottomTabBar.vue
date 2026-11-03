@@ -5,17 +5,13 @@
     aria-label="Навигация"
   >
     <button
-      v-for="(tab, index) in tabs"
+      v-for="tab in tabs"
       :key="tab.id"
       type="button"
       class="tab-item"
-      :class="[
-        { 'tab-item--active': tab.id === activeId },
-        { 'tab-item--collapsed': isCollapsed(index) },
-      ]"
+      :class="{ 'tab-item--active': tab.id === activeId }"
       :aria-label="tab.label"
       :aria-current="tab.id === activeId ? 'page' : undefined"
-      :aria-hidden="isCollapsed(index) ? 'true' : undefined"
       @click="emit('select', tab.id)"
     >
       <span class="tab-icon-wrap">
@@ -207,7 +203,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { onBeforeUnmount, onMounted, ref } from "vue";
 
 import type { TabDefinition, TabId } from "./shell/tabs";
 
@@ -223,26 +219,6 @@ const emit = defineEmits<{
 function isActive(id: string): boolean {
   return props.activeId === id;
 }
-
-/**
- * Коллапс краёв: видимы 2 иконки от центра в каждую сторону. Крайняя
- * третья вкладка (index 0 слева, последний справа) появляется плавно,
- * когда активная вкладка — соседняя с ней. Физика как в Instagram:
- * бар всегда лёгкий, лишние иконки не мозолят глаза.
- */
-const activeIndex = computed(() =>
-  props.tabs.findIndex((tab) => tab.id === props.activeId),
-);
-
-/** Иконка сжата (невидима): за пределами окна ±2 от активной. */
-function isCollapsed(index: number): boolean {
-  const distance = Math.abs(index - activeIndex.value);
-  // Окно видимости: активная ±2. Крайние вкладки появляются по мере
-  // приближения к краям — окно всегда показывает контекст навигации.
-  return distance > 2;
-}
-// Пояснение: окно НЕ центрируется жёстко, а следует за активной
-// вкладкой — на краях видны крайние иконки (как карусель контекста).
 
 const bottomTabBarRef = ref<HTMLElement | null>(null);
 let resizeObserver: ResizeObserver | null = null;
@@ -302,7 +278,9 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 42px;
+  /* 7 статичных вкладок на 393px: равномерно без сжатия */
+  flex: 1 1 0;
+  min-width: 0;
   height: 52px;
   border: none;
   background: none;
@@ -314,23 +292,6 @@ onBeforeUnmount(() => {
 
 .tab-item:active {
   opacity: 0.6;
-}
-
-/* Коллапс краёв: ШИРИНА сохраняется (позиции стабильны, клики
- * попадают в свои кнопки), растворяется только иконка —
- * fade + scale на обёртке иконки, layout не дёргается. */
-.tab-item--collapsed .tab-icon-wrap {
-  opacity: 0;
-  transform: scale(0.55);
-  pointer-events: none;
-}
-
-.tab-item--collapsed {
-  opacity: 1;
-}
-
-.tab-icon-wrap {
-  transition: opacity 0.22s ease, transform 0.22s cubic-bezier(0.34, 1.2, 0.64, 1);
 }
 
 .tab-icon-wrap {
