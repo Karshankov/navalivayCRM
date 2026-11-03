@@ -1,41 +1,11 @@
 <template>
   <header class="app-header" :class="{ 'app-header--scrolled': scrolled }">
     <div class="app-header__inner">
-      <h1 class="app-header__title">{{ title }}</h1>
+      <Transition name="title-slide" mode="out-in">
+        <h1 :key="title" class="app-header__title">{{ title }}</h1>
+      </Transition>
 
       <div class="app-header__actions">
-        <!-- Рулетка: только на главной -->
-        <router-link
-          v-if="showWheel"
-          to="/wheel"
-          class="app-header__icon-button"
-          aria-label="Рулетка"
-        >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-            <circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.7" />
-            <circle cx="12" cy="12" r="4.5" stroke="currentColor" stroke-width="1.7" />
-            <line x1="12" y1="3.5" x2="12" y2="7.5" stroke="currentColor" stroke-width="1.7" />
-            <line x1="12" y1="16.5" x2="12" y2="20.5" stroke="currentColor" stroke-width="1.7" />
-            <line x1="3.5" y1="12" x2="7.5" y2="12" stroke="currentColor" stroke-width="1.7" />
-            <line x1="16.5" y1="12" x2="20.5" y2="12" stroke="currentColor" stroke-width="1.7" />
-          </svg>
-        </router-link>
-
-        <!-- Избранное: только на главной -->
-        <router-link
-          v-if="showFavorites"
-          to="/favorites"
-          class="app-header__icon-button"
-          aria-label="Избранное"
-        >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-            <path
-              d="M12 20.3C11.77 20.3 11.55 20.25 11.36 20.14C7.54 17.89 4.2 15.7 4.2 11.63C4.2 8.52 6.59 6.2 9.53 6.2C10.56 6.2 11.62 6.6 12 7.35C12.38 6.6 13.44 6.2 14.47 6.2C17.41 6.2 19.8 8.52 19.8 11.63C19.8 15.7 16.46 17.89 12.64 20.14C12.45 20.25 12.23 20.3 12 20.3Z"
-              fill="currentColor"
-            />
-          </svg>
-        </router-link>
-
         <!-- Корзина: всегда, с бейджем количества -->
         <router-link
           to="/checkout"
@@ -66,7 +36,6 @@
         <router-link
           to="/profile"
           class="app-header__avatar-link"
-          :class="{ 'app-header__avatar-link--active': avatarActive }"
           aria-label="Профиль"
         >
           <img
@@ -99,18 +68,17 @@ import { computed, ref } from "vue";
 import { useCartStore } from "@/stores/cart";
 import { useUserStore } from "@/stores/user";
 
+/**
+ * Шапка шелла: слева заголовок активной вкладки (плавная смена), справа
+ * корзина с бейджем и аватар профиля из Telegram. Рулетка и избранное
+ * живут только на главной вкладке (HomeView), шапка чистая.
+ */
 const props = withDefaults(
   defineProps<{
     title: string;
-    showWheel?: boolean;
-    showFavorites?: boolean;
-    avatarActive?: boolean;
     scrolled?: boolean;
   }>(),
   {
-    showWheel: false,
-    showFavorites: false,
-    avatarActive: false,
     scrolled: false,
   },
 );
@@ -131,15 +99,16 @@ const cartBadgeLabel = computed(() => {
   top: 0;
   z-index: 50;
   padding-top: env(safe-area-inset-top, 0px);
-  background: rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.94);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   border-bottom: 0.5px solid rgba(0, 0, 0, 0.06);
-  transition: border-color 0.2s ease, background 0.2s ease;
+  transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
 }
 
 .app-header--scrolled {
   border-bottom-color: rgba(0, 0, 0, 0.1);
+  box-shadow: 0 1px 12px rgba(16, 24, 40, 0.06);
 }
 
 .app-header__inner {
@@ -161,10 +130,29 @@ const cartBadgeLabel = computed(() => {
   text-overflow: ellipsis;
 }
 
+/* Плавная смена заголовка между вкладками */
+.title-slide-enter-active {
+  transition: opacity 0.22s ease, transform 0.22s ease;
+}
+
+.title-slide-leave-active {
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
+
+.title-slide-enter-from {
+  opacity: 0;
+  transform: translateY(4px);
+}
+
+.title-slide-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+
 .app-header__actions {
   display: flex;
   align-items: center;
-  gap: 18px;
+  gap: 16px;
   flex: 0 0 auto;
 }
 
@@ -242,16 +230,13 @@ const cartBadgeLabel = computed(() => {
   transform: scale(0.92);
 }
 
-.app-header__avatar-link--active {
-  box-shadow: 0 0 0 2px #f50302;
-}
-
 .app-header__avatar {
   width: 32px;
   height: 32px;
   border-radius: 50%;
   object-fit: cover;
   display: block;
+  transition: box-shadow 0.2s ease;
 }
 
 .app-header__avatar--placeholder {

@@ -72,14 +72,15 @@ describe('HomeView favorites banner', () => {
     wrapper.unmount()
   })
 
-  it('loads favorites once on mount', async () => {
-    mount(HomeView)
+  it('does not refetch favorites when the store is already loaded (preload owns the first fetch)', async () => {
+    const favoritesStore = useFavoritesStore()
+    // Сплэш-прелоадер уже загрузил избранное до монтирования вкладки.
+    favoritesStore.isLoaded = true
 
+    mount(HomeView)
     await flushPromises()
 
-    expect(fetchFavoritesMock).toHaveBeenCalledTimes(1)
-    const favoritesStore = useFavoritesStore()
+    expect(fetchFavoritesMock).toHaveBeenCalledTimes(0)
     expect(favoritesStore.isLoaded).toBe(true)
-    expect(favoritesStore.items).toEqual([])
   })
 })

@@ -6,7 +6,9 @@ import VapeSmoke from "@/components/VapeSmoke.vue";
 import BlockedScreen from "@/components/BlockedScreen.vue";
 import ReviewPromptModal from "@/components/reviews/ReviewPromptModal.vue";
 import ReferralAuthorizationGate from "@/components/ReferralAuthorizationGate.vue";
+import SplashScreen from "@/components/shell/SplashScreen.vue";
 import { useCustomerBlock } from "@/composables/useCustomerBlock";
+import { useAppPreload } from "@/composables/useAppPreload";
 import { useUserStore } from "@/stores/user";
 import { useCatalogStore } from "@/stores/catalog";
 import OfflinePlaceholder from "@/components/OfflinePlaceholder.vue";
@@ -19,6 +21,12 @@ const isAdminRoute = computed(() => route.path.startsWith("/admin"));
 // Клиентская часть закрыта до ответа сервера: каталог и цены даже не
 // монтируются, пока новый клиент не пройдёт обязательную авторизацию.
 const referralGateActive = ref(!isAdminRoute.value);
+
+/* Сплэш + полная предзагрузка: каталог, картинки, лояльность, избранное
+ * грузятся до показа интерфейса — внутри приложения загрузок нет.
+ * Сплэш только на клиентских экранах, админка стартует без него. */
+const preload = useAppPreload();
+const showSplash = computed(() => preload.visible.value && !isAdminRoute.value);
 
 const showCustomerContent = computed(
   () => isAdminRoute.value || (!referralGateActive.value && !isBlocked.value),
@@ -65,7 +73,15 @@ const showOfflinePlaceholder = computed(
 );
 
 /** Экраны с каруселью вкладок (TabShell сам рисует шапку и таб-бар). */
-const TAB_SHELL_PATHS = new Set(["/", "/liquids", "/disposables", "/devices", "/accessories"]);
+const TAB_SHELL_PATHS = new Set([
+  "/",
+  "/liquids",
+  "/disposables",
+  "/snus",
+  "/devices",
+  "/accessories",
+  "/hookah",
+]);
 
 const isTabShellRoute = computed(() => TAB_SHELL_PATHS.has(route.path));
 
@@ -116,6 +132,10 @@ onMounted(() => {
   if (window.Telegram?.WebApp?.initData) {
     userStore.fetchProfile().catch(() => undefined);
   }
+  // Полная предзагрузка данных мини-аппы (админка стартует без сплэша).
+  if (!isAdminRoute.value) {
+    void preload.run();
+  }
 });
 </script>
 
@@ -125,6 +145,13 @@ onMounted(() => {
     :class="{ 'app-shell--with-tab-bar': showCustomerContent && showTabBar, 'app-shell--admin': isAdminRoute }"
     style="background: var(--app-page-background, #ffffff)"
   >
+    <!-- Сплэш с анимацией: висит, пока предзагрузка не завершится. -->
+    <SplashScreen
+      v-if="showSplash"
+      :progress="preload.progress.value"
+      :progress-label="preload.label.value"
+    />
+
     <!-- Оффлайн-заглушка: сервер недоступен — вместо всего клиентского
          контента макет с черепом и «Попробовать снова». -->
     <OfflinePlaceholder v-if="showOfflinePlaceholder" />

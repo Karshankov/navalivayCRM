@@ -1302,21 +1302,18 @@ watch(
   min-height: 56px;
 }
 
-/* Плашка консультации: прилипает вплотную к шапке — 4px от
-   слова «Расходники». Снизу 16px до линеек, как между блоками. */
-.compatibility-notice-sticky {
-  position: sticky;
-  /* Реальная высота шапки: 16 паддинг + 24 тайтл + 20 паддинг
-     минус скругление ≈ 46px; сверху зазор 12px — как между
-     линейками «Картриджи» и «Испарители». */
-  top: 58px;
+/* Плашка консультации в новом шелле: общего хедера нет (в embedded-
+   режиме заголовок рисует AppHeader), плашка — обычный блок потока
+   с компактными отступами. Прилипание (sticky) внутри прокручиваемого
+   pane с фикс-шеллом даёт ложный сдвиг — оставляем статичный блок. */
+.category-pane .compatibility-notice-sticky,
+:global(.category-pane) .compatibility-notice-sticky {
+  position: static;
   z-index: 19;
-  padding: 0 16px 16px;
-  /* Зазор от шапки: 16px (хедер) − 4px = 12px, как gap линеек. */
-  margin: -4px 0 16px;
-  /* При прилипании мягкий градиент вниз, без резкой подложки. */
-  background: linear-gradient(#f5f7fa 86%, rgba(245, 247, 250, 0));
-  border-radius: 0 0 24px 24px;
+  padding: 8px 16px 12px;
+  margin: 0 0 12px;
+  background: #f5f7fa;
+  border-radius: 16px;
 }
 
 .compatibility-notice-inner {

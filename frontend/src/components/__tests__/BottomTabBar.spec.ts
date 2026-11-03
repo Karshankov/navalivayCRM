@@ -12,13 +12,13 @@ describe("BottomTabBar", () => {
     document.documentElement.style.removeProperty("--app-bottom-tab-bar-height");
   });
 
-  it("renders five tabs and marks the active one", () => {
+  it("renders all tabs and marks the active one", () => {
     const wrapper = mount(BottomTabBar, {
       props: { tabs: TABS, activeId: "home" as TabId },
     });
 
     const items = wrapper.findAll(".tab-item");
-    expect(items).toHaveLength(5);
+    expect(items).toHaveLength(TABS.length);
 
     const active = wrapper.findAll(".tab-item--active");
     expect(active).toHaveLength(1);

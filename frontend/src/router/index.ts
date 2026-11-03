@@ -73,6 +73,11 @@ const router = createRouter({
       component: () => import("../components/shell/TabShell.vue"),
     },
     {
+      path: "/snus",
+      name: "tab-snus",
+      component: () => import("../components/shell/TabShell.vue"),
+    },
+    {
       path: "/devices",
       name: "tab-devices",
       component: () => import("../components/shell/TabShell.vue"),
@@ -80,6 +85,11 @@ const router = createRouter({
     {
       path: "/accessories",
       name: "tab-accessories",
+      component: () => import("../components/shell/TabShell.vue"),
+    },
+    {
+      path: "/hookah",
+      name: "tab-hookah",
       component: () => import("../components/shell/TabShell.vue"),
     },
     {

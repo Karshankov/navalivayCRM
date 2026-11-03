@@ -1,11 +1,6 @@
 <template>
   <div class="tab-shell">
-    <AppHeader
-      :title="activeTab.headerTitle"
-      :show-wheel="activeTab.id === 'home'"
-      :show-favorites="activeTab.id === 'home'"
-      :avatar-active="activeTab.id === 'home'"
-    />
+    <AppHeader :title="activeTab.headerTitle" />
 
     <div
       ref="carouselRef"
@@ -53,15 +48,19 @@ const LiquidsPane = defineAsyncComponent(() => import("../../views/tabs/LiquidsP
 const DisposablesPane = defineAsyncComponent(
   () => import("../../views/tabs/DisposablesPane.vue"),
 );
+const SnusPane = defineAsyncComponent(() => import("../../views/tabs/SnusPane.vue"));
 const DevicesPane = defineAsyncComponent(() => import("../../views/tabs/DevicesPane.vue"));
 const AccessoriesPane = defineAsyncComponent(() => import("../../views/tabs/AccessoriesPane.vue"));
+const HookahPane = defineAsyncComponent(() => import("../../views/tabs/HookahPane.vue"));
 
 const PANE_COMPONENTS: Record<TabId, ReturnType<typeof defineAsyncComponent>> = {
   liquids: LiquidsPane,
   disposables: DisposablesPane,
+  snus: SnusPane,
   home: HomePane,
   devices: DevicesPane,
   accessories: AccessoriesPane,
+  hookah: HookahPane,
 };
 
 function paneComponent(id: TabId) {

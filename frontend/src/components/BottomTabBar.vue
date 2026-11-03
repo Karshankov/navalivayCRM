@@ -15,136 +15,188 @@
       @click="emit('select', tab.id)"
     >
       <span class="tab-icon-wrap">
-        <!-- Жидкости: капля -->
+        <!-- Жидкости: бутылёк с каплей -->
         <svg
           v-if="tab.icon === 'liquids'"
           class="tab-icon"
-          width="26"
-          height="26"
           viewBox="0 0 24 24"
           fill="none"
         >
           <path
-            d="M12 3.2C12 3.2 5.8 9.8 5.8 14.2C5.8 17.85 8.6 20.7 12 20.7C15.4 20.7 18.2 17.85 18.2 14.2C18.2 9.8 12 3.2 12 3.2Z"
-            :fill="tab.id === activeId ? '#191919' : 'none'"
-            :stroke="tab.id === activeId ? '#191919' : '#3E4C59'"
-            stroke-width="1.7"
+            d="M10 3.5C10 2.67 10.67 2 11.5 2H12.5C13.33 2 14 2.67 14 3.5V5C14 5.55 14.45 6 15 6H15.2C16.75 6 18 7.25 18 8.8V18.2C18 19.75 16.75 21 15.2 21H8.8C7.25 21 6 19.75 6 18.2V8.8C6 7.25 7.25 6 8.8 6H9C9.55 6 10 5.55 10 5V3.5Z"
+            :fill="isActive(tab.id) ? '#191919' : 'none'"
+            :stroke="isActive(tab.id) ? '#191919' : '#48535E'"
+            stroke-width="1.6"
             stroke-linejoin="round"
           />
           <path
-            d="M9.2 14.4C9.2 16.4 10.5 18 12.3 18.4"
-            :stroke="tab.id === activeId ? '#fff' : '#3E4C59'"
-            stroke-width="1.5"
-            stroke-linecap="round"
-          />
-        </svg>
-
-        <!-- Одноразки: прямоугольный стик -->
-        <svg
-          v-else-if="tab.icon === 'disposables'"
-          class="tab-icon"
-          width="26"
-          height="26"
-          viewBox="0 0 24 24"
-          fill="none"
-        >
-          <rect
-            x="7.5"
-            y="3"
-            width="9"
-            height="18"
-            rx="3.2"
-            :fill="tab.id === activeId ? '#191919' : 'none'"
-            :stroke="tab.id === activeId ? '#191919' : '#3E4C59'"
-            stroke-width="1.7"
-          />
-          <line
-            x1="10.5"
-            y1="7.5"
-            x2="13.5"
-            y2="7.5"
-            :stroke="tab.id === activeId ? '#fff' : '#3E4C59'"
-            stroke-width="1.5"
-            stroke-linecap="round"
-          />
-        </svg>
-
-        <!-- Главная: дом -->
-        <svg
-          v-else-if="tab.icon === 'home'"
-          class="tab-icon"
-          width="26"
-          height="26"
-          viewBox="0 0 24 24"
-          fill="none"
-        >
-          <path
-            d="M3 10.5L12 3L21 10.5V20C21 20.55 20.78 21.04 20.41 21.41C20.04 21.78 19.55 22 19 22H5C4.45 22 3.96 21.78 3.59 21.41C3.22 21.04 3 20.55 3 20V10.5Z"
-            :fill="tab.id === activeId ? '#191919' : 'none'"
-            :stroke="tab.id === activeId ? '#191919' : '#3E4C59'"
-            stroke-width="1.7"
-            stroke-linejoin="round"
-          />
-        </svg>
-
-        <!-- POD-системы: pod-картридж -->
-        <svg
-          v-else-if="tab.icon === 'devices'"
-          class="tab-icon"
-          width="26"
-          height="26"
-          viewBox="0 0 24 24"
-          fill="none"
-        >
-          <rect
-            x="4"
-            y="5"
-            width="16"
-            height="14"
-            rx="4"
-            :fill="tab.id === activeId ? '#191919' : 'none'"
-            :stroke="tab.id === activeId ? '#191919' : '#3E4C59'"
-            stroke-width="1.7"
-          />
-          <path
-            d="M8 5C8 4 8.5 3 10 3H14C15.5 3 16 4 16 5"
-            :stroke="tab.id === activeId ? '#191919' : '#3E4C59'"
-            stroke-width="1.7"
-            stroke-linecap="round"
-          />
-          <circle
-            cx="12"
-            cy="12"
-            r="2.6"
-            :stroke="tab.id === activeId ? '#fff' : '#3E4C59'"
-            stroke-width="1.5"
-          />
-        </svg>
-
-        <!-- Расходники: шестерёнка-гайка -->
-        <svg
-          v-else-if="tab.icon === 'accessories'"
-          class="tab-icon"
-          width="26"
-          height="26"
-          viewBox="0 0 24 24"
-          fill="none"
-        >
-          <path
-            d="M12 15.2C13.77 15.2 15.2 13.77 15.2 12C15.2 10.23 13.77 8.8 12 8.8C10.23 8.8 8.8 10.23 8.8 12C8.8 13.77 10.23 15.2 12 15.2Z"
-            :stroke="tab.id === activeId ? '#191919' : '#3E4C59'"
-            stroke-width="1.7"
-          />
-          <path
-            d="M19.4 15C19.55 15 19.7 14.85 19.7 14.7V13.2C19.7 13.05 19.55 12.9 19.4 12.9C19.8 12.9 20.1 12.6 20.1 12.2C20.1 11.8 19.8 11.5 19.4 11.5C19.55 11.5 19.7 11.35 19.7 11.2V9.7C19.7 9.55 19.55 9.4 19.4 9.4H17.1L14.8 7.1L12 9.9L9.2 7.1L6.9 9.4H4.6C4.45 9.4 4.3 9.55 4.3 9.7V11.2C4.3 11.35 4.45 11.5 4.6 11.5C4.2 11.5 3.9 11.8 3.9 12.2C3.9 12.6 4.2 12.9 4.6 12.9C4.45 12.9 4.3 13.05 4.3 13.2V14.7C4.3 14.85 4.45 15 4.6 15H6.9L9.2 17.3L12 14.5L14.8 17.3L17.1 15H19.4Z"
-            :fill="tab.id === activeId ? '#191919' : 'none'"
-            :stroke="tab.id === activeId ? '#191919' : '#3E4C59'"
+            d="M9 13.2C9 11.4 10.3 9.8 12 9.2C13.7 9.8 15 11.4 15 13.2C15 14.75 13.66 16 12 16C10.34 16 9 14.75 9 13.2Z"
+            :fill="isActive(tab.id) ? '#FFFFFF' : '#48535E'"
+            :stroke="isActive(tab.id) ? '#FFFFFF' : '#48535E'"
             stroke-width="0.8"
             stroke-linejoin="round"
           />
         </svg>
 
-        <span v-if="tab.id === activeId" class="tab-active-dot"></span>
+        <!-- Одноразки: продолговатый стик с мундштуком -->
+        <svg
+          v-else-if="tab.icon === 'disposables'"
+          class="tab-icon"
+          viewBox="0 0 24 24"
+          fill="none"
+        >
+          <path
+            d="M9 2.8C9 2.36 9.36 2 9.8 2H14.2C14.64 2 15 2.36 15 2.8V21.2C15 21.64 14.64 22 14.2 22H9.8C9.36 22 9 21.64 9 21.2V2.8Z"
+            :fill="isActive(tab.id) ? '#191919' : 'none'"
+            :stroke="isActive(tab.id) ? '#191919' : '#48535E'"
+            stroke-width="1.6"
+            stroke-linejoin="round"
+          />
+          <path
+            d="M11.4 4.4H12.6"
+            :stroke="isActive(tab.id) ? '#FFFFFF' : '#48535E'"
+            stroke-width="1.3"
+            stroke-linecap="round"
+          />
+          <rect
+            x="10.9"
+            y="8"
+            width="2.2"
+            height="5"
+            rx="1"
+            :fill="isActive(tab.id) ? '#FFFFFF' : '#48535E'"
+          />
+        </svg>
+
+        <!-- Снюс: пакетик-саше -->
+        <svg
+          v-else-if="tab.icon === 'snus'"
+          class="tab-icon"
+          viewBox="0 0 24 24"
+          fill="none"
+        >
+          <path
+            d="M7.5 4C7.5 3.45 7.95 3 8.5 3H15.5C16.05 3 16.5 3.45 16.5 4V7.5C16.5 7.5 19.5 9 19.5 13V18.5C19.5 19.88 18.38 21 17 21H7C5.62 21 4.5 19.88 4.5 18.5V13C4.5 9 7.5 7.5 7.5 7.5V4Z"
+            :fill="isActive(tab.id) ? '#191919' : 'none'"
+            :stroke="isActive(tab.id) ? '#191919' : '#48535E'"
+            stroke-width="1.6"
+            stroke-linejoin="round"
+          />
+          <path
+            d="M7.5 6H16.5"
+            :stroke="isActive(tab.id) ? '#FFFFFF' : '#48535E'"
+            stroke-width="1.3"
+            stroke-linecap="round"
+          />
+        </svg>
+
+        <!-- Главная: домик -->
+        <svg
+          v-else-if="tab.icon === 'home'"
+          class="tab-icon"
+          viewBox="0 0 24 24"
+          fill="none"
+        >
+          <path
+            d="M4 10.2L11.1 4.25C11.6 3.83 12.4 3.83 12.9 4.25L20 10.2V19.4C20 20.28 19.28 21 18.4 21H15.5C15 21 14.6 20.6 14.6 20.1V16.4C14.6 15.63 13.97 15 13.2 15H10.8C10.03 15 9.4 15.63 9.4 16.4V20.1C9.4 20.6 9 21 8.5 21H5.6C4.72 21 4 20.28 4 19.4V10.2Z"
+            :fill="isActive(tab.id) ? '#191919' : 'none'"
+            :stroke="isActive(tab.id) ? '#191919' : '#48535E'"
+            stroke-width="1.6"
+            stroke-linejoin="round"
+          />
+        </svg>
+
+        <!-- Устройства: POD-система — корпус с картриджем -->
+        <svg
+          v-else-if="tab.icon === 'devices'"
+          class="tab-icon"
+          viewBox="0 0 24 24"
+          fill="none"
+        >
+          <path
+            d="M8.5 5.6C8.5 4.16 9.66 3 11.1 3H12.9C14.34 3 15.5 4.16 15.5 5.6V18.4C15.5 19.84 14.34 21 12.9 21H11.1C9.66 21 8.5 19.84 8.5 18.4V5.6Z"
+            :fill="isActive(tab.id) ? '#191919' : 'none'"
+            :stroke="isActive(tab.id) ? '#191919' : '#48535E'"
+            stroke-width="1.6"
+            stroke-linejoin="round"
+          />
+          <rect
+            x="10.2"
+            y="5.8"
+            width="3.6"
+            height="4.2"
+            rx="1"
+            :fill="isActive(tab.id) ? '#FFFFFF' : '#48535E'"
+          />
+          <path
+            d="M10.2 15.8H13.8"
+            :stroke="isActive(tab.id) ? '#FFFFFF' : '#48535E'"
+            stroke-width="1.3"
+            stroke-linecap="round"
+          />
+        </svg>
+
+        <!-- Расходники: испаритель-спираль -->
+        <svg
+          v-else-if="tab.icon === 'accessories'"
+          class="tab-icon"
+          viewBox="0 0 24 24"
+          fill="none"
+        >
+          <path
+            d="M6.5 8.2H8C8 6.8 9.1 6 10.3 6H13.7C14.9 6 16 6.8 16 8.2H17.5C18.6 8.2 19.5 9.1 19.5 10.2C19.5 11.3 18.6 12.2 17.5 12.2H16V15.8H17.5C18.6 15.8 19.5 16.7 19.5 17.8C19.5 18.9 18.6 19.8 17.5 19.8H6.5C5.4 19.8 4.5 18.9 4.5 17.8C4.5 16.7 5.4 15.8 6.5 15.8H8V12.2H6.5C5.4 12.2 4.5 11.3 4.5 10.2C4.5 9.1 5.4 8.2 6.5 8.2Z"
+            :fill="isActive(tab.id) ? '#191919' : 'none'"
+            :stroke="isActive(tab.id) ? '#191919' : '#48535E'"
+            stroke-width="1.6"
+            stroke-linejoin="round"
+          />
+          <path
+            d="M10 8.5V15.5M12 8.5V15.5M14 8.5V15.5"
+            :stroke="isActive(tab.id) ? '#FFFFFF' : '#48535E'"
+            stroke-width="1.1"
+            stroke-linecap="round"
+          />
+        </svg>
+
+        <!-- Кальянка: колба кальяна -->
+        <svg
+          v-else-if="tab.icon === 'hookah'"
+          class="tab-icon"
+          viewBox="0 0 24 24"
+          fill="none"
+        >
+          <path
+            d="M12 2C11.45 2 11 2.45 11 3V5H13V3C13 2.45 12.55 2 12 2Z"
+            :fill="isActive(tab.id) ? '#191919' : '#48535E'"
+          />
+          <path
+            d="M13 5H18C18.55 5 19 5.45 19 6V7.5C19 9.2 17.6 10.5 15.9 10.5H13V5Z"
+            :fill="isActive(tab.id) ? '#191919' : 'none'"
+            :stroke="isActive(tab.id) ? '#191919' : '#48535E'"
+            stroke-width="1.5"
+            stroke-linejoin="round"
+          />
+          <path
+            d="M11 5H6C5.45 5 5 5.45 5 6V7.5C5 9.2 6.4 10.5 8.1 10.5H11V5Z"
+            :fill="isActive(tab.id) ? '#191919' : 'none'"
+            :stroke="isActive(tab.id) ? '#191919' : '#48535E'"
+            stroke-width="1.5"
+            stroke-linejoin="round"
+          />
+          <path
+            d="M10 10.5H14V12C14 12.55 13.55 13 13 13H11C10.45 13 10 12.55 10 12V10.5Z"
+            :fill="isActive(tab.id) ? '#191919' : '#48535E'"
+          />
+          <path
+            d="M9 21C8.45 21 8 20.55 8 20C8 17 9.8 15.5 11 14.5C11.4 14.15 12.6 14.15 13 14.5C14.2 15.5 16 17 16 20C16 20.55 15.55 21 15 21H9Z"
+            :fill="isActive(tab.id) ? '#191919' : 'none'"
+            :stroke="isActive(tab.id) ? '#191919' : '#48535E'"
+            stroke-width="1.5"
+            stroke-linejoin="round"
+          />
+        </svg>
+
+        <span v-if="isActive(tab.id)" class="tab-active-dot"></span>
       </span>
     </button>
   </nav>
@@ -155,7 +207,7 @@ import { onBeforeUnmount, onMounted, ref } from "vue";
 
 import type { TabDefinition, TabId } from "./shell/tabs";
 
-defineProps<{
+const props = defineProps<{
   tabs: readonly TabDefinition[];
   activeId: TabId;
 }>();
@@ -163,6 +215,10 @@ defineProps<{
 const emit = defineEmits<{
   (event: "select", id: TabId): void;
 }>();
+
+function isActive(id: string): boolean {
+  return props.activeId === id;
+}
 
 const bottomTabBarRef = ref<HTMLElement | null>(null);
 let resizeObserver: ResizeObserver | null = null;
@@ -222,7 +278,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 56px;
+  width: 42px;
   height: 52px;
   border: none;
   background: none;
@@ -247,18 +303,21 @@ onBeforeUnmount(() => {
 }
 
 .tab-icon {
-  width: 26px;
-  height: 26px;
+  width: 25px;
+  height: 25px;
+  /* Плавная смена цвета иконки при активации */
+  transition: fill 0.18s ease, stroke 0.18s ease;
 }
 
 .tab-active-dot {
   position: absolute;
-  bottom: -7px;
+  bottom: -8px;
   left: 50%;
   transform: translateX(-50%);
   width: 4px;
   height: 4px;
   border-radius: 50%;
   background: #f50302;
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.2s ease;
 }
 </style>
