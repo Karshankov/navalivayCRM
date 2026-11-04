@@ -208,9 +208,6 @@
           </span>
           <span class="top-product__copy">
             <strong class="top-product__name">{{ product.title }}</strong>
-            <span v-if="product.quantityLabel" class="top-product__sold">
-              {{ product.quantityLabel }}
-            </span>
             <span class="top-product__price">{{ product.priceLabel }}</span>
           </span>
         </button>
@@ -286,7 +283,6 @@ interface TopProductCard {
   title: string;
   priceLabel: string;
   image: string | null;
-  quantityLabel: string;
   product: Product;
 }
 
@@ -331,7 +327,6 @@ const topProducts = computed<TopProductCard[]>(() => {
       title: product.groupName || product.title,
       priceLabel: `${Number(price).toFixed(2)} BYN`,
       image: product.images?.[0] ?? null,
-      quantityLabel: `${sale.totalQuantity} продано`,
       product,
     });
   }
@@ -993,11 +988,5 @@ onMounted(async () => {
   font-size: 13px;
   font-weight: 700;
   color: #191919;
-}
-
-.top-product__sold {
-  font-size: 11px;
-  color: #f50302;
-  font-weight: 600;
 }
 </style>
