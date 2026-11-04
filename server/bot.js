@@ -19,6 +19,55 @@ import { assignLowestAvailablePickupCell } from './utils/pickup-cells.js';
 import { applyDiscountToPrice, resolveDiscountPrice } from './utils/catalog-discounts.js';
 import { roundMoney } from './utils/money.js';
 
+/**
+ * Бета-доступ к новой мини-аппе (ops/deploy-beta.sh, /beta/).
+ *
+ * Прямая ссылка из чата открывается как обычный браузер без initData —
+ * сервер отвечает 401 «Не удалось проверить доступ». Полноценный
+ * Telegram Web App (с initData) открывается ТОЛЬКО через webApp-кнопку.
+ *
+ * Команда /beta: бот присылает кнопку «Открыть бета-каталог» и отвечает
+ * только telegram_id из whitelist. Для остальных бот молчит — бета
+ * полностью невидима клиентам.
+ *
+ * Whitelist задаётся переменной окружения BETA_ACCESS_TELEGRAM_IDS
+ * (запятые). После теста команда убирается вместе с dist-beta.
+ */
+const BETA_ACCESS_TELEGRAM_IDS = new Set(
+  String(process.env.BETA_ACCESS_TELEGRAM_IDS || '')
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean),
+);
+
+function isBetaTester(telegramId) {
+  return BETA_ACCESS_TELEGRAM_IDS.has(String(telegramId).trim());
+}
+
+function registerBetaCommand(bot) {
+  if (!BETA_ACCESS_TELEGRAM_IDS.size) return;
+
+  bot.command('beta', async (ctx) => {
+    const telegramId = ctx.from?.id;
+    if (!isBetaTester(telegramId)) {
+      // Не тестировщик: никакой реакции — команда выглядит несуществующей.
+      return;
+    }
+
+    try {
+      const betaUrl = `${getStoreWebAppUrl()}/beta/`;
+      await ctx.reply(
+        '🧪 Бета-версия новой мини-аппы. Только для команды, клиентам недоступна.',
+        Markup.inlineKeyboard([
+          [Markup.button.webApp('Открыть бета-каталог', betaUrl)],
+        ]),
+      );
+    } catch (e) {
+      console.error('[navalivay:bot] /beta reply failed:', e?.message);
+    }
+  });
+}
+
 // Singleton прокси-агент для long-polling. См. комментарий ниже у Telegraf
 // init: на RU-хостинге без прокси bot не получает business updates.
 const botProxyAgent = (() => {
@@ -259,6 +308,9 @@ if (!BOT_TOKEN) {
     console.log('[navalivay:bot] TELEGRAM_HTTP_PROXY не задан, long-polling напрямую');
   }
   const bot = new Telegraf(BOT_TOKEN, { telegram: telegramOptions });
+
+  // Бета-команда регистрируется до остальных обработчиков.
+  registerBetaCommand(bot);
 
   bot.start(async (ctx) => {
     try {
