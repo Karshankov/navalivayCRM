@@ -11,6 +11,10 @@ const routerPush = vi.hoisted(() => vi.fn())
 
 vi.mock('vue-router', () => ({
   useRouter: () => ({ push: routerPush }),
+  RouterLink: {
+    props: ['to'],
+    template: '<a><slot /></a>',
+  },
 }))
 
 vi.mock('@/utils/customerOrders', () => ({
@@ -25,6 +29,10 @@ vi.mock('@/utils/favoritesApi', () => ({
   FavoritesAuthError: class extends Error {},
 }))
 
+/**
+ * Новая главная вкладка: избранное и рулетка — быстрые ссылки-карточки,
+ * а не отдельный баннер FavoritesBanner.
+ */
 describe('HomeView favorites banner', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
@@ -38,62 +46,43 @@ describe('HomeView favorites banner', () => {
     vi.spyOn(catalogStore, 'initialize').mockResolvedValue(undefined)
   })
 
-  it('renders the favorites banner button below the banner area', async () => {
-    const wrapper = mount(HomeView, {
-      global: {
-        stubs: {
-          SmokeParticles: { template: '<div />' },
-          BannerCarousel: { template: '<div />' },
-          FloatingCartBar: { template: '<div />' },
-        },
-      },
-    })
+  it('renders the favorites button (favorites.html design) on the home pane', async () => {
+    const wrapper = mount(HomeView)
 
     await flushPromises()
 
-    const banner = wrapper.find('.favorites')
-    expect(banner.exists()).toBe(true)
-    expect(banner.attributes('aria-label')).toBe('Открыть избранное')
-    expect(wrapper.find('.favorites__title').text()).toBe('Избранное')
+    const link = wrapper.find('.favorites')
+    expect(link.exists()).toBe(true)
+    expect(link.attributes('to')).toBe('/favorites')
+    expect(link.find('.favorites__title').text()).toBe('Избранное')
+    // Стикер-череп из макета подключен
+    expect(link.find('.favorites__sticker').exists()).toBe(true)
 
     wrapper.unmount()
   })
 
-  it('navigates to /favorites on click', async () => {
-    const wrapper = mount(HomeView, {
-      global: {
-        stubs: {
-          SmokeParticles: { template: '<div />' },
-          BannerCarousel: { template: '<div />' },
-          FloatingCartBar: { template: '<div />' },
-        },
-      },
-    })
+  it('renders the wheel mini card on the home pane', async () => {
+    const wrapper = mount(HomeView)
 
     await flushPromises()
 
-    await wrapper.find('.favorites').trigger('click')
-    expect(routerPush).toHaveBeenCalledWith({ name: 'favorites' })
+    const wheel = wrapper.find('.wheel-mini')
+    expect(wheel.exists()).toBe(true)
+    expect(wheel.attributes('to')).toBe('/wheel')
+    expect(wheel.find('.wheel-mini__title').text()).toBe('Рулетка')
 
     wrapper.unmount()
   })
 
-  it('loads favorites once on mount', async () => {
-    mount(HomeView, {
-      global: {
-        stubs: {
-          SmokeParticles: { template: '<div />' },
-          BannerCarousel: { template: '<div />' },
-          FloatingCartBar: { template: '<div />' },
-        },
-      },
-    })
-
-    await flushPromises()
-
-    expect(fetchFavoritesMock).toHaveBeenCalledTimes(1)
+  it('does not refetch favorites when the store is already loaded (preload owns the first fetch)', async () => {
     const favoritesStore = useFavoritesStore()
+    // Сплэш-прелоадер уже загрузил избранное до монтирования вкладки.
+    favoritesStore.isLoaded = true
+
+    mount(HomeView)
+    await flushPromises()
+
+    expect(fetchFavoritesMock).toHaveBeenCalledTimes(0)
     expect(favoritesStore.isLoaded).toBe(true)
-    expect(favoritesStore.items).toEqual([])
   })
 })

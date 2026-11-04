@@ -41,7 +41,19 @@
 
     <div class="checkout-container">
       <div v-if="!cartStore.items.length" class="empty-cart">
-        <div class="empty-cart-icon">🛒</div>
+        <div class="empty-cart-icon" aria-hidden="true">
+          <svg width="52" height="52" viewBox="0 0 24 24" fill="none">
+            <path
+              d="M3 4H5L7 14H17L19 6H6"
+              stroke="#C7CDD4"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+            <circle cx="9" cy="18" r="1.6" stroke="#C7CDD4" stroke-width="1.6" />
+            <circle cx="16" cy="18" r="1.6" stroke="#C7CDD4" stroke-width="1.6" />
+          </svg>
+        </div>
         <p>Корзина пуста</p>
         <button @click="handleBack" class="back-to-shop-btn">
           Вернуться к покупкам
@@ -2312,12 +2324,15 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   position: sticky;
   top: 0;
   z-index: 20;
-  background: #ffffff;
-  backdrop-filter: blur(11.5px);
-  border-radius: 0 0 24px 24px;
-  padding: 0;
-  margin-bottom: 16px;
-  box-shadow: 0 4px 32px rgba(170, 178, 189, 0.32);
+  padding-top: env(safe-area-inset-top, 0px);
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-radius: 0 0 20px 20px;
+  padding-left: 0;
+  padding-right: 0;
+  margin-bottom: 14px;
+  border-bottom: 0.5px solid rgba(0, 0, 0, 0.06);
 }
 
 .checkout-header {
@@ -2325,8 +2340,8 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   align-items: center;
   justify-content: center;
   position: relative;
-  padding: 16px 16px 20px 16px;
-  min-height: 56px;
+  padding: 14px 16px 16px 16px;
+  min-height: 52px;
 }
 
 .checkout-back-button {
@@ -2362,10 +2377,11 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
 }
 
 .checkout-title {
-  font-family: "Montserrat", sans-serif;
+  font-family: inherit;
   font-weight: 700;
-  font-size: 20px;
-  line-height: 24px;
+  font-size: 17px;
+  line-height: 22px;
+  letter-spacing: -0.02em;
   color: #191919;
   margin: 0;
 }
@@ -3258,17 +3274,18 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
 
 .submit-button {
   width: 100%;
-  height: 64px;
+  height: 56px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(90deg, #f50302 0%, #a90f0e 100%);
+  background: linear-gradient(90deg, #f50302 0%, #d30707 100%);
   border: none;
-  border-radius: 528px;
-  font-family: "Montserrat", sans-serif;
-  font-weight: 500;
+  border-radius: 16px;
+  font-family: inherit;
+  font-weight: 700;
   font-size: 16px;
   line-height: 20px;
+  letter-spacing: -0.01em;
   color: #ffffff;
   cursor: pointer;
   position: relative;
@@ -3277,6 +3294,8 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   -webkit-tap-highlight-color: transparent;
   user-select: none;
   -webkit-user-select: none;
+  transition: transform 0.15s ease, opacity 0.15s ease, box-shadow 0.2s ease;
+  box-shadow: 0 4px 16px rgba(245, 3, 2, 0.24);
 }
 
 .submit-button:hover:not(:disabled) {
@@ -3286,6 +3305,7 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
 .submit-button:active:not(:disabled) {
   opacity: 0.9;
   transform: scale(0.98);
+  box-shadow: 0 2px 8px rgba(245, 3, 2, 0.18);
 }
 
 .submit-button:disabled {
