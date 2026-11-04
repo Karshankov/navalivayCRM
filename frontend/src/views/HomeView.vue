@@ -208,6 +208,9 @@
           </span>
           <span class="top-product__copy">
             <strong class="top-product__name">{{ product.title }}</strong>
+            <span v-if="product.quantityLabel" class="top-product__sold">
+              {{ product.quantityLabel }}
+            </span>
             <span class="top-product__price">{{ product.priceLabel }}</span>
           </span>
         </button>
@@ -226,6 +229,7 @@ import { useWholesaleStore } from "@/stores/wholesale";
 import { useFavoritesStore } from "@/stores/favorites";
 import { useLoyaltyStore, type LoyaltySnapshotCategory } from "@/stores/loyalty";
 import { useWheelStore } from "@/stores/wheel";
+import type { TopSalesItem } from "@/composables/useCategoryFilters";
 import {
   fetchMyActiveOrder,
   getTelegramIdentity,
@@ -282,28 +286,56 @@ interface TopProductCard {
   title: string;
   priceLabel: string;
   image: string | null;
+  quantityLabel: string;
   product: Product;
 }
 
-const topProducts = computed<TopProductCard[]>(() => {
-  // Из предзагруженного каталога: товары в наличии, сортировка —
-  // простая эвристика (наличие вариантов/популярность недоступна без
-  // отдельного API на главной — берём товары с фото).
-  const products = catalogStore.allProducts
-    .filter((p) => p.minStock === null || p.minStock === undefined || p.minStock > 0)
-    .filter((p) => p.images?.[0])
-    .slice(0, 12);
+/** Топ-5 позиций по продажам (по количеству) за прошлый месяц. */
+interface TopSalesEntry extends TopSalesItem {
+  totalQuantity?: number;
+}
 
-  return products.map((product) => {
+const topSales = ref<TopSalesEntry[]>([]);
+
+const TOP_SALES_LIMIT = 5;
+
+async function loadTopSales() {
+  try {
+    const params = new URLSearchParams({ period: "month" });
+    const response = await fetch(`/api/top-sales-groups?${params.toString()}`);
+    if (!response.ok) return;
+    const data = (await response.json()) as { items?: TopSalesEntry[] };
+    topSales.value = data.items?.slice(0, TOP_SALES_LIMIT) ?? [];
+  } catch {
+    // Молча: лента необязательна, ошибки не роняют главную.
+  }
+}
+
+const topProducts = computed<TopProductCard[]>(() => {
+  // Маппим топ продаж на товары из предзагруженного каталога:
+  // берём любой товар линейки (первый в наличии) как представителя.
+  const byGroup = new Map<string, Product>();
+  for (const product of catalogStore.allProducts) {
+    if (product.groupId && !byGroup.has(product.groupId)) {
+      byGroup.set(product.groupId, product);
+    }
+  }
+
+  const cards: TopProductCard[] = [];
+  for (const sale of topSales.value) {
+    const product = byGroup.get(sale.groupId);
+    if (!product) continue;
     const price = product.variants?.[0]?.priceRub ?? product.priceRub ?? 0;
-    return {
+    cards.push({
       id: product.id,
-      title: product.title,
+      title: product.groupName || product.title,
       priceLabel: `${Number(price).toFixed(2)} BYN`,
       image: product.images?.[0] ?? null,
+      quantityLabel: `${sale.totalQuantity} продано`,
       product,
-    };
-  });
+    });
+  }
+  return cards;
 });
 
 function openProduct(card: TopProductCard) {
@@ -395,8 +427,14 @@ function genitivePositions(value: number) {
 }
 
 async function refreshHomeState() {
+  // Устойчивость: сплэш-прелоад мог упасть по таймауту сети —
+  // каталог подтягиваем сами, ошибки не роняют главную.
   if (!catalogStore.categories.length) {
-    await catalogStore.initialize();
+    try {
+      await catalogStore.initialize();
+    } catch (error) {
+      console.warn("[Home] catalog initialize failed", error);
+    }
   }
 
   if (!cartStore.editingOrderId) {
@@ -413,6 +451,9 @@ async function refreshHomeState() {
 
 onMounted(async () => {
   await refreshHomeState();
+
+  // Топ-5 продаж за прошлый месяц (тихо, лента необязательна).
+  void loadTopSales();
 
   // Баланс рулетки подтягиваем тихо (кэшируется в сторе).
   if (!wheelStore.lastFetchedAt) {
@@ -952,5 +993,11 @@ onMounted(async () => {
   font-size: 13px;
   font-weight: 700;
   color: #191919;
+}
+
+.top-product__sold {
+  font-size: 11px;
+  color: #f50302;
+  font-weight: 600;
 }
 </style>

@@ -108,55 +108,45 @@ watch(
   },
 );
 
-/* Свайп закончился на другом pane — URL обновляем без записи в истории.
- * Программный smooth-скролл (тап по табу, диплинк) не считается:
- * во время анимации onScroll видел бы ПРОМЕЖУТОЧНЫЕ позиции и
- * переключал вкладку «по пути» (тап «Одноразки» из главной ловил
- * позицию «Снюс» и активировал её). Ждём завершения скролла. */
-const isProgrammaticScroll = ref(false);
-let programmaticScrollTimer: ReturnType<typeof setTimeout> | null = null;
-
-function beginProgrammaticScroll() {
-  isProgrammaticScroll.value = true;
-  if (programmaticScrollTimer) clearTimeout(programmaticScrollTimer);
-  // Smooth-скролл ~500мс; страховка, если scrollend не поддержан.
-  programmaticScrollTimer = setTimeout(() => {
-    isProgrammaticScroll.value = false;
-  }, 700);
-}
+/* Свайп закончился на другом pane — URL обновляем без записи в историю.
+ *
+ * МЕХАНИКА: scroll-события приходят потоком во время любого скролла
+ * (пальцем, инерция snap, программный smooth). Считать позицию на
+ * каждом событии нельзя — увидим транзитные pane-ы и переключим
+ * вкладку «по пути». Вместо этого дебаунс: каждое событие
+ * перезапускает таймер; когда поток затихает на DEBOUNCE_MS,
+ * финальная позиция применяется ОДИН раз.
+ *
+ * Тап по табу и route-watcher выставляют activeIndex заранее и
+ * скроллят к цели — при settle index совпадает с activeIndex и
+ * роутер не дёргается. Свайп оставляет решение debounce-у. */
+const SCROLL_DEBOUNCE_MS = 120;
+let scrollSettleTimer: ReturnType<typeof setTimeout> | null = null;
 
 function onScroll() {
-  const carousel = carouselRef.value;
-  if (!carousel || isDragging.value) return;
-  // Промежуточные позиции программной анимации пропускаем:
-  // цель уже известна (activeIndex выставлен до scrollToIndex).
-  if (isProgrammaticScroll.value) return;
+  if (scrollSettleTimer) clearTimeout(scrollSettleTimer);
+  // Палец ещё на экране — ждём touchend, потом поток иссякнет сам.
+  if (isDragging.value) return;
 
-  const index = Math.round(carousel.scrollLeft / carousel.clientWidth);
-  if (index === activeIndex.value) return;
+  scrollSettleTimer = setTimeout(() => {
+    const carousel = carouselRef.value;
+    if (!carousel) return;
+    const index = Math.round(carousel.scrollLeft / carousel.clientWidth);
+    if (index === activeIndex.value) return;
 
-  activeIndex.value = index;
-  const tab = tabs[index];
-  if (!tab) return;
-  mountedPanes.value.add(tab.id);
-  if (route.path !== tab.path) {
-    router.replace(tab.path);
-  }
+    activeIndex.value = index;
+    const tab = tabs[index];
+    if (!tab) return;
+    mountedPanes.value.add(tab.id);
+    if (route.path !== tab.path) {
+      router.replace(tab.path);
+    }
+  }, SCROLL_DEBOUNCE_MS);
 }
 
 function scrollToIndex(index: number, behavior: ScrollBehavior = "auto") {
   const carousel = carouselRef.value;
   if (!carousel) return;
-  if (behavior === "smooth") {
-    beginProgrammaticScroll();
-    carousel.addEventListener(
-      "scrollend",
-      () => {
-        isProgrammaticScroll.value = false;
-      },
-      { once: true, passive: true },
-    );
-  }
   carousel.scrollTo({ left: index * carousel.clientWidth, behavior });
 }
 
@@ -185,7 +175,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
-  if (programmaticScrollTimer) clearTimeout(programmaticScrollTimer);
+  if (scrollSettleTimer) clearTimeout(scrollSettleTimer);
   const carousel = carouselRef.value;
   if (!carousel) return;
   carousel.removeEventListener("touchstart", onTouchStart);

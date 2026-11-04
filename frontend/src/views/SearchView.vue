@@ -72,6 +72,9 @@
           </span>
           <span class="search-item__copy">
             <strong class="search-item__name">{{ product.title }}</strong>
+            <span v-if="product.groupName" class="search-item__group">
+              {{ product.groupName }}
+            </span>
             <span class="search-item__category">{{ categoryName(product) }}</span>
           </span>
           <span class="search-item__price">{{ productPrice(product) }}</span>
@@ -114,15 +117,29 @@ watch(query, (value) => {
 });
 
 const filtered = computed<Product[]>(() => {
-  const q = query.value.trim().toLowerCase();
+  const q = normalize(query.value.trim());
   if (!q) return [];
   const source = catalogStore.allProducts.length
     ? catalogStore.allProducts
     : catalogStore.products;
   return source
-    .filter((product) => product.title?.toLowerCase().includes(q))
+    .filter((product) => {
+      // Ищем везде: название товара, линейка, описание.
+      // Нормализация: регистр + ё→е, чтобы «апельсин» находил «Апельсин».
+      return (
+        normalize(product.title).includes(q) ||
+        normalize(product.groupName ?? "").includes(q) ||
+        normalize(product.description ?? "").includes(q) ||
+        normalize(product.variants?.map((v) => v.name).join(" ") ?? "").includes(q)
+      );
+    })
     .slice(0, 50);
 });
+
+/** Регистронезависимый поиск с поддержкой ё/е. */
+function normalize(value: string): string {
+  return value.toLowerCase().replace(/ё/g, "е");
+}
 
 function productImage(product: Product): string | null {
   return product.images?.[0] ?? null;
@@ -293,6 +310,15 @@ function clear() {
   font-weight: 600;
   color: #191919;
   line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.search-item__group {
+  font-size: 12px;
+  color: #f50302;
+  font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
