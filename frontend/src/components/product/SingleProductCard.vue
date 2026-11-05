@@ -245,6 +245,9 @@ const isAtStockLimit = computed(() => {
   font-size: 16px;
   line-height: 20px;
   color: #191919;
+  /* Длинные названия переносятся по словам целиком — без обрезки
+     и без уменьшения шрифта. */
+  overflow-wrap: break-word;
 }
 
 .single-product-description {

@@ -1207,11 +1207,11 @@ function closeColorPreview() {
   font-size: 16px;
   line-height: 20px;
   color: #191919;
-  /* Длинные названия не выталкивают сердце/шеврон. */
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  /* Длинные названия линеек переносятся по словам целиком — без обрезки
+     многоточием и без уменьшения шрифта. max-width: 100% нужен, потому что
+     info-колонка с align-items: flex-start не растягивает заголовок. */
   max-width: 100%;
+  overflow-wrap: break-word;
 }
 
 .liquid-line-meta {
@@ -1354,11 +1354,9 @@ function closeColorPreview() {
   font-size: 16px;
   line-height: 20px;
   color: #191919;
-  /* Длинные названия подлинеек не выталкивают шеврон за край экрана. */
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 100%;
+  /* Длинные названия подлинеек переносятся по словам целиком — без обрезки
+     многоточием и без уменьшения шрифта. */
+  overflow-wrap: break-word;
 }
 
 .liquid-subline-description {
@@ -1472,11 +1470,9 @@ function closeColorPreview() {
   font-size: 16px;
   line-height: 20px;
   color: #191919;
-  /* Длинные названия вариантов не выталкивают кнопки за край. */
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 100%;
+  /* Длинные названия вариантов переносятся по словам целиком — без обрезки
+     многоточием и без уменьшения шрифта. */
+  overflow-wrap: break-word;
 }
 
 .liquid-variant-price {
@@ -1654,11 +1650,9 @@ function closeColorPreview() {
   font-size: 16px;
   line-height: 20px;
   color: #191919;
-  /* Длинные названия вкусов не выталкивают кнопки +/- за край. */
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 100%;
+  /* Длинные названия вкусов переносятся по словам целиком — без обрезки
+     многоточием и без уменьшения шрифта. */
+  overflow-wrap: break-word;
 }
 
 .liquid-flavor-price {

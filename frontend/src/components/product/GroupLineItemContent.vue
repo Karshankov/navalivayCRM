@@ -567,11 +567,9 @@ function decrementVariantQuantity(
   font-size: 16px;
   line-height: 20px;
   color: #191919;
-  /* Длинные названия вкусов не выталкивают кнопки за край. */
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 100%;
+  /* Длинные названия вариантов переносятся по словам на новую строку —
+     целиком, без обрезки и без уменьшения шрифта. */
+  overflow-wrap: break-word;
 }
 
 .group-variant-price {
@@ -754,11 +752,9 @@ function decrementVariantQuantity(
   font-size: 16px;
   line-height: 20px;
   color: #191919;
-  /* Длинные названия товаров не выталкивают кнопки за край. */
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 100%;
+  /* Длинные названия товаров переносятся по словам на новую строку —
+     целиком, без обрезки и без уменьшения шрифта. */
+  overflow-wrap: break-word;
 }
 
 .group-product-price {
