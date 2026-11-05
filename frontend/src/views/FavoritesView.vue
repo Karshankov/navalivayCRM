@@ -684,10 +684,11 @@ button {
 .list {
   /* Grid без явных колонок раздувает дорожку под max-content длинных
      заголовков — карточка уезжает за экран вместе с кнопками.
-     Одна колонка minmax(0,1fr) сжимает контент и включает ellipsis. */
+     Одна колонка minmax(0,1fr) сжимает контент и позволяет названию
+     переноситься по словам. */
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  /* Дорожка не шире контейнера: длинные названия режутся, кнопки на месте. */
+  /* Дорожка не шире контейнера: длинные названия переносятся, кнопки на месте. */
   max-width: 100%;
   min-width: 0;
   gap: 10px;
@@ -789,11 +790,9 @@ button {
   line-height: 1.22;
   font-weight: 700;
   margin: 0 0 8px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+  /* Название линейки показывается целиком: перенос по словам,
+     без клампа и без уменьшения шрифта. */
+  overflow-wrap: break-word;
 }
 
 .name-unavailable {

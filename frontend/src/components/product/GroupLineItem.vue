@@ -572,13 +572,12 @@ onBeforeUnmount(() => {
   font-size: 16px;
   line-height: 20px;
   color: #191919;
-  /* Длинные названия линеек не выталкивают сердце/шеврон: текст
-     обрезается многоточием в пределах info-колонки. */
-  overflow: hidden;
-  text-overflow: ellipsis;
+  /* Длинные названия линеек переносятся по словам целиком — без обрезки
+     многоточием и без уменьшения шрифта. max-width: 100% нужен, потому что
+     info-колонка с align-items: flex-start не растягивает заголовок. */
   display: block;
-  white-space: nowrap;
   max-width: 100%;
+  overflow-wrap: break-word;
 }
 
 .group-line-meta {

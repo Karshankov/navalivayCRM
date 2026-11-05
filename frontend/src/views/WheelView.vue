@@ -1023,11 +1023,8 @@ onMounted(async () => {
   font-size: 20px;
   line-height: 24px;
   color: #1f2933;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+  /* Название приза показывается целиком: перенос по словам. */
+  overflow-wrap: break-word;
 }
 
 .wheel-result-body__desc {
