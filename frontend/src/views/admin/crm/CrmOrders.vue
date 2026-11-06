@@ -3773,6 +3773,9 @@ function handleVisibilityChange() {
   void refreshToolbarCardLimit();
   // Значок пополнения пересчитывается раз в сутки в 9:00 (и после действий
   // с перемещениями), поэтому переключение вкладок его не перезапрашивает.
+  // Возврат на вкладку — типичный сценарий «ноутбук проспал»: SSE мог тихо
+  // умереть, проверяем соединение сразу, не дожидаясь watchdog-тика.
+  crmStore.ensureRealtimeHealthyOnVisible();
   if (!autoRefreshEnabled.value) return;
   void refreshOrders({ skipNotify: true });
 }
