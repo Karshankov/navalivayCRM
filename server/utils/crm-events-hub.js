@@ -14,12 +14,6 @@ import { buildCrmOrderPollSummary } from './crm-order-polling.js';
  * Один серверный тик в 2.5 с дешевле, чем N вкладок × запрос каждые 15 с:
  * суммарная нагрузка падает, а лаг появления нового заказа — до 2.5 с.
  * Тик и heartbeat работают только пока есть хотя бы один подписчик.
- *
- * Heartbeat — именно `event: ping`, а не комментарий `: ping`: EventSource
- * генерирует addEventListener('ping') и это позволяет клиенту видеть активность
- * сервера. Комментарий-keepalive от клиента незаметен, и полумёртвое
- * (полузакрытое) соединение выглядит живым, пока клиент не начнёт свой
- * watchdog-таймаут.
  */
 
 const TICK_INTERVAL_MS = 2500;
@@ -109,10 +103,9 @@ function ensureTimers(db) {
     heartbeatTimer = setInterval(() => {
       for (const res of clients) {
         try {
-          // Именованное событие ping: доходит до клиента как событие
-          // (клиентский watchdog отличает живое соединение от зомби),
-          // держит соединение через прокси и не мешает summary.
-          writeSseEvent(res, 'ping', Date.now());
+          // Комментарий-keepalive: держит соединение через прокси и не
+          // доходит до клиента как событие.
+          res.write(': ping\n\n');
         } catch {
           /* close-обработчик уберёт */
         }
@@ -140,8 +133,6 @@ export function addCrmEventsClient(db, res) {
     const summary = buildCrmOrderPollSummary({ db });
     lastSentSummary = summary;
     writeSseEvent(res, 'summary', summary);
-    // Сразу пинг, чтобы watchdog клиента начал отсчёт от момента коннекта.
-    writeSseEvent(res, 'ping', Date.now());
   } catch (error) {
     console.error('[crm-events] initial summary failed:', error?.message || error);
   }

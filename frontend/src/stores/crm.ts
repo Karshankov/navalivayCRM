@@ -2012,8 +2012,6 @@ export const useCrmStore = defineStore("crm", () => {
     if (enabled) {
       startRealtime();
       // Страховка: если SSE не подключится, polling остаётся рабочим путём.
-      // startPolling не отключает медленный интервал после коннекта SSE —
-      // тот остаётся навсегда как страховка от зомби-соединений.
       startPolling();
     } else {
       stopRealtime();
@@ -2442,115 +2440,14 @@ export const useCrmStore = defineStore("crm", () => {
   // авторизации, поэтому сначала берётся одноразовый тикет. Любая проблема
   // (нет EventSource, тикет не выдан, соединение оборвалось) откатывает к
   // обычному polling: событие summary по SSE подавляет polling до reconnect.
-  //
-  // Zombie-защита. Разорванное «молча» соединение (сон ноутбука, смена сети,
-  // полузакрытый TCP) может НЕ вызывать onerror: EventSource продолжит
-  // «работать» и события перестают приходить. Раньше это чинилось только
-  // переключением тумблера автообновления. Поэтому:
-  //  1. сервер шлёт event: ping раз в 25 с;
-  //  2. watchdog проверяет любые события (ping/summary) раз в 60 с и при
-  //     тишине свыше 75 с закрывает соединение и переподключается;
-  //  3. polling полностью не выключается: пока SSE жив, он замедлен до
-  //     60 с (низкая нагрузка, но заметит потерю канала), а после
-  //     подтверждения первого summary — быстрый 15-секундный интервал
-  //     останавливается.
   let realtimeEventSource: EventSource | null = null;
   let realtimeReconnectTimer: ReturnType<typeof setTimeout> | null = null;
   let realtimeReconnectAttempt = 0;
   let realtimeStoppedByUser = false;
-  let realtimeWatchdogTimer: ReturnType<typeof setInterval> | null = null;
-  let realtimeLastEventAt = 0;
-  let realtimeConfirmed = false; // получен хотя бы один summary по SSE
-  let realtimeConnecting = false; // connectRealtime в полёте (await тикета)
   const REALTIME_BACKOFF_MS = [5000, 10000, 20000];
-  const REALTIME_WATCHDOG_INTERVAL_MS = 60_000;
-  const REALTIME_SILENCE_LIMIT_MS = 75_000;
-  const POLLING_SLOW_INTERVAL_MS = 60_000;
-
-  function stopWatchdog() {
-    if (realtimeWatchdogTimer) {
-      clearInterval(realtimeWatchdogTimer);
-      realtimeWatchdogTimer = null;
-    }
-  }
-
-  function markRealtimeAlive() {
-    realtimeLastEventAt = Date.now();
-  }
-
-  function startWatchdog() {
-    if (realtimeWatchdogTimer) return;
-    markRealtimeAlive();
-    realtimeWatchdogTimer = setInterval(() => {
-      if (realtimeStoppedByUser) return;
-      const source = realtimeEventSource;
-      if (!source) {
-        // #3: после fallback к чистому polling (SSE был недоступен) канал
-        // сам не оживает, если пользователь не переключает вкладки.
-        // Ретрай на каждом watchdog-тике (раз в 60 с) — дёшево, но
-        // возвращает живой канал, когда SSE снова доступен.
-        if (autoRefreshEnabled.value && !realtimeReconnectTimer && !realtimeConnecting) {
-          realtimeReconnectAttempt = 0;
-          void connectRealtime();
-        }
-        return;
-      }
-      const silentFor = Date.now() - realtimeLastEventAt;
-      if (silentFor <= REALTIME_SILENCE_LIMIT_MS) return;
-      reconnectDeadRealtime(silentFor);
-    }, REALTIME_WATCHDOG_INTERVAL_MS);
-  }
-
-  function reconnectDeadRealtime(silentForMs: number) {
-    const source = realtimeEventSource;
-    if (!source) return;
-    console.warn(
-      `[CRM] SSE silent for ${Math.round(silentForMs / 1000)}s, reconnecting`,
-    );
-    // Зомби-соединение: закрываем без onerror-обработчика, чтобы close()
-    // не запланировал конфликтующий reconnect.
-    source.onmessage = null;
-    source.onerror = null;
-    source.close();
-    realtimeEventSource = null;
-    // Живой канал потерян: до переподключения возвращаем быстрый polling
-    // (15 с). Медленный 60-с интервал мог остаться от живого SSE —
-    // останавливаем его явно, иначе startPolling выйдет по guard
-    // `if (pollingTimer) return`.
-    realtimeConfirmed = false;
-    realtimeReconnectAttempt = 0;
-    stopPolling();
-    startPolling();
-    void connectRealtime();
-  }
-
-  function ensureRealtimeHealthy() {
-    if (realtimeStoppedByUser) return;
-    if (realtimeEventSource && realtimeConfirmed) {
-      // #2: подтверждённое ещё ДО сна соединение могло тихо умереть.
-      // Смотрим свежесть последнего события: если тишина уже превысила
-      // лимит — не сбрасываем часы markRealtimeAlive (это лишь отложило бы
-      // восстановление ещё на ~75-135 с), а переподключаемся немедленно.
-      // Лишний реконнект при выжившем TCP дешев: сервер сразу шлёт
-      // summary + ping.
-      if (Date.now() - realtimeLastEventAt > REALTIME_SILENCE_LIMIT_MS) {
-        reconnectDeadRealtime(Date.now() - realtimeLastEventAt);
-        return;
-      }
-      markRealtimeAlive();
-      return;
-    }
-    if (realtimeReconnectTimer) return; // reconnect уже запланирован
-    // Соединение отсутствует или не подтверждено, таймера нет — тяжёлый
-    // случай (планировщик потерял таймер) — подключаемся сейчас.
-    realtimeReconnectAttempt = 0;
-    void connectRealtime();
-  }
 
   function stopRealtime() {
     realtimeStoppedByUser = true;
-    realtimeConfirmed = false;
-    stopWatchdog();
     if (realtimeReconnectTimer) {
       clearTimeout(realtimeReconnectTimer);
       realtimeReconnectTimer = null;
@@ -2583,16 +2480,8 @@ export const useCrmStore = defineStore("crm", () => {
   }
 
   async function connectRealtime() {
-    if (realtimeStoppedByUser || realtimeEventSource || realtimeConnecting) return;
-    realtimeConnecting = true;
-    try {
-      await connectRealtimeInner();
-    } finally {
-      realtimeConnecting = false;
-    }
-  }
+    if (realtimeStoppedByUser || realtimeEventSource) return;
 
-  async function connectRealtimeInner() {
     let ticket: string | null = null;
     try {
       const response = await fetchAPI<{ ticket: string }>(
@@ -2617,30 +2506,14 @@ export const useCrmStore = defineStore("crm", () => {
       scheduleRealtimeReconnect();
       return;
     }
-    // Гонка: за время await тикета тумблер могли выключить или другой
-    // вызов уже открыл соединение.
-    if (realtimeStoppedByUser || realtimeEventSource) {
-      source.close();
-      return;
-    }
     realtimeEventSource = source;
-    markRealtimeAlive();
-
-    source.addEventListener("ping", () => {
-      markRealtimeAlive();
-    });
 
     source.addEventListener("summary", (event) => {
-      markRealtimeAlive();
       try {
         const summary = JSON.parse((event as MessageEvent).data) as OrderPollSummary;
         applyOrderPollSummary(summary);
-        realtimeConfirmed = true;
-        // Живой канал подтверждён: быстрый polling больше не нужен,
-        // остаётся медленный страховочный (раз в 60 с) — он же подхватывает
-        // доску, если SSE молча умрёт и watchdog ещё не сработал.
+        // Живой канал подтверждён: polling больше не нужен.
         stopPolling();
-        startSlowPolling();
         startRestockDailyRefreshOnly();
       } catch (error) {
         console.error("[CRM] SSE summary parse failed:", error);
@@ -2649,7 +2522,6 @@ export const useCrmStore = defineStore("crm", () => {
 
     source.onopen = () => {
       realtimeReconnectAttempt = 0;
-      markRealtimeAlive();
     };
 
     source.onerror = () => {
@@ -2664,20 +2536,6 @@ export const useCrmStore = defineStore("crm", () => {
   }
 
   /**
-   * Медленный страховочный polling при живом SSE. Нагрузка минимальна
-   * (один запрос раз в 60 с), но канал уведомлений не зависит от одного
-   * EventSource: если он тихо умер, заказы всё равно придут с задержкой
-   * ≤ 60 с, а не «никогда до ручного обновления».
-   */
-  function startSlowPolling() {
-    if (pollingTimer) return;
-    pollingTimer = setInterval(() => {
-      void pollOrderSummary();
-    }, POLLING_SLOW_INTERVAL_MS);
-    scheduleRestockDailyRefresh();
-  }
-
-  /**
    * Restock-обновление живёт в startPolling вместе с polling-таймером.
    * При живом SSE и подавленном polling суточный рефреш всё равно нужен.
    */
@@ -2687,26 +2545,13 @@ export const useCrmStore = defineStore("crm", () => {
 
   function startRealtime() {
     if (!autoRefreshEnabled.value) return;
-    // Watchdog нужен всегда: он переживает переключение тумблера и следит
-    // за зомби-соединениями, даже если соединение уже открыто.
-    startWatchdog();
-    if (realtimeEventSource) {
-      // Соединение есть, но, возможно, тихо умерло до первого summary
-      // (типично после сна/пробуждения). Проверяем watchdog-логикой.
-      ensureRealtimeHealthy();
-      return;
-    }
+    if (realtimeEventSource) return; // уже подключено
     realtimeStoppedByUser = false;
     realtimeReconnectAttempt = 0;
     // Страховка на время подключения: пока SSE не подтверждён первым
     // сообщением, polling продолжает работать (stopPolling вызывается из
     // обработчика summary). Полностью остановим его после коннекта.
     void connectRealtime();
-  }
-
-  function ensureRealtimeHealthyOnVisible() {
-    if (!autoRefreshEnabled.value) return;
-    ensureRealtimeHealthy();
   }
 
   function markOrderAsSeen(orderId: string) {
@@ -6623,7 +6468,6 @@ export const useCrmStore = defineStore("crm", () => {
     stopPolling,
     startRealtime,
     stopRealtime,
-    ensureRealtimeHealthyOnVisible,
     subscribeOrderActivity,
     checkForNewOrders,
     checkForActionRequired,
