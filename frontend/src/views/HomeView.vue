@@ -1,218 +1,140 @@
 <template>
-  <div ref="paneRef" class="home-pane">
-    <!-- Поиск -->
-    <section class="home-section">
-      <form class="home-search" role="search" @submit.prevent="submitSearch">
-        <span class="home-search__icon">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-            <circle cx="10.5" cy="10.5" r="6.5" stroke="#8A94A0" stroke-width="1.8" />
-            <line
-              x1="15.5"
-              y1="15.5"
-              x2="20"
-              y2="20"
-              stroke="#8A94A0"
-              stroke-width="1.8"
-              stroke-linecap="round"
-            />
-          </svg>
-        </span>
-        <input
-          v-model="searchText"
-          class="home-search__input"
-          type="search"
-          inputmode="search"
-          placeholder="Поиск по каталогу"
-          aria-label="Поиск по каталогу"
-          enterkeyhint="search"
+  <div class="min-h-screen" style="background: #f5f7fa">
+    <SmokeParticles :count="4" area="full" />
+
+    <!-- Баннер -->
+    <div v-if="!wholesaleStore.isWholesale && catalogStore.banners.length" class="mb-0 relative banner-wrapper">
+      <div class="banner-container relative">
+        <BannerCarousel
+          :banners="catalogStore.banners"
+          :is-loading="catalogStore.isLoading"
+          :auto-play="true"
+          :auto-play-interval="5000"
         />
-      </form>
-    </section>
-
-    <!-- Лояльность: мини-прогресс скидочной системы -->
-    <section v-if="loyaltyCard" class="home-section">
-      <button class="loyalty-mini" @click="router.push('/profile')">
-        <span class="loyalty-mini__badge">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-            <path
-              d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"
-              fill="#fff"
-            />
-          </svg>
-        </span>
-        <span class="loyalty-mini__copy">
-          <span class="loyalty-mini__row">
-            <strong class="loyalty-mini__title">Скидка {{ loyaltyDiscountLabel }}</strong>
-            <span v-if="loyaltyBonusesLabel" class="loyalty-mini__bonuses">
-              {{ loyaltyBonusesLabel }}
-            </span>
-          </span>
-          <span class="loyalty-mini__track">
-            <span
-              class="loyalty-mini__fill"
-              :style="{ width: `${loyaltyProgressPercent}%` }"
-            ></span>
-          </span>
-          <span class="loyalty-mini__hint">{{ loyaltyHint }}</span>
-        </span>
-        <svg class="loyalty-mini__chevron" width="8" height="14" viewBox="0 0 8 14" fill="none">
-          <path
-            d="M1 1L7 7L1 13"
-            stroke="#AAB2BD"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          />
-        </svg>
-      </button>
-    </section>
-
-    <!-- Активный заказ -->
-    <section v-if="activeOrder && !cartStore.editingOrderId" class="home-section">
-      <button class="active-order-banner" @click="router.push('/my-order')">
-        <div class="active-order-copy">
-          <span class="active-order-kicker">Активный заказ</span>
-          <strong class="active-order-title">Заказ уже оформлен</strong>
-          <span class="active-order-text">
-            {{
-              activeOrder.status === "in_progress"
-                ? "Он уже собран. Откройте заказ, чтобы посмотреть статус или отменить его."
-                : "Откройте заказ, чтобы изменить состав или посмотреть статус."
-            }}
-          </span>
-        </div>
-        <span class="active-order-action">Открыть</span>
-      </button>
-    </section>
-
-    <!-- Оптовый режим -->
-    <section v-if="wholesaleStore.isWholesale" class="home-section">
-      <div class="wholesale-mode-card">
-        <p class="wholesale-mode-kicker">Оптовый режим</p>
-        <p class="wholesale-mode-title">{{ wholesaleStore.wholesaleLabel }}</p>
-        <p class="wholesale-mode-text">
-          <template v-if="wholesaleStore.effectiveMinQuantity">
-            Минимальное количество заказа -
-            {{ wholesaleStore.effectiveMinQuantity }}
-            {{ pluralPositions(wholesaleStore.effectiveMinQuantity) }}<span
-              v-if="wholesaleStore.minOverride"
-              > · персональный минимум</span
-            >.
-            <template v-if="remainingWholesaleMinimum > 0">
-              Сейчас не хватает {{ remainingWholesaleMinimum }}
-              {{ genitivePositions(remainingWholesaleMinimum) }}.
-            </template>
-            <template v-else>
-              Минимум уже выполнен.
-            </template>
-          </template>
-          <template v-else>
-            Минимальная сумма заказа - {{ wholesaleStore.minOrderAmount.toFixed(0) }} BYN.
-            <template v-if="remainingWholesaleMinimum > 0">
-              Сейчас не хватает {{ remainingWholesaleMinimum.toFixed(2) }} BYN.
-            </template>
-            <template v-else>
-              Минимум уже выполнен.
-            </template>
-          </template>
-        </p>
       </div>
-    </section>
+    </div>
 
-    <!-- Быстрые ссылки: избранное по макету favorites.html + рулетка-мини -->
-    <section v-if="!wholesaleStore.isWholesale" class="home-section">
-      <!-- Избранное: утверждённый макет 1в1 -->
-      <router-link
-        to="/favorites"
-        class="favorites"
-        aria-label="Открыть избранное"
+    <div class="main-content-wrapper">
+      <!-- Кнопка избранного под баннером (утверждённый макет) -->
+      <section
+        v-if="!wholesaleStore.isWholesale"
+        class="favorites-banner-section"
+        aria-label="Избранное"
       >
-        <img
-          class="favorites__sticker"
-          src="/img/favorites-sticker.webp"
-          alt=""
-          draggable="false"
-        />
-        <span class="favorites__title">Избранное</span>
-        <svg
-          class="favorites__arrow"
-          viewBox="0 0 24 42"
-          aria-hidden="true"
-          focusable="false"
-        >
-          <path d="M3 3 21 21 3 39" />
-        </svg>
-      </router-link>
+        <FavoritesBanner />
+      </section>
 
-      <!-- Мини-рулетка: баланс спинов + компактное колесо -->
-      <router-link to="/wheel" class="wheel-mini">
-        <span class="wheel-mini__wheel" aria-hidden="true">
-          <svg viewBox="0 0 64 64" fill="none">
-            <circle cx="32" cy="32" r="29" stroke="#191919" stroke-width="3" />
-            <g class="wheel-mini__spokes">
-              <line x1="32" y1="3" x2="32" y2="61" stroke="#191919" stroke-width="2" />
-              <line x1="3" y1="32" x2="61" y2="32" stroke="#191919" stroke-width="2" />
-              <line x1="11" y1="11" x2="53" y2="53" stroke="#191919" stroke-width="2" />
-              <line x1="53" y1="11" x2="11" y2="53" stroke="#191919" stroke-width="2" />
-            </g>
-            <circle cx="32" cy="32" r="7" fill="#F50302" />
-            <circle cx="32" cy="32" r="7" stroke="#191919" stroke-width="2" />
-          </svg>
-        </span>
-        <span class="wheel-mini__copy">
-          <strong class="wheel-mini__title">Рулетка</strong>
-          <span v-if="wheelSpins > 0" class="wheel-mini__text">
-            {{ wheelSpins }} {{ pluralSpins(wheelSpins) }} — крути!
-          </span>
-          <span v-else class="wheel-mini__text">Выигрывай призы каждый день</span>
-        </span>
-        <svg class="wheel-mini__chevron" width="8" height="14" viewBox="0 0 8 14" fill="none">
-          <path
-            d="M1 1L7 7L1 13"
-            stroke="#AAB2BD"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          />
-        </svg>
-      </router-link>
-    </section>
+      <section v-if="wholesaleStore.isWholesale" class="px-4 pt-4">
+        <div class="wholesale-mode-card">
+          <p class="wholesale-mode-kicker">Оптовый режим</p>
+          <p class="wholesale-mode-title">
+            {{ wholesaleStore.wholesaleLabel }}
+          </p>
+          <p class="wholesale-mode-text">
+            <template v-if="wholesaleStore.effectiveMinQuantity">
+              Минимальное количество заказа -
+              {{ wholesaleStore.effectiveMinQuantity }}
+              {{ pluralPositions(wholesaleStore.effectiveMinQuantity) }}<span
+                v-if="wholesaleStore.minOverride"
+              > · персональный минимум</span>.
+              <template v-if="remainingWholesaleMinimum > 0">
+                Сейчас не хватает {{ remainingWholesaleMinimum }}
+                {{ genitivePositions(remainingWholesaleMinimum) }}.
+              </template>
+              <template v-else>
+                Минимум уже выполнен.
+              </template>
+            </template>
+            <template v-else>
+              Минимальная сумма заказа - {{ wholesaleStore.minOrderAmount.toFixed(0) }} BYN.
+              <template v-if="remainingWholesaleMinimum > 0">
+                Сейчас не хватает {{ remainingWholesaleMinimum.toFixed(2) }} BYN.
+              </template>
+              <template v-else>
+                Минимум уже выполнен.
+              </template>
+            </template>
+          </p>
+        </div>
+      </section>
 
-    <!-- Лента «Чаще покупают»: топ товаров, свайпается как сторис -->
-    <section v-if="!wholesaleStore.isWholesale && topProducts.length" class="home-section">
-      <h2 class="home-row-title">Чаще покупают</h2>
-      <div class="top-products" ref="topRowRef">
-        <button
-          v-for="product in topProducts"
-          :key="product.id"
-          class="top-product"
-          @click="openProduct(product)"
-        >
-          <span
-            class="top-product__media"
-            :style="product.image ? { backgroundImage: `url(${product.image})` } : {}"
+      <section v-if="activeOrder && !cartStore.editingOrderId" class="active-order-section">
+        <button class="active-order-banner" @click="router.push('/my-order')">
+          <div class="active-order-copy">
+            <span class="active-order-kicker">Активный заказ</span>
+            <strong class="active-order-title">Заказ уже оформлен</strong>
+            <span class="active-order-text">
+              {{
+                activeOrder.status === "in_progress"
+                  ? "Он уже собран. Откройте заказ, чтобы посмотреть статус или отменить его."
+                  : "Откройте заказ, чтобы изменить состав или посмотреть статус."
+              }}
+            </span>
+          </div>
+          <span class="active-order-action">Открыть</span>
+        </button>
+      </section>
+
+      <section class="category-section">
+        <!-- Сетка категорий -->
+        <div class="category-grid">
+          <button
+            v-for="category in categoryCards"
+            :key="category.id"
+            class="category-card-wrapper"
+            @click="openCategory(category.slug)"
           >
-            <svg
-              v-if="!product.image"
-              width="30"
-              height="30"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="#C7CDD4"
-              stroke-width="1.5"
-            >
-              <rect x="3" y="3" width="18" height="18" rx="3" />
-              <circle cx="8.5" cy="8.5" r="1.5" />
-              <path d="M21 15l-5-5L5 21" />
-            </svg>
-          </span>
-          <span class="top-product__copy">
-            <strong class="top-product__name">{{ product.title }}</strong>
-            <span class="top-product__price">{{ product.priceLabel }}</span>
-          </span>
+            <div class="category-card-box">
+              <div
+                class="category-card-media"
+                :style="{ backgroundImage: `url(${category.previewImage})` }"
+              ></div>
+              <DiscountBadge v-if="category.hasDiscount" class="category-card-discount" />
+            </div>
+            <p class="category-card-title">{{ category.name }}</p>
+          </button>
+        </div>
+      </section>
+    </div>
+
+    <!-- Cart Button - Figma Redesign -->
+    <Transition name="cart-slide">
+      <div v-if="totalCartItems > 0 && !wholesaleStore.isWholesale" class="cart-wrapper">
+        <button class="cart-button" @click="goToCheckout">
+          <svg
+            width="17"
+            height="16"
+            viewBox="0 0 17 16"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            class="cart-icon"
+          >
+            <path
+              d="M1 1H3.5L4.5 3M4.5 3L6.5 9H13.5L15.5 3H4.5Z"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+            <circle
+              cx="6"
+              cy="13"
+              r="1.5"
+              stroke="currentColor"
+              stroke-width="1.6"
+            />
+            <circle
+              cx="13"
+              cy="13"
+              r="1.5"
+              stroke="currentColor"
+              stroke-width="1.6"
+            />
+          </svg>
+          <span class="cart-text">Заказ на {{ totalCartAmount }} BYN</span>
         </button>
       </div>
-    </section>
+    </Transition>
   </div>
 </template>
 
@@ -220,188 +142,64 @@
 import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 
-import { useCatalogStore, type Product } from "@/stores/catalog";
+import { useCatalogStore, type Category } from "@/stores/catalog";
 import { useCartStore } from "@/stores/cart";
 import { useWholesaleStore } from "@/stores/wholesale";
 import { useFavoritesStore } from "@/stores/favorites";
-import { useLoyaltyStore, type LoyaltySnapshotCategory } from "@/stores/loyalty";
-import { useWheelStore } from "@/stores/wheel";
-import type { TopSalesItem } from "@/composables/useCategoryFilters";
+import FavoritesBanner from "@/components/FavoritesBanner.vue";
+import SmokeParticles from "@/components/SmokeParticles.vue";
+import BannerCarousel from "@/components/BannerCarousel.vue";
+import DiscountBadge from "@/components/product/DiscountBadge.vue";
+import { hasDiscountForProduct } from "@/components/product/groupPrice";
 import {
   fetchMyActiveOrder,
   getTelegramIdentity,
   type CustomerActiveOrder,
 } from "@/utils/customerOrders";
 
-/**
- * Главная вкладка: поиск, лояльность, активный заказ, опт-плашка,
- * избранное (макет favorites.html 1в1), мини-рулетка, топ-товары.
- * Все данные предзагружены сплэшем — рендер мгновенный.
- */
-defineProps<{
-  isActive?: boolean;
-}>();
-
 const catalogStore = useCatalogStore();
 const cartStore = useCartStore();
 const wholesaleStore = useWholesaleStore();
 const favoritesStore = useFavoritesStore();
-const loyaltyStore = useLoyaltyStore();
-const wheelStore = useWheelStore();
 const router = useRouter();
-const paneRef = ref<HTMLElement | null>(null);
-const topRowRef = ref<HTMLElement | null>(null);
 const activeOrder = ref<CustomerActiveOrder | null>(null);
-const searchText = ref("");
 
-const favoritesCount = computed(() => favoritesStore.inStockItems.length);
+const PLACEHOLDER_IMAGE = "/placeholder-category.png";
 
-/* ===== Поиск ===== */
+const categories = computed<Category[]>(() => catalogStore.categories);
 
-function submitSearch() {
-  const query = searchText.value.trim();
-  if (!query) return;
-  router.push({ name: "search-results", query: { q: query } });
-}
-
-/* ===== Рулетка ===== */
-
-const wheelSpins = computed(() => wheelStore.balance.spins_available);
-
-function pluralSpins(value: number) {
-  const mod10 = value % 10;
-  const mod100 = value % 100;
-  if (mod10 === 1 && mod100 !== 11) return "спин";
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return "спина";
-  return "спинов";
-}
-
-/* ===== Топ-товары ===== */
-
-interface TopProductCard {
-  id: string;
-  title: string;
-  priceLabel: string;
-  image: string | null;
-  product: Product;
-}
-
-/** Топ-5 позиций по продажам (по количеству) за прошлый месяц. */
-interface TopSalesEntry extends TopSalesItem {
-  totalQuantity?: number;
-}
-
-const topSales = ref<TopSalesEntry[]>([]);
-
-const TOP_SALES_LIMIT = 5;
-
-async function loadTopSales() {
-  try {
-    const params = new URLSearchParams({ period: "month" });
-    const response = await fetch(`/api/top-sales-groups?${params.toString()}`);
-    if (!response.ok) return;
-    const data = (await response.json()) as { items?: TopSalesEntry[] };
-    topSales.value = data.items?.slice(0, TOP_SALES_LIMIT) ?? [];
-  } catch {
-    // Молча: лента необязательна, ошибки не роняют главную.
-  }
-}
-
-const topProducts = computed<TopProductCard[]>(() => {
-  // Маппим топ продаж на товары из предзагруженного каталога:
-  // берём любой товар линейки (первый в наличии) как представителя.
-  const byGroup = new Map<string, Product>();
+/**
+ * Категории со скидками. Товар попал в этот список — значит он в наличии,
+ * сервер отсеял пустые остатки ещё при выдаче каталога.
+ */
+const categoriesWithDiscount = computed(() => {
+  const ids = new Set<string>();
   for (const product of catalogStore.allProducts) {
-    if (product.groupId && !byGroup.has(product.groupId)) {
-      byGroup.set(product.groupId, product);
-    }
+    if (product.categoryId && hasDiscountForProduct(product)) ids.add(product.categoryId);
   }
-
-  const cards: TopProductCard[] = [];
-  for (const sale of topSales.value) {
-    const product = byGroup.get(sale.groupId);
-    if (!product) continue;
-    const price = product.variants?.[0]?.priceRub ?? product.priceRub ?? 0;
-    cards.push({
-      id: product.id,
-      title: product.groupName || product.title,
-      priceLabel: `${Number(price).toFixed(2)} BYN`,
-      image: product.images?.[0] ?? null,
-      product,
-    });
-  }
-  return cards;
+  return ids;
 });
 
-function openProduct(card: TopProductCard) {
-  catalogStore.currentProduct = card.product;
-  router.push({ name: "product", params: { id: card.product.id } });
-}
-
-/* ===== Лояльность ===== */
-
-const LOYALTY_CATEGORY_ORDER = ["liquids", "disposables", "devices"];
-
-/** Основная категория лояльности: приоритет активной, иначе первая по порядку. */
-const loyaltyCard = computed<LoyaltySnapshotCategory | null>(() => {
-  const snapshot = loyaltyStore.snapshot;
-  if (!snapshot.length) return null;
-  const active = snapshot.find((item) => Number(item.active));
-  if (active) return active;
-  const sorted = [...snapshot].sort((left, right) => {
-    const leftIndex = LOYALTY_CATEGORY_ORDER.indexOf(left.key);
-    const rightIndex = LOYALTY_CATEGORY_ORDER.indexOf(right.key);
-    const normalizedLeft = leftIndex === -1 ? 99 : leftIndex;
-    const normalizedRight = rightIndex === -1 ? 99 : rightIndex;
-    if (normalizedLeft !== normalizedRight) {
-      return normalizedLeft - normalizedRight;
-    }
-    return left.title.localeCompare(right.title, "ru");
+const categoryCards = computed(() => {
+  return categories.value.map((category) => {
+    const previewImage =
+      category.coverImage ||
+      category.groups.find((group) => group.coverImage)?.coverImage ||
+      PLACEHOLDER_IMAGE;
+    return {
+      id: category.id,
+      slug: category.slug,
+      name: category.name,
+      order: category.order,
+      productCount: category.productCount,
+      previewImage,
+      hasDiscount: categoriesWithDiscount.value.has(category.id),
+    };
   });
-  return sorted[0] ?? null;
 });
 
-const loyaltyProgressPercent = computed(() => {
-  const card = loyaltyCard.value;
-  if (!card) return 0;
-  const threshold = Number(card.threshold || 0);
-  if (!threshold) return 0;
-  const balance = Number(card.balance || 0);
-  const current = balance % threshold === 0 && balance > 0 ? threshold : balance % threshold;
-  return Math.round((current / threshold) * 100);
-});
-
-const loyaltyDiscountLabel = computed(() => {
-  const card = loyaltyCard.value;
-  if (!card) return "";
-  const amount = Number(card.discount_amount || 0);
-  const available = Number(card.available_bonus_count || 0);
-  return available > 0 ? `${amount} BYN готова` : `${amount} BYN`;
-});
-
-const loyaltyBonusesLabel = computed(() => {
-  const available = loyaltyStore.snapshot.reduce(
-    (sum, item) => sum + Number(item.available_bonus_count || 0),
-    0,
-  );
-  return available > 0 ? `${available} к применению` : "";
-});
-
-const loyaltyHint = computed(() => {
-  const card = loyaltyCard.value;
-  if (!card) return "";
-  const available = Number(card.available_bonus_count || 0);
-  if (available > 0) {
-    return `Скидка ${card.discount_amount} BYN ждёт в корзине`;
-  }
-  const threshold = Number(card.threshold || 0);
-  const balance = Number(card.balance || 0);
-  const remaining = Number(card.remaining_to_next || 0);
-  if (remaining <= 0 && threshold > 0) return "Скидка почти готова";
-  const current = threshold > 0 ? balance % threshold : 0;
-  return `${current} / ${threshold} покупок — осталось ${remaining}`;
-});
-
+const totalCartItems = computed(() => cartStore.totalItems);
+const totalCartAmount = computed(() => cartStore.totalAmount.toFixed(2));
 const remainingWholesaleMinimum = computed(() =>
   wholesaleStore.remainingToMinimum(cartStore.countableWholesaleUnits, cartStore.totalAmount),
 );
@@ -414,6 +212,7 @@ function pluralPositions(value: number) {
   return "позиций";
 }
 
+// «Не хватает N …» — родительный падеж.
 function genitivePositions(value: number) {
   const mod10 = value % 10;
   const mod100 = value % 100;
@@ -421,16 +220,16 @@ function genitivePositions(value: number) {
   return "позиций";
 }
 
+function openCategory(slug: string) {
+  router.push({ name: "category", params: { slug } });
+}
+
+function goToCheckout() {
+  router.push("/checkout");
+}
+
 async function refreshHomeState() {
-  // Устойчивость: сплэш-прелоад мог упасть по таймауту сети —
-  // каталог подтягиваем сами, ошибки не роняют главную.
-  if (!catalogStore.categories.length) {
-    try {
-      await catalogStore.initialize();
-    } catch (error) {
-      console.warn("[Home] catalog initialize failed", error);
-    }
-  }
+  await catalogStore.initialize();
 
   if (!cartStore.editingOrderId) {
     try {
@@ -447,14 +246,12 @@ async function refreshHomeState() {
 onMounted(async () => {
   await refreshHomeState();
 
-  // Топ-5 продаж за прошлый месяц (тихо, лента необязательна).
-  void loadTopSales();
-
-  // Баланс рулетки подтягиваем тихо (кэшируется в сторе).
-  if (!wheelStore.lastFetchedAt) {
-    void wheelStore.fetchState().catch(() => undefined);
+  // Избранное грузим один раз за сессию: сердечки и страница берут из стора.
+  if (!favoritesStore.isLoaded) {
+    void favoritesStore.fetchFavorites();
   }
 
+  // Персональный минимум мог смениться админом среди сессии.
   if (wholesaleStore.isWholesale) {
     void wholesaleStore.refreshEffectiveMinimum();
   }
@@ -466,527 +263,414 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.home-pane {
-  min-height: 100%;
-  background: #f5f7fa;
-  padding: 14px 16px calc(var(--app-bottom-tab-bar-height, 52px) + 24px);
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
+.banner-wrapper {
+  overflow-x: hidden;
+  overflow-y: visible;
+  padding-top: 20px;
+  background-color: #ffffff;
 }
 
-.home-section {
-  animation: home-rise 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+.banner-container {
+  position: relative;
 }
-
-.home-section:nth-child(2) {
-  animation-delay: 0.05s;
-}
-
-.home-section:nth-child(3) {
-  animation-delay: 0.1s;
-}
-
-.home-section:nth-child(4) {
-  animation-delay: 0.15s;
-}
-
-.home-section:nth-child(5) {
-  animation-delay: 0.2s;
-}
-
-.home-section:nth-child(6) {
-  animation-delay: 0.25s;
-}
-
-@keyframes home-rise {
-  from {
-    opacity: 0;
-    transform: translateY(14px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-/* ===== Активный заказ ===== */
-
-.active-order-banner {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  padding: 14px 16px;
-  background: #fff;
-  border: 1px solid rgba(25, 25, 25, 0.06);
-  border-radius: 16px;
-  text-align: left;
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-  transition: transform 0.15s ease, box-shadow 0.2s ease;
-  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
-}
-
-.active-order-banner:active {
-  transform: scale(0.98);
-}
-
-.active-order-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  min-width: 0;
-  flex: 1;
-}
-
-.active-order-kicker {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: #f50302;
-}
-
-.active-order-title {
-  font-size: 15px;
-  font-weight: 700;
-  color: #191919;
-  letter-spacing: -0.01em;
-}
-
-.active-order-text {
-  font-size: 12.5px;
-  line-height: 1.45;
-  color: #7b8794;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.active-order-action {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 auto;
-  height: 32px;
-  padding: 0 14px;
-  border-radius: 10px;
-  background: #191919;
-  color: #fff;
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-}
-
-/* ===== Оптовая плашка ===== */
 
 .wholesale-mode-card {
+  background: linear-gradient(145deg, #191919 0%, #363636 100%);
+  border-radius: 20px;
+  padding: 18px 16px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  width: 100%;
-  padding: 14px 16px;
-  background: #fff;
-  border-radius: 16px;
-  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+  gap: 6px;
+  color: #ffffff;
 }
 
 .wholesale-mode-kicker {
   margin: 0;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
+  font-family: -apple-system, "SF Pro Display", sans-serif;
+  font-size: 12px;
+  line-height: 14px;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #f50302;
+  color: rgba(255, 255, 255, 0.58);
 }
 
 .wholesale-mode-title {
   margin: 0;
-  font-size: 15px;
+  font-family: "Montserrat", sans-serif;
   font-weight: 700;
-  color: #191919;
-  letter-spacing: -0.01em;
+  font-size: 18px;
+  line-height: 22px;
 }
 
 .wholesale-mode-text {
-  margin: 2px 0 0;
-  font-size: 12.5px;
-  line-height: 1.5;
-  color: #7b8794;
+  margin: 0;
+  font-family: -apple-system, "SF Pro Display", sans-serif;
+  font-size: 14px;
+  line-height: 19px;
+  color: rgba(255, 255, 255, 0.78);
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .home-section {
-    animation: none;
-  }
+.active-order-section {
+  padding: 12px 16px 0;
 }
 
-/* ===== Поиск ===== */
-
-.home-search {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  height: 44px;
-  padding: 0 14px;
-  background: #fff;
-  border-radius: 14px;
-  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
-  transition: box-shadow 0.2s ease;
-}
-
-.home-search:focus-within {
-  box-shadow: 0 2px 12px rgba(16, 24, 40, 0.08);
-}
-
-.home-search__icon {
-  display: flex;
-  flex: 0 0 auto;
-}
-
-.home-search__input {
-  flex: 1;
-  min-width: 0;
-  border: none;
-  outline: none;
-  background: none;
-  font-size: 15px;
-  color: #191919;
-  font-family: inherit;
-}
-
-.home-search__input::placeholder {
-  color: #98a1ac;
-}
-
-.home-search__input::-webkit-search-cancel-button {
-  -webkit-appearance: none;
-}
-
-/* ===== Лояльность ===== */
-
-.loyalty-mini {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+.active-order-banner {
   width: 100%;
-  padding: 14px 16px;
-  background: #fff;
   border: none;
-  border-radius: 16px;
+  border-radius: 24px;
+  padding: 20px 20px 22px;
+  background: linear-gradient(106.76deg, #f50302 -2.64%, #a90f0e 85.78%);
+  color: #ffffff;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
   text-align: left;
   cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-  transition: transform 0.15s ease, box-shadow 0.2s ease;
-  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+  box-shadow: 0 8px 16px rgba(97, 1, 0, 0.16);
 }
 
-.loyalty-mini:active {
-  transform: scale(0.98);
-}
-
-.loyalty-mini__badge {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 11px;
-  background: linear-gradient(135deg, #f50302, #d30707);
-  flex: 0 0 auto;
-}
-
-.loyalty-mini__copy {
+.active-order-copy {
+  flex: 1 1 auto;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-  flex: 1;
-}
-
-.loyalty-mini__row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
   gap: 8px;
 }
 
-.loyalty-mini__title {
-  font-size: 15px;
-  font-weight: 700;
-  color: #191919;
-  letter-spacing: -0.01em;
-  white-space: nowrap;
-}
-
-.loyalty-mini__bonuses {
+.active-order-kicker {
+  font-family: -apple-system, "SF Pro Display", sans-serif;
   font-size: 12px;
-  font-weight: 600;
-  color: #f50302;
-  white-space: nowrap;
+  line-height: 14px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 227, 226, 0.78);
 }
 
-.loyalty-mini__track {
-  display: block;
-  width: 100%;
-  height: 4px;
-  border-radius: 2px;
-  background: rgba(25, 25, 25, 0.06);
-  overflow: hidden;
-}
-
-.loyalty-mini__fill {
-  display: block;
-  height: 100%;
-  border-radius: 2px;
-  background: linear-gradient(90deg, #f50302, #d30707);
-  transition: width 0.6s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.loyalty-mini__hint {
-  font-size: 12px;
-  color: #7b8794;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.loyalty-mini__chevron {
-  flex: 0 0 auto;
-}
-
-/* ===== Избранное: макет favorites.html 1в1 ===== */
-
-.favorites {
-  position: relative;
-  display: block;
-  width: 100%;
-  aspect-ratio: 778 / 146;
-  padding: 0;
-  border: 0;
-  border-radius: 4.756% / 25.342%;
-  background: #fff;
-  color: #080808;
-  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
-  cursor: pointer;
-  text-decoration: none;
-  -webkit-tap-highlight-color: transparent;
-  appearance: none;
-  container-type: inline-size;
-  transition: transform 0.15s ease;
-}
-
-.favorites:active {
-  transform: scale(0.98);
-}
-
-.favorites:focus-visible {
-  outline: 3px solid #ed0000;
-  outline-offset: 4px;
-}
-
-.favorites__sticker {
-  position: absolute;
-  left: 7.712%;
-  top: 2.74%;
-  width: 16.71%;
-  height: 94.52%;
-  display: block;
-  overflow: hidden;
-  pointer-events: none;
-  object-fit: cover;
-}
-
-.favorites__title {
-  position: absolute;
-  left: 31.105%;
-  top: 50%;
-  transform: translateY(-50%);
-  margin: 0;
-  white-space: nowrap;
-  font-size: 5.6555cqi;
-  line-height: 1;
+.active-order-title {
+  font-family: "Montserrat", sans-serif;
+  font-size: 18px;
+  line-height: 22px;
   font-weight: 700;
-  letter-spacing: -0.08cqi;
 }
 
-.favorites__arrow {
-  position: absolute;
-  left: 92.03%;
-  top: 35.62%;
-  width: 3.085%;
-  height: 28.77%;
-  fill: none;
-  stroke: #969696;
-  stroke-width: 4;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+.active-order-text {
+  font-family: -apple-system, "SF Pro Display", sans-serif;
+  font-size: 14px;
+  line-height: 19px;
+  color: #ffd8d7;
+  max-width: 270px;
 }
 
-/* ===== Мини-рулетка ===== */
-
-.wheel-mini {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 12px 16px;
-  background: #fff;
-  border-radius: 16px;
-  text-decoration: none;
-  -webkit-tap-highlight-color: transparent;
-  transition: transform 0.15s ease;
-  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
-  /* Зазор от карточки «Избранное» над нами (в одном section). */
-  margin-top: 14px;
-}
-
-.wheel-mini:active {
-  transform: scale(0.98);
-}
-
-.wheel-mini__wheel {
-  display: flex;
+.active-order-action {
+  flex-shrink: 0;
+  min-width: 92px;
+  min-height: 48px;
+  padding: 0 18px;
+  border-radius: 999px;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  background: #f5f7fa;
-  flex: 0 0 auto;
-}
-
-.wheel-mini__wheel svg {
-  width: 40px;
-  height: 40px;
-}
-
-/* Живое колесо: постоянное медленное вращение спиц */
-.wheel-mini__spokes {
-  animation: wheel-rotate 9s linear infinite;
-  transform-origin: 32px 32px;
-}
-
-@keyframes wheel-rotate {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .wheel-mini__spokes {
-    animation: none;
-  }
-}
-
-.wheel-mini__copy {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-  flex: 1;
-}
-
-.wheel-mini__title {
-  font-size: 15px;
+  background: #ffffff;
+  color: #191919;
+  font-family: "Montserrat", sans-serif;
+  font-size: 14px;
   font-weight: 600;
-  color: #191919;
-  letter-spacing: -0.01em;
 }
 
-.wheel-mini__text {
-  font-size: 13px;
-  color: #7b8794;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.wheel-mini__chevron {
-  flex: 0 0 auto;
-}
-
-/* ===== Топ-товары ===== */
-
-.home-row-title {
-  margin: 6px 2px 0;
-  font-size: 17px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  color: #191919;
-}
-
-.top-products {
-  display: flex;
-  gap: 10px;
-  overflow-x: auto;
-  padding: 10px 2px 6px;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-  overscroll-behavior-x: contain;
-  -webkit-overflow-scrolling: touch;
-}
-
-.top-products::-webkit-scrollbar {
-  display: none;
-}
-
-.top-product {
+/* Category card wrapper - transparent, holds box + title */
+.category-card-wrapper {
   display: flex;
   flex-direction: column;
-  flex: 0 0 auto;
-  width: 128px;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
   border: none;
-  background: #fff;
-  border-radius: 16px;
-  padding: 0 0 10px;
   cursor: pointer;
-  text-align: left;
-  -webkit-tap-highlight-color: transparent;
-  transition: transform 0.15s ease;
-  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
-  overflow: hidden;
+  transition: transform 0.25s ease;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent; /* Remove iOS tap highlight */
 }
 
-.top-product:active {
-  transform: scale(0.96);
+.category-card-wrapper:hover {
+  transform: translateY(-4px);
 }
 
-.top-product__media {
+/* White box containing the image */
+.category-card-box {
+  position: relative;
+  width: 107px;
+  height: 107px;
+  background: #ffffff;
+  border-radius: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 128px;
-  height: 128px;
-  background: #f5f7fa center / cover no-repeat;
-}
-
-.top-product__copy {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  padding: 8px 10px 0;
-  min-width: 0;
-}
-
-.top-product__name {
-  font-size: 12.5px;
-  font-weight: 600;
-  color: #191919;
-  line-height: 1.25;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
   overflow: hidden;
 }
 
-.top-product__price {
-  font-size: 13px;
-  font-weight: 700;
-  color: #191919;
+/* Плашка прижата к низу картинки: там она не спорит с самим изображением. */
+.category-card-discount {
+  position: absolute;
+  left: 50%;
+  bottom: 6px;
+  transform: translateX(-50%);
+  padding: 3px 8px;
+  font-size: 9px;
+  line-height: 11px;
+  letter-spacing: 0.04em;
+}
+
+.category-card-media {
+  width: 84%;
+  height: 84%;
+  background-size: contain;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+.category-card-title {
+  font-family: "Montserrat", sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 15px;
+  text-align: center;
+  letter-spacing: 0.008em;
+  color: #000000;
+  margin: 0;
+  /* Ровно по ширине карточки: иначе длинное название вылезает за её края и
+     подпись перестаёт читаться как центрированная под картинкой. */
+  width: 100%;
+}
+
+/* Сетка категорий - автоматические равномерные отступы включая края экрана */
+.category-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 107px);
+  justify-content: space-around;
+  row-gap: 12px;
+  padding: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+@media (max-width: 393px) {
+  /* iPhone 14/15 и аналогичные - 393px ширина */
+  .category-grid {
+    grid-template-columns: repeat(3, 107px);
+    row-gap: 12px;
+    padding: 0;
+  }
+}
+
+@media (max-width: 375px) {
+  /* iPhone SE/Mini - чуть меньше отступы */
+  .category-grid {
+    grid-template-columns: repeat(3, 103px);
+    row-gap: 10px;
+    padding: 0;
+  }
+
+  .category-card-box {
+    width: 103px;
+    height: 103px;
+  }
+}
+
+@media (max-width: 360px) {
+  .active-order-banner {
+    padding: 16px;
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .active-order-action {
+    width: 100%;
+  }
+
+  /* 360px экраны */
+  .category-grid {
+    grid-template-columns: repeat(3, 97px);
+    row-gap: 8px;
+    padding: 0;
+  }
+
+  .category-card-box {
+    width: 97px;
+    height: 97px;
+    border-radius: 14px;
+  }
+
+  .category-card-title {
+    font-size: 11px;
+    line-height: 14px;
+  }
+
+  .main-content-wrapper {
+    padding-bottom: 88px;
+  }
+
+  .cart-wrapper {
+    bottom: calc(var(--app-cart-bottom-offset) + 12px);
+  }
+}
+
+@media (max-width: 320px) {
+  /* 320px экраны */
+  .category-grid {
+    grid-template-columns: repeat(3, 85px);
+    row-gap: 6px;
+    padding: 0;
+  }
+
+  .category-card-box {
+    width: 85px;
+    height: 85px;
+    border-radius: 12px;
+  }
+
+  .category-card-title {
+    font-size: 10px;
+    line-height: 13px;
+  }
+}
+
+/* Main Content Wrapper */
+.main-content-wrapper {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 16px 96px 16px;
+  position: relative;
+  z-index: 10;
+}
+
+.category-section {
+  position: relative;
+  min-height: 0;
+  margin-top: 1rem;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* ===== Cart Button Styles (Brutal Card Style) ===== */
+.cart-wrapper {
+  position: fixed;
+  bottom: var(--app-cart-bottom-offset);
+  left: 0;
+  right: 0;
+  z-index: 50;
+  padding: 0 1rem;
+  pointer-events: none;
+  transition: bottom 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.cart-button {
+  width: 100%;
+  max-width: 345px;
+  height: 64px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 0 2rem;
+  position: relative;
+
+  /* Figma: Red gradient */
+  background: linear-gradient(90deg, #f50302 0%, #a90f0e 100%);
+  border: none;
+  border-radius: 528px;
+
+  cursor: pointer;
+  pointer-events: auto;
+  transition: transform 0.25s ease;
+}
+
+.cart-button:hover {
+  transform: translateY(-2px);
+}
+
+.cart-button:active {
+  transform: translateY(-1px);
+}
+
+.cart-icon {
+  flex-shrink: 0;
+  color: #ffffff;
+  transition: transform 0.25s ease;
+}
+
+.cart-button:hover .cart-icon {
+  transform: scale(1.1);
+}
+
+.cart-text {
+  font-family: "Montserrat", sans-serif;
+  font-size: 16px;
+  font-weight: 500;
+  color: #ffffff;
+}
+
+/* Slide up animation with bounce */
+.cart-slide-enter-active {
+  transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.cart-slide-leave-active {
+  transition: all 0.3s ease-out;
+}
+
+.cart-slide-enter-from {
+  transform: translateY(150%);
+  opacity: 0;
+}
+
+.cart-slide-leave-to {
+  transform: translateY(150%);
+  opacity: 0;
+}
+
+/* Mobile adjustments */
+@media (max-width: 768px) {
+  .cart-wrapper {
+    padding: 0 0.75rem;
+  }
+
+  .cart-button {
+    max-width: 320px;
+    height: 56px;
+    padding: 0 1.5rem;
+  }
+
+  .cart-text {
+    font-size: 15px;
+  }
+
+  .cart-icon {
+    width: 16px;
+    height: 15px;
+  }
+}
+
+@media (max-width: 480px) {
+  .cart-wrapper {
+    padding: 0 0.5rem;
+  }
+
+  .cart-button {
+    max-width: 300px;
+    height: 52px;
+    padding: 0 1.25rem;
+    gap: 0.5rem;
+  }
+
+  .cart-text {
+    font-size: 14px;
+  }
+
+  .cart-icon {
+    width: 15px;
+    height: 14px;
+  }
 }
 </style>

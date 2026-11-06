@@ -626,23 +626,16 @@ onMounted(async () => {
 .wheel-page {
   min-height: 100vh;
   background: #f5f7fa;
-  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 24px);
+  padding-bottom: 24px;
 }
 
-/* Шапка — единый стеклянный паттерн шелла. */
+/* Простой клиентский header — паттерн из WheelMyPrizesView. */
 .wheel-header {
-  position: sticky;
-  top: 0;
-  z-index: 20;
   display: grid;
   grid-template-columns: 36px 1fr 36px;
   align-items: center;
   gap: 12px;
-  padding: calc(env(safe-area-inset-top, 0px) + 10px) 16px 12px;
-  background: rgba(255, 255, 255, 0.94);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border-bottom: 0.5px solid rgba(0, 0, 0, 0.06);
+  padding: 18px 16px 12px;
 }
 
 .wheel-header__back,
@@ -676,12 +669,11 @@ onMounted(async () => {
 .wheel-header__title {
   margin: 0;
   text-align: center;
-  font-family: inherit;
+  font-family: 'Montserrat', sans-serif;
   font-weight: 700;
-  font-size: 17px;
+  font-size: 18px;
   line-height: 1.2;
-  letter-spacing: -0.02em;
-  color: #191919;
+  color: #1f2933;
 }
 
 /* Сцена рулетки — белый блок на фоне страницы. */

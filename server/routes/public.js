@@ -1524,9 +1524,7 @@ publicRouter.get("/api/top-sales-groups", (req, res) => {
       return res.json(cached);
     }
 
-    // Витрина «Чаще покупают»: прошлый полный месяц — закрытый период,
-    // топ не дёргается заказами текущего дня.
-    const { start, end } = getBusinessPeriodRange("month", -1);
+    const { start, end } = getBusinessPeriodRange("month", 0);
     const { items, hasMore } = queryTopSalesGroups({
       start,
       end,
@@ -1537,7 +1535,7 @@ publicRouter.get("/api/top-sales-groups", (req, res) => {
     });
 
     const payload = {
-      period: "previous_month",
+      period: "month",
       categoryId,
       items,
       hasMore,

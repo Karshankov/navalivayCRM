@@ -1,7 +1,6 @@
 <template>
   <div class="profile-page">
     <div class="profile-container">
-      <!-- Инста-шапка профиля: большой аватар, имя, статистика в ряд -->
       <section class="user-card">
         <div class="user-avatar-wrap">
           <img
@@ -12,7 +11,7 @@
             @error="avatarError = true"
           />
           <div v-else class="user-avatar user-avatar--placeholder">
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
               <circle cx="12" cy="8" r="4" stroke="#AAB2BD" stroke-width="1.8" />
               <path
                 d="M4 21C4 17.134 7.58172 14 12 14C16.4183 14 20 17.134 20 21"
@@ -36,22 +35,6 @@
             Username не установлен
           </p>
         </div>
-      </section>
-
-      <!-- Статистика в ряд: заказы, покупки, бонусы к применению -->
-      <section class="profile-stats">
-        <router-link to="/profile/orders" class="profile-stat">
-          <strong class="profile-stat__value">{{ userStore.profile?.totalOrders ?? 0 }}</strong>
-          <span class="profile-stat__label">заказов</span>
-        </router-link>
-        <span class="profile-stat">
-          <strong class="profile-stat__value">{{ totalPurchasesLabel }}</strong>
-          <span class="profile-stat__label">покупок</span>
-        </span>
-        <span class="profile-stat">
-          <strong class="profile-stat__value">{{ availableBonusesLabel }}</strong>
-          <span class="profile-stat__label">бонусов</span>
-        </span>
       </section>
 
       <section class="loyalty-section">
@@ -345,23 +328,6 @@ const wholesaleStore = useWholesaleStore();
 const wheelStore = useWheelStore();
 const avatarError = ref(false);
 
-/* Статистика инста-шапки: покупки (сумма балансов лояльности) и бонусы. */
-const totalPurchasesLabel = computed(() => {
-  const purchases = loyaltyStore.snapshot.reduce(
-    (sum, item) => sum + Number(item.balance || 0),
-    0,
-  );
-  return String(purchases);
-});
-
-const availableBonusesLabel = computed(() => {
-  const available = loyaltyStore.snapshot.reduce(
-    (sum, item) => sum + Number(item.available_bonus_count || 0),
-    0,
-  );
-  return String(available);
-});
-
 watch(
   () => userStore.photoUrl,
   () => {
@@ -632,83 +598,51 @@ async function goShopping() {
 .user-card {
   display: flex;
   align-items: center;
-  gap: 18px;
-  padding: 22px 20px 18px;
-  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+  gap: 16px;
+  padding: 20px;
+  box-shadow: 0 10px 24px rgba(25, 25, 25, 0.06);
 }
 
-/* Инста-пропорции: аватар крупный, имя полужирным рядом */
 .user-avatar-wrap {
-  flex: 0 0 auto;
+  flex-shrink: 0;
 }
 
 .user-avatar {
-  width: 76px;
-  height: 76px;
+  width: 64px;
+  height: 64px;
   border-radius: 50%;
   object-fit: cover;
-  display: block;
-  background: #eef1f5;
 }
 
 .user-avatar--placeholder {
   display: flex;
   align-items: center;
   justify-content: center;
-}
-
-.user-name {
-  font-size: 22px;
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  color: #191919;
-  margin: 0 0 4px;
-}
-
-.user-username {
-  font-size: 14px;
-  color: #7b8794;
-  margin: 0;
-}
-
-/* Статистика в ряд: заказы | покупки | бонусы (как в инста-профиле) */
-.profile-stats {
-  display: flex;
-  align-items: stretch;
-  background: #fff;
-  border-radius: 16px;
-  padding: 14px 8px;
-  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
-  margin-top: 10px;
-}
-
-.profile-stat {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 3px;
-  text-decoration: none;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.profile-stat__value {
-  font-size: 19px;
-  font-weight: 800;
-  color: #191919;
-  letter-spacing: -0.02em;
-}
-
-.profile-stat__label {
-  font-size: 12px;
-  color: #7b8794;
+  background: #f5f7fa;
+  border: 1px solid #e6e9ed;
 }
 
 .user-info {
   min-width: 0;
 }
 
-/* Стили аватара/имени — в инста-блоке выше (76px, 22px). */
+.user-name {
+  margin: 0 0 4px;
+  font-family: "Montserrat", sans-serif;
+  font-weight: 700;
+  font-size: 20px;
+  line-height: 24px;
+  color: #191919;
+}
+
+.user-username {
+  margin: 0;
+  font-family: -apple-system, "SF Pro Display", sans-serif;
+  font-size: 14px;
+  line-height: 17px;
+  color: #aab2bd;
+}
+
 .user-username--missing {
   color: #dc2626;
 }

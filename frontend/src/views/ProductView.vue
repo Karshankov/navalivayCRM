@@ -686,24 +686,15 @@ function updateBottomBarHeight() {
 
 // Data loading
 const loadProduct = async (id: string) => {
-  loading.value = false
+  loading.value = true
   error.value = ''
-
+  
   try {
-    // Мгновенный рендер: предзагруженный каталог (сплэш) уже содержит
-    // товары — карточка открывается моментально, без полноэкранного
-    // спиннера. Сетевой fetch идёт фоном только за деталями.
-    const cached = catalogStore.allProducts.find(p => p.id === id) || null
-    if (cached && !catalogStore.currentProduct) {
-      catalogStore.currentProduct = cached
-      loading.value = false
-    }
-
     // Load categories if needed
     if (!catalogStore.categories.length) {
       await catalogStore.fetchCategories()
     }
-
+    
     // Clear old product if ID doesn't match
     if (catalogStore.currentProduct && catalogStore.currentProduct.id !== id) {
       catalogStore.clearCurrentProduct()
