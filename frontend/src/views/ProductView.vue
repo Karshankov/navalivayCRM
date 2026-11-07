@@ -341,7 +341,7 @@
                   <!-- Action Buttons -->
                   <div class="space-y-3">
                     <button
-                      @click="addToCart"
+                      @click="addToCart($event)"
                       class="w-full py-4 bg-gray-900 text-white rounded-xl font-bold text-lg uppercase tracking-wide shadow-lg hover:shadow-xl hover:-translate-y-1 active:scale-98 transition-all duration-300"
                     >
                       <span class="flex items-center justify-center gap-3">
@@ -413,7 +413,7 @@
           <!-- Action Buttons -->
           <div class="space-y-2">
             <button
-              @click="addToCart"
+              @click="addToCart($event)"
               class="w-full py-3 bg-gray-900 text-white rounded-xl font-bold text-base uppercase tracking-wide shadow-md hover:shadow-lg hover:-translate-y-0.5 active:scale-[0.98] transition-all duration-200"
             >
               <span class="flex items-center justify-center gap-2">
@@ -456,6 +456,7 @@ import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { useRouter, onBeforeRouteUpdate } from 'vue-router'
 import { useCatalogStore } from '@/stores/catalog'
 import { useCartStore } from '@/stores/cart'
+import { useCartFlight } from '@/composables/useCartFlight'
 import { useWholesaleStore } from '@/stores/wholesale'
 
 // Import new components
@@ -480,7 +481,7 @@ import {
 // Props and stores
 const props = defineProps<{ id: string }>()
 const catalogStore = useCatalogStore()
-const cartStore = useCartStore()
+const { addItemWithFlight, eventSource } = useCartFlight()
 const wholesaleStore = useWholesaleStore()
 const router = useRouter()
 
@@ -603,18 +604,20 @@ function selectVariant(variantId: string) {
 }
 
 // Actions
-function addToCart() {
+function addToCart(event?: MouseEvent) {
   if (!product.value) return
+
+  const sourceButton = eventSource(event)
 
   // Для товаров с вариантами передаем выбранный вариант
   if (hasVariants.value && selectedVariant.value) {
-    cartStore.addItem(product.value, 1, selectedVariant.value.id)
+    addItemWithFlight(product.value, 1, selectedVariant.value.id, sourceButton)
   } else {
-    cartStore.addItem(product.value, 1)
+    addItemWithFlight(product.value, 1, null, sourceButton)
   }
-  
+
   hapticFeedback('success')
-  
+
   // Show notification
   if (window.Telegram?.WebApp) {
     window.Telegram.WebApp.showAlert('Товар добавлен в корзину')

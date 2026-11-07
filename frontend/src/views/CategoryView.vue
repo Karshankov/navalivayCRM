@@ -61,8 +61,8 @@
           :key="item.id"
           :product="item"
           :quantity="getCrossSellQuantity(item.id)"
-          @add="handleCrossSellAdd(item)"
-          @increment="handleCrossSellIncrement(item)"
+          @add="handleCrossSellAdd(item, $event)"
+          @increment="handleCrossSellIncrement(item, $event)"
           @decrement="decrementCrossSellQuantity(item)"
         />
       </div>
@@ -155,8 +155,8 @@
             v-if="nicaBoosterProduct"
             :product="nicaBoosterProduct"
             :quantity="getUngroupedQuantity(nicaBoosterProduct.id)"
-            @add="handleUngroupedAdd(nicaBoosterProduct)"
-            @increment="handleUngroupedIncrement(nicaBoosterProduct)"
+            @add="handleUngroupedAdd(nicaBoosterProduct, $event)"
+            @increment="handleUngroupedIncrement(nicaBoosterProduct, $event)"
             @decrement="decrementUngroupedQuantity(nicaBoosterProduct)"
           />
 
@@ -186,8 +186,8 @@
             :key="product.id"
             :product="product"
             :quantity="getUngroupedQuantity(product.id)"
-            @add="handleUngroupedAdd(product)"
-            @increment="handleUngroupedIncrement(product)"
+            @add="handleUngroupedAdd(product, $event)"
+            @increment="handleUngroupedIncrement(product, $event)"
             @decrement="decrementUngroupedQuantity(product)"
           />
         </section>
@@ -369,6 +369,7 @@ import {
   type ProductBadge,
 } from "@/stores/catalog";
 import { useCartStore } from "@/stores/cart";
+import { useCartFlight } from "@/composables/useCartFlight";
 import { useWholesaleStore } from "@/stores/wholesale";
 import SmokeParticles from "@/components/SmokeParticles.vue";
 import LiquidLineTree from "@/components/product/liquid/LiquidLineTree.vue";
@@ -388,6 +389,7 @@ const props = defineProps<{
 
 const catalogStore = useCatalogStore();
 const cartStore = useCartStore();
+const { addItemWithFlight, notifyArrivalFrom, eventSource } = useCartFlight();
 const wholesaleStore = useWholesaleStore();
 const router = useRouter();
 const route = useRoute();
@@ -1063,7 +1065,7 @@ function canAddCrossSell(product: Product) {
   return true;
 }
 
-function handleCrossSellAdd(product: Product) {
+function handleCrossSellAdd(product: Product, event?: MouseEvent) {
   if (!canAddCrossSell(product)) {
     if (
       product.isAvailable === false ||
@@ -1075,14 +1077,10 @@ function handleCrossSellAdd(product: Product) {
     }
     return;
   }
-  addCrossSellToCart(product);
+  addItemWithFlight(product, 1, null, eventSource(event));
 }
 
-function addCrossSellToCart(product: Product) {
-  cartStore.addItem(product, 1);
-}
-
-function handleCrossSellIncrement(product: Product) {
+function handleCrossSellIncrement(product: Product, event?: MouseEvent) {
   if (!canAddCrossSell(product)) {
     if (
       product.isAvailable === false ||
@@ -1094,15 +1092,12 @@ function handleCrossSellIncrement(product: Product) {
     }
     return;
   }
-  incrementCrossSellQuantity(product);
-}
-
-function incrementCrossSellQuantity(product: Product) {
   const currentQty = getCrossSellQuantity(product.id);
   if (currentQty > 0) {
     cartStore.updateQuantity(product.id, currentQty + 1);
+    notifyArrivalFrom(eventSource(event), product);
   } else {
-    cartStore.addItem(product, 1);
+    addItemWithFlight(product, 1, null, eventSource(event));
   }
 }
 
@@ -1135,7 +1130,7 @@ function canAddUngrouped(product: Product) {
   return true;
 }
 
-function handleUngroupedAdd(product: Product) {
+function handleUngroupedAdd(product: Product, event?: MouseEvent) {
   if (!canAddUngrouped(product)) {
     if (
       product.isAvailable === false ||
@@ -1147,14 +1142,10 @@ function handleUngroupedAdd(product: Product) {
     }
     return;
   }
-  addUngroupedToCart(product);
+  addItemWithFlight(product, 1, null, eventSource(event));
 }
 
-function addUngroupedToCart(product: Product) {
-  cartStore.addItem(product, 1);
-}
-
-function handleUngroupedIncrement(product: Product) {
+function handleUngroupedIncrement(product: Product, event?: MouseEvent) {
   if (!canAddUngrouped(product)) {
     if (
       product.isAvailable === false ||
@@ -1166,15 +1157,12 @@ function handleUngroupedIncrement(product: Product) {
     }
     return;
   }
-  incrementUngroupedQuantity(product);
-}
-
-function incrementUngroupedQuantity(product: Product) {
   const currentQty = getUngroupedQuantity(product.id);
   if (currentQty > 0) {
     cartStore.updateQuantity(product.id, currentQty + 1);
+    notifyArrivalFrom(eventSource(event), product);
   } else {
-    cartStore.addItem(product, 1);
+    addItemWithFlight(product, 1, null, eventSource(event));
   }
 }
 
@@ -1262,7 +1250,9 @@ watch(
 /* Liquid Category Header Styles - Figma Redesign */
 .liquid-category-header {
   position: sticky;
-  top: 0;
+  /* Залипает под закреплённой верхней панелью (TopCartBar), а не под
+     viewport-top — иначе хедер уходит под панель при прокрутке. */
+  top: var(--app-topbar-offset, 0px);
   z-index: 20;
   background: #ffffff;
   backdrop-filter: blur(11.5px);
@@ -1288,8 +1278,9 @@ watch(
   position: sticky;
   /* Реальная высота шапки: 16 паддинг + 24 тайтл + 20 паддинг
      минус скругление ≈ 46px; сверху зазор 12px — как между
-     линейками «Картриджи» и «Испарители». */
-  top: 58px;
+     линейками «Картриджи» и «Испарители». Залипает под хедером,
+     который сам липнет под верхней панелью. */
+  top: calc(var(--app-topbar-offset, 0px) + 58px);
   z-index: 19;
   padding: 0 16px 16px;
   /* Зазор от шапки: 16px (хедер) − 4px = 12px, как gap линеек. */

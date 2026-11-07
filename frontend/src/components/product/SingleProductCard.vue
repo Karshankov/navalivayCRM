@@ -57,7 +57,7 @@
           type="button"
           class="single-qty-btn single-qty-btn-plus"
           :class="{ 'is-disabled': isAtStockLimit }"
-          @click.stop="$emit('increment')"
+          @click.stop="handleIncrement"
           aria-label="Добавить еще"
         >
           <PlusIcon class="single-qty-icon" />
@@ -68,7 +68,7 @@
         type="button"
         class="single-qty-btn single-qty-btn-add"
         :class="{ 'is-disabled': !canAdd }"
-        @click.stop="$emit('add')"
+        @click.stop="handleAdd"
         aria-label="Добавить в корзину"
       >
         <PlusIcon class="single-qty-icon" />
@@ -92,11 +92,21 @@ const props = withDefaults(defineProps<Props>(), {
   quantity: 0,
 });
 
-defineEmits<{
-  (e: "add"): void;
-  (e: "increment"): void;
+const emit = defineEmits<{
+  (e: "add", event: MouseEvent): void;
+  (e: "increment", event: MouseEvent): void;
   (e: "decrement"): void;
 }>();
+
+/** Родитель владеет добавлением и валидацией стока; карточка лишь
+ *  пробрасывает событие вместе с источником для старта полёта. */
+function handleAdd(event: MouseEvent) {
+  emit("add", event);
+}
+
+function handleIncrement(event: MouseEvent) {
+  emit("increment", event);
+}
 
 const productImage = computed(() => {
   // Для товаров с вариантами берём изображение первого варианта

@@ -1,5 +1,6 @@
 import 'virtual:uno.css'
 import '@/styles/navalivay-theme.css'
+import '@/assets/fly-to-cart.css'
 
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'

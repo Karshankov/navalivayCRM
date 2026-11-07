@@ -1,0 +1,65 @@
+/* ===== Полёт миниатюры товара к корзине (см. utils/flyToCart.ts) =====
+   Элементы живут в document.body, поэтому стили глобальные.
+   Всё движение — transform/opacity; позиция фиксируется один раз при старте.
+
+   Внешний .navalivay-cart-flight анимируется по X (translateX + opacity),
+   внутренний __inner — по Y (translateY + scale): оси на разных элементах,
+   как в демо, иначе вторая анимация затирает transform первой. */
+
+.navalivay-cart-flight {
+  position: fixed;
+  z-index: 80;
+  width: 88px;
+  height: 128px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  pointer-events: none;
+  overflow: visible;
+  opacity: 0;
+  /* X-анимация задаёт translateX — не трогаем left/top здесь. */
+}
+
+.navalivay-cart-flight__inner {
+  width: 88px;
+  height: 128px;
+  border-radius: 16px;
+  /* Без белой подложки: летит сама картинка товара, а не «белая
+     карточка с фото». Мягкая тень даёт объём на светлом фоне. */
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  filter: drop-shadow(0 6px 18px rgba(25, 25, 25, 0.24));
+  transform-origin: center;
+  /* Y-анимация задаёт translateY + scale. */
+}
+
+.navalivay-cart-flight__inner img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+/* Нет изображения — небольшая нейтральная иконка вместо фото:
+   подложка-пилюля, иначе серый штрих потеряется на фоне. */
+.navalivay-cart-flight__inner--placeholder {
+  background: #ffffff;
+  border-radius: 16px;
+}
+
+.navalivay-cart-flight__inner--placeholder svg {
+  width: 44px;
+  height: 44px;
+  stroke: #98a2b3;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .navalivay-cart-flight {
+    display: none;
+  }
+}

@@ -232,7 +232,7 @@
                         :class="{
                           'is-disabled': isVariantAtStockLimit(variant),
                         }"
-                        @click.stop="handleVariantIncrement(product, variant)"
+                        @click.stop="handleVariantIncrement(product, variant, $event)"
                         aria-label="Добавить еще"
                       >
                         <PlusIcon class="liquid-qty-icon" />
@@ -243,7 +243,7 @@
                       type="button"
                       class="liquid-qty-btn liquid-qty-btn-add"
                       :class="{ 'is-disabled': !canAddVariant(variant) }"
-                      @click.stop="handleVariantAdd(product, variant)"
+                      @click.stop="handleVariantAdd(product, variant, $event)"
                       aria-label="Добавить в корзину"
                     >
                       <PlusIcon class="liquid-qty-icon" />
@@ -288,7 +288,7 @@
                   type="button"
                   class="liquid-qty-btn liquid-qty-btn-plus"
                   :class="{ 'is-disabled': isAtStockLimit(product) }"
-                  @click.stop="handleIncrement(product)"
+                  @click.stop="handleIncrement(product, $event)"
                   aria-label="Добавить еще"
                 >
                   <PlusIcon class="liquid-qty-icon" />
@@ -299,7 +299,7 @@
                 type="button"
                 class="liquid-qty-btn liquid-qty-btn-add"
                 :class="{ 'is-disabled': !canAdd(product) }"
-                @click.stop="handleAdd(product)"
+                @click.stop="handleAdd(product, $event)"
                 aria-label="Добавить в корзину"
               >
                 <PlusIcon class="liquid-qty-icon" />
@@ -346,6 +346,7 @@ import {
   MinusIcon,
 } from "@heroicons/vue/24/outline";
 import { useCartStore } from "@/stores/cart";
+import { useCartFlight } from "@/composables/useCartFlight";
 import { useCatalogStore, type Product, type ProductVariant } from "@/stores/catalog";
 import { hasTelegramMiniAppUserContext } from "@/utils/telegramMiniAppContext";
 import FavoriteGroupHeart from "@/components/product/FavoriteGroupHeart.vue";
@@ -407,6 +408,7 @@ const emit = defineEmits<{
 }>();
 
 const cartStore = useCartStore();
+const { addItemWithFlight, notifyArrivalFrom, eventSource } = useCartFlight();
 
 // Кнопка «Избранное» видна только в реальном Mini App / dev-моке.
 const hasTelegramContext = hasTelegramMiniAppUserContext();
@@ -446,6 +448,11 @@ const coverUrl = computed(
   () => props.coverImage || catalogStore.getGroupImage(props.groupId) || props.fallbackImage,
 );
 
+/** Миниатюра для полёта: обложка этой линейки (не категории —
+ *  fallback пропускаем, иначе полетит картинка раздела). */
+const flyCover = computed(
+  () => props.coverImage || catalogStore.getGroupImage(props.groupId) || null,
+);
 const discountedMinPrice = computed(() => getMinPriceForProducts(props.products));
 const baseMinPrice = computed(() => getMinBasePriceForProducts(props.products));
 
@@ -712,7 +719,7 @@ function isAtStockLimit(product: Product) {
   return false;
 }
 
-function handleAdd(product: Product) {
+function handleAdd(product: Product, event?: MouseEvent) {
   if (!canAdd(product)) {
     if (
       product.isAvailable === false ||
@@ -724,14 +731,10 @@ function handleAdd(product: Product) {
     }
     return;
   }
-  addToCart(product);
+  addItemWithFlight(product, 1, null, eventSource(event), flyCover.value);
 }
 
-function addToCart(product: Product) {
-  cartStore.addItem(product, 1);
-}
-
-function handleIncrement(product: Product) {
+function handleIncrement(product: Product, event?: MouseEvent) {
   if (!canAdd(product)) {
     if (
       product.isAvailable === false ||
@@ -743,15 +746,12 @@ function handleIncrement(product: Product) {
     }
     return;
   }
-  incrementQuantity(product);
-}
-
-function incrementQuantity(product: Product) {
   const currentQty = getQuantity(product.id);
   if (currentQty > 0) {
     cartStore.updateQuantity(product.id, currentQty + 1);
+    notifyArrivalFrom(eventSource(event), product, null, flyCover.value);
   } else {
-    cartStore.addItem(product, 1);
+    addItemWithFlight(product, 1, null, eventSource(event), flyCover.value);
   }
 }
 
@@ -881,6 +881,7 @@ function isVariantInStock(variant: {
 function handleVariantAdd(
   product: Product,
   variant: { id?: string; stock?: number | null; isAvailable?: boolean },
+  event?: MouseEvent,
 ) {
   if (!variant.id) return;
   if (!canAddVariant(variant)) {
@@ -894,12 +895,13 @@ function handleVariantAdd(
     }
     return;
   }
-  cartStore.addItem(product, 1, variant.id);
+  addItemWithFlight(product, 1, variant.id, eventSource(event), flyCover.value);
 }
 
 function handleVariantIncrement(
   product: Product,
   variant: { id?: string; stock?: number | null; isAvailable?: boolean },
+  event?: MouseEvent,
 ) {
   if (!variant.id) return;
   if (!canAddVariant(variant)) {
@@ -916,8 +918,9 @@ function handleVariantIncrement(
   const currentQty = getVariantQuantity(variant.id);
   if (currentQty > 0) {
     cartStore.updateQuantity(product.id, currentQty + 1, variant.id);
+    notifyArrivalFrom(eventSource(event), product, variant.id, flyCover.value);
   } else {
-    cartStore.addItem(product, 1, variant.id);
+    addItemWithFlight(product, 1, variant.id, eventSource(event), flyCover.value);
   }
 }
 
