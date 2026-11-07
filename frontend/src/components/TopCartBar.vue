@@ -35,22 +35,7 @@
     </button>
 
     <button
-      v-if="isProfileRoute"
-      type="button"
-      class="nav-top-profile"
-      aria-label="Вернуться на главную"
-      @click="goHome"
-    >
-      <span class="nav-top-profile__copy">На главную</span>
-      <span class="nav-top-profile__avatar nav-top-profile__avatar--back">
-        <svg viewBox="0 0 32 32" fill="none" aria-hidden="true">
-          <path d="M20 8l-8 8 8 8" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
-        </svg>
-      </span>
-    </button>
-
-    <button
-      v-else
+      v-if="isHomeRoute"
       type="button"
       class="nav-top-profile"
       aria-label="Открыть профиль"
@@ -61,6 +46,23 @@
         <svg viewBox="0 0 32 32" fill="none" aria-hidden="true">
           <circle cx="16" cy="11" r="5" stroke="currentColor" stroke-width="1.5" />
           <path d="M6 28v-3a10 10 0 0 1 20 0v3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+        </svg>
+      </span>
+    </button>
+
+    <!-- На всех экранах кроме главного — «На главную»: из разделов
+         всегда есть быстрый выход к витрине. -->
+    <button
+      v-else
+      type="button"
+      class="nav-top-profile"
+      aria-label="Вернуться на главную"
+      @click="goHome"
+    >
+      <span class="nav-top-profile__copy">На главную</span>
+      <span class="nav-top-profile__avatar nav-top-profile__avatar--back">
+        <svg viewBox="0 0 32 32" fill="none" aria-hidden="true">
+          <path d="M20 8l-8 8 8 8" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
         </svg>
       </span>
     </button>
@@ -121,9 +123,9 @@ const formattedAmount = computed(() => {
 
 const isAdmin = computed(() => route.path.startsWith("/admin"));
 
-/** На экране профиля справа — «На главную» с тёмным кружком и
- *  стрелкой назад: из профиля всегда есть выход. */
-const isProfileRoute = computed(() => route.path === "/profile");
+/** «Мой профиль» — только на главном экране; на остальных
+ *  (ассортимент, избранное, профиль, рулетка...) — «На главную». */
+const isHomeRoute = computed(() => route.path === "/");
 
 function goToCheckout() {
   routerRef?.push("/checkout");

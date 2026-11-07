@@ -46,7 +46,7 @@
         @lostpointercapture="endDrag($event, true)" @keydown="onListKeydown">
         <!-- Обычный режим: карточки каталога 1в1 -->
         <template v-if="!isEditing">
-          <LiquidLineTree v-for="group in liquidGroups" :key="group.id" :group="group"
+          <LiquidLineTree v-for="group in liquidGroups" :key="`${cardsEpoch}-${group.id}`" :group="group"
             :fallback-image="PLACEHOLDER_IMAGE" :expanded-groups="liquidExpansionState"
             :show-promo-badges="false"
             @toggle="toggleLiquidExpansion" @showToast="showToast" />
@@ -55,9 +55,11 @@
         <!-- Режим сортировки: компактные карточки с ручками.
              Источник — те же дедуплицированные корни liquidGroups:
              иначе «родитель + вложенная избранная» дублировались
-             фантомами после сохранения. -->
+             фантомами после сохранения. Ключ включает cardsEpoch:
+             после drag-n-drop узлы пересоздаются, DOM-перестановки
+             не конфликтуют с Vue-патчем. -->
         <template v-else>
-          <article v-for="group in liquidGroups" :key="group.id" :data-id="group.id" class="card"
+          <article v-for="group in liquidGroups" :key="`${cardsEpoch}-${group.id}`" :data-id="group.id" class="card"
             :class="{ unavailable: group.unavailable }">
             <div class="card-hit">
               <div class="sort-controls">
@@ -89,22 +91,6 @@
       </div>
       <p class="announcement" role="status" aria-live="polite">{{ announcement }}</p>
     </template>
-
-    <!-- Кнопка корзины: 1в1 с главной (HomeView) -->
-    <Transition name="cart-slide">
-      <div v-if="!isEditing && cartItemCount > 0" class="cart-cta">
-        <button class="cart-button" type="button" @click="goToCheckout">
-          <svg width="17" height="16" viewBox="0 0 17 16" fill="none" xmlns="http://www.w3.org/2000/svg"
-            class="cart-icon">
-            <path d="M1 1H3.5L4.5 3M4.5 3L6.5 9H13.5L15.5 3H4.5Z" stroke="currentColor" stroke-width="1.6"
-              stroke-linecap="round" stroke-linejoin="round" />
-            <circle cx="6" cy="13" r="1.5" stroke="currentColor" stroke-width="1.6" />
-            <circle cx="13" cy="13" r="1.5" stroke="currentColor" stroke-width="1.6" />
-          </svg>
-          <span class="cart-text">Заказ на {{ cartAmount }} BYN</span>
-        </button>
-      </div>
-    </Transition>
 
     <!-- Toast -->
     <ToastNotification v-if="toastMessage" :key="toastKey" :message="toastMessage" :type="toastType"
@@ -166,9 +152,6 @@ const liquidExpansionState = ref<Record<string, boolean>>({})
 
 const loadFailed = computed(() => Boolean(favoritesStore.loadError))
 const hasGroups = computed(() => favoritesStore.groups.length > 0)
-
-const cartItemCount = computed(() => cartStore.totalItems)
-const cartAmount = computed(() => cartStore.totalAmount.toFixed(2))
 
 /**
  * Каталог должен быть загружен, чтобы строить карточки линеек.
@@ -362,6 +345,21 @@ async function toggleEditing() {
   if (isEditing.value) {
     // Сохраняем порядок на сервере.
     const ids = listEl.value ? [...listEl.value.children].map((row) => (row as HTMLElement).dataset.id ?? '') : []
+    // Шаг 1: вернуть DOM-узлы в порядок данных Vue (как их создал
+    // v-for). Drag переставлял узлы «за спиной» Vue — без возврата
+    // патч после обновления стора находил узлы не на местах и
+    // КЛОНИРОВАЛ их (дубли карточек).
+    if (listEl.value) {
+      for (const group of liquidGroups.value) {
+        const row = listEl.value.querySelector<HTMLElement>(
+          `.card[data-id="${CSS.escape(group.id)}"]`,
+        )
+        if (row) listEl.value.append(row)
+      }
+    }
+    // Шаг 2: ключи v-for меняются вместе с обновлением данных —
+    // пересоздание узлов вместо перемещения, конфликтов нет.
+    cardsEpoch.value++
     reorderPending.value = true
     try {
       await favoritesStore.reorderGroups(ids.filter(Boolean))
@@ -377,6 +375,10 @@ async function toggleEditing() {
   }
   isEditing.value = !isEditing.value
 }
+
+/** Эпоха карточек: инкремент пересобирает v-for (лечит дубли
+ *  после ручного DOM-перемещения при drag-n-drop). */
+const cardsEpoch = ref(0)
 
 /* Под указателем — отдельная плавающая копия. Оригинал резервирует место
    в списке. FLIP-анимация плавно сдвигает соседей при смене позиции. */
@@ -547,11 +549,6 @@ function onListKeydown(event: KeyboardEvent) {
   }
   handle.focus()
   announcePosition(row)
-}
-
-function goToCheckout() {
-  hapticFeedback()
-  router.push('/checkout')
 }
 
 function goBack() {
@@ -983,115 +980,6 @@ button {
     height: 70px;
   }
   .name {
-    font-size: 14px;
-  }
-}
-
-/* ===== Корзина: красный nav из макета ===== */
-/* ===== Кнопка корзины: 1в1 с HomeView ===== */
-.cart-cta {
-  position: fixed;
-  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
-  left: 0;
-  right: 0;
-  z-index: 50;
-  padding: 0 1rem;
-  pointer-events: none;
-  transition: bottom 0.28s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-/* Figma: Red gradient */
-.cart-button {
-  width: 100%;
-  max-width: 345px;
-  height: 64px;
-  margin: 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.75rem;
-  padding: 0 2rem;
-  position: relative;
-  background: linear-gradient(90deg, #f50302 0%, #a90f0e 100%);
-  border: none;
-  border-radius: 528px;
-  color: #ffffff;
-  cursor: pointer;
-  pointer-events: auto;
-  -webkit-tap-highlight-color: transparent;
-  transition: transform 0.25s ease;
-}
-
-.cart-button:hover {
-  transform: translateY(-2px);
-}
-
-.cart-button:active {
-  transform: translateY(-1px);
-}
-
-.cart-button:focus-visible {
-  outline: 3px solid #ed0000;
-  outline-offset: 2px;
-}
-
-.cart-icon {
-  flex-shrink: 0;
-  color: #ffffff;
-  transition: transform 0.25s ease;
-}
-
-.cart-button:hover .cart-icon {
-  transform: scale(1.1);
-}
-
-.cart-text {
-  font-family: 'Montserrat', sans-serif;
-  font-size: 16px;
-  font-weight: 500;
-  color: #ffffff;
-}
-
-/* Появление снизу с отскоком — как на главной. */
-.cart-slide-enter-active {
-  transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-.cart-slide-leave-active {
-  transition: all 0.3s ease-out;
-}
-
-.cart-slide-enter-from,
-.cart-slide-leave-to {
-  transform: translateY(150%);
-  opacity: 0;
-}
-
-@media (max-width: 768px) {
-  .cart-cta {
-    padding: 0 0.75rem;
-  }
-  .cart-button {
-    max-width: 320px;
-    height: 56px;
-    padding: 0 1.5rem;
-  }
-  .cart-text {
-    font-size: 15px;
-  }
-}
-
-@media (max-width: 480px) {
-  .cart-cta {
-    padding: 0 0.5rem;
-  }
-  .cart-button {
-    max-width: 300px;
-    height: 52px;
-    padding: 0 1.25rem;
-    gap: 0.5rem;
-  }
-  .cart-text {
     font-size: 14px;
   }
 }

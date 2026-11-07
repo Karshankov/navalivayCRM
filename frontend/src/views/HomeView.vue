@@ -15,13 +15,13 @@
     </div>
 
     <div class="main-content-wrapper">
-      <!-- Кнопка избранного под баннером (утверждённый макет) -->
+      <!-- Плитки «Избранное» / «Часто покупают» над категориями -->
       <section
         v-if="!wholesaleStore.isWholesale"
-        class="favorites-banner-section"
-        aria-label="Избранное"
+        class="home-shortcuts-section"
+        aria-label="Быстрые разделы"
       >
-        <FavoritesBanner />
+        <HomeShortcuts />
       </section>
 
       <section v-if="wholesaleStore.isWholesale" class="px-4 pt-4">
@@ -75,66 +75,38 @@
         </button>
       </section>
 
-      <section class="category-section">
-        <!-- Сетка категорий -->
-        <div class="category-grid">
-          <button
-            v-for="category in categoryCards"
-            :key="category.id"
-            class="category-card-wrapper"
-            @click="openCategory(category.slug)"
-          >
-            <div class="category-card-box">
-              <div
-                class="category-card-media"
-                :style="{ backgroundImage: `url(${category.previewImage})` }"
-              ></div>
-              <DiscountBadge v-if="category.hasDiscount" class="category-card-discount" />
-            </div>
-            <p class="category-card-title">{{ category.name }}</p>
-          </button>
-        </div>
+      <!-- «Наш ассортимент» из демо: широкая витрина-картинка с
+           3D-наклоном по касанию, дымом и дышащим LED; подпись
+           снизу. Ведёт в жидкости (раздел по умолчанию). -->
+      <section class="assortment-section" aria-label="Наш ассортимент">
+        <button
+          ref="assortmentRef"
+          class="assortment"
+          type="button"
+          :style="{ '--tilt-x': tiltX, '--tilt-y': tiltY }"
+          @click="openAssortment"
+          @pointermove="handleAssortmentTilt"
+          @pointerleave="resetAssortmentTilt"
+        >
+          <span class="assortment-picture">
+            <span class="assortment-stage">
+              <img
+                class="assortment-art"
+                src="/shortcuts/assortment-art.png"
+                alt="Товары из шести категорий: жидкости, расходники, устройства, одноразки, снюс и кальянка"
+                loading="lazy"
+                decoding="async"
+              />
+              <span class="hose-smoke" aria-hidden="true">
+                <i></i><i></i><i></i><i></i><i></i>
+              </span>
+              <span class="pod-led" aria-hidden="true"></span>
+            </span>
+          </span>
+          <span class="assortment__label">Наш ассортимент</span>
+        </button>
       </section>
     </div>
-
-    <!-- Cart Button - Figma Redesign -->
-    <Transition name="cart-slide">
-      <div v-if="totalCartItems > 0 && !wholesaleStore.isWholesale" class="cart-wrapper">
-        <button class="cart-button" @click="goToCheckout">
-          <svg
-            width="17"
-            height="16"
-            viewBox="0 0 17 16"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-            class="cart-icon"
-          >
-            <path
-              d="M1 1H3.5L4.5 3M4.5 3L6.5 9H13.5L15.5 3H4.5Z"
-              stroke="currentColor"
-              stroke-width="1.6"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            />
-            <circle
-              cx="6"
-              cy="13"
-              r="1.5"
-              stroke="currentColor"
-              stroke-width="1.6"
-            />
-            <circle
-              cx="13"
-              cy="13"
-              r="1.5"
-              stroke="currentColor"
-              stroke-width="1.6"
-            />
-          </svg>
-          <span class="cart-text">Заказ на {{ totalCartAmount }} BYN</span>
-        </button>
-      </div>
-    </Transition>
   </div>
 </template>
 
@@ -142,15 +114,13 @@
 import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 
-import { useCatalogStore, type Category } from "@/stores/catalog";
+import { useCatalogStore } from "@/stores/catalog";
 import { useCartStore } from "@/stores/cart";
 import { useWholesaleStore } from "@/stores/wholesale";
 import { useFavoritesStore } from "@/stores/favorites";
-import FavoritesBanner from "@/components/FavoritesBanner.vue";
+import HomeShortcuts from "@/components/HomeShortcuts.vue";
 import SmokeParticles from "@/components/SmokeParticles.vue";
 import BannerCarousel from "@/components/BannerCarousel.vue";
-import DiscountBadge from "@/components/product/DiscountBadge.vue";
-import { hasDiscountForProduct } from "@/components/product/groupPrice";
 import {
   fetchMyActiveOrder,
   getTelegramIdentity,
@@ -164,42 +134,6 @@ const favoritesStore = useFavoritesStore();
 const router = useRouter();
 const activeOrder = ref<CustomerActiveOrder | null>(null);
 
-const PLACEHOLDER_IMAGE = "/placeholder-category.png";
-
-const categories = computed<Category[]>(() => catalogStore.categories);
-
-/**
- * Категории со скидками. Товар попал в этот список — значит он в наличии,
- * сервер отсеял пустые остатки ещё при выдаче каталога.
- */
-const categoriesWithDiscount = computed(() => {
-  const ids = new Set<string>();
-  for (const product of catalogStore.allProducts) {
-    if (product.categoryId && hasDiscountForProduct(product)) ids.add(product.categoryId);
-  }
-  return ids;
-});
-
-const categoryCards = computed(() => {
-  return categories.value.map((category) => {
-    const previewImage =
-      category.coverImage ||
-      category.groups.find((group) => group.coverImage)?.coverImage ||
-      PLACEHOLDER_IMAGE;
-    return {
-      id: category.id,
-      slug: category.slug,
-      name: category.name,
-      order: category.order,
-      productCount: category.productCount,
-      previewImage,
-      hasDiscount: categoriesWithDiscount.value.has(category.id),
-    };
-  });
-});
-
-const totalCartItems = computed(() => cartStore.totalItems);
-const totalCartAmount = computed(() => cartStore.totalAmount.toFixed(2));
 const remainingWholesaleMinimum = computed(() =>
   wholesaleStore.remainingToMinimum(cartStore.countableWholesaleUnits, cartStore.totalAmount),
 );
@@ -220,12 +154,36 @@ function genitivePositions(value: number) {
   return "позиций";
 }
 
-function openCategory(slug: string) {
-  router.push({ name: "category", params: { slug } });
+/** «Наш ассортимент» всегда открывается в жидкости — раздел по
+ *  умолчанию (slug реальной категории каталога); переключение
+ *  категорий внутри — быстрая навигация. */
+function openAssortment() {
+  router.push({ name: "category", params: { slug: "zhidkosti" } });
 }
 
-function goToCheckout() {
-  router.push("/checkout");
+/* ===== 3D-наклон витрины «Наш ассортимент» (по демо) =====
+   Только для устройств с мышью (hover + fine pointer): телефон
+   наклон по касанию не даёт, там работает пресс-анимация. */
+const assortmentRef = ref<HTMLElement | null>(null);
+const tiltX = ref("0deg");
+const tiltY = ref("0deg");
+
+const canTilt =
+  typeof window !== "undefined" &&
+  typeof window.matchMedia === "function" &&
+  window.matchMedia("(hover: hover) and (pointer: fine)").matches &&
+  !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+function handleAssortmentTilt(event: PointerEvent) {
+  if (!canTilt || !assortmentRef.value) return;
+  const rect = assortmentRef.value.getBoundingClientRect();
+  tiltX.value = `${((event.clientX - rect.left) / rect.width - 0.5) * 5}deg`;
+  tiltY.value = `${-((event.clientY - rect.top) / rect.height - 0.5) * 3}deg`;
+}
+
+function resetAssortmentTilt() {
+  tiltX.value = "0deg";
+  tiltY.value = "0deg";
 }
 
 async function refreshHomeState() {
@@ -378,299 +336,276 @@ onMounted(async () => {
   font-weight: 600;
 }
 
-/* Category card wrapper - transparent, holds box + title */
-.category-card-wrapper {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  transition: transform 0.25s ease;
+/* ===== «Наш ассортимент» — витрина по демо navalivay-assortment =====
+   Стили перенесены ДОСЛОВНО из демо (позиции дыма/LED отсчитываются
+   от .assortment-stage с пропорцией 801/360 — совпадает с картинкой
+   один в один, поэтому 31.3%/95% и 54.18%/59.17% точны). */
+.assortment {
+  display: block;
+  width: 100%;
   padding: 0;
-  -webkit-tap-highlight-color: transparent; /* Remove iOS tap highlight */
+  background: none;
+  border: 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  appearance: none;
 }
 
-.category-card-wrapper:hover {
-  transform: translateY(-4px);
+.assortment:focus-visible {
+  outline: 3px solid #ed0000;
+  outline-offset: 3px;
 }
 
-/* White box containing the image */
-.category-card-box {
-  position: relative;
-  width: 107px;
-  height: 107px;
-  background: #ffffff;
-  border-radius: 16px;
+.assortment:active .assortment-picture {
+  filter: brightness(0.98);
+}
+
+.assortment-picture {
   display: flex;
   align-items: center;
   justify-content: center;
+  position: relative;
+  isolation: isolate;
+  width: 100%;
+  height: 122px;
+  background: linear-gradient(150deg, #fff, #fcfcfd);
+  border-radius: 20px;
   overflow: hidden;
+  perspective: 700px;
 }
 
-/* Плашка прижата к низу картинки: там она не спорит с самим изображением. */
-.category-card-discount {
+/* Мягкие красные рефлексы по углам (демо .assortment-picture:before). */
+.assortment-picture::before {
+  content: "";
   position: absolute;
-  left: 50%;
-  bottom: 6px;
-  transform: translateX(-50%);
-  padding: 3px 8px;
-  font-size: 9px;
-  line-height: 11px;
-  letter-spacing: 0.04em;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 15% 70%, rgba(248, 0, 0, 0.035), transparent 42%),
+    radial-gradient(ellipse at 85% 50%, rgba(248, 0, 0, 0.03), transparent 42%);
+  pointer-events: none;
 }
 
-.category-card-media {
-  width: 84%;
-  height: 84%;
-  background-size: contain;
-  background-position: center;
-  background-repeat: no-repeat;
+/* Блик по витрине (демо product-sheen, тач-устройства). */
+.assortment-picture::after {
+  content: "";
+  position: absolute;
+  z-index: 2;
+  inset: -30px auto -30px -80px;
+  width: 65px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.05) 20%,
+    rgba(255, 255, 255, 0.72) 50%,
+    rgba(255, 255, 255, 0.05) 80%,
+    transparent
+  );
+  mix-blend-mode: screen;
+  transform: translateX(-60px) skewX(-18deg);
+  opacity: 0;
+  pointer-events: none;
+  animation: product-sheen 6s cubic-bezier(0.3, 0.2, 0.5, 1) 0.5s infinite;
 }
 
-.category-card-title {
+@keyframes product-sheen {
+  0%,
+  55% {
+    opacity: 0;
+    transform: translateX(-60px) skewX(-18deg);
+  }
+  62% {
+    opacity: 0.7;
+  }
+  87% {
+    opacity: 0.7;
+  }
+  95%,
+  100% {
+    opacity: 0;
+    transform: translateX(560px) skewX(-18deg);
+  }
+}
+
+/* Сцена с той же пропорцией, что и картинка (801/360): проценты
+   дыма и LED отсюда совпадают с пикселями картинки. */
+.assortment-stage {
+  position: relative;
+  display: block;
+  flex: none;
+  width: 249.2px;
+  max-width: calc(100% - 12px);
+  aspect-ratio: 801 / 360;
+  transform: rotateY(var(--tilt-x, 0deg)) rotateX(var(--tilt-y, 0deg));
+  transition: transform 0.4s ease;
+  isolation: isolate;
+}
+
+.assortment-stage .assortment-art {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  position: relative;
+  z-index: 1;
+}
+
+.assortment:active .assortment-stage {
+  transform: scale(0.975);
+  transition: transform 0.15s ease;
+}
+
+/* Дым из шланга кальяна — дословно из демо. */
+.hose-smoke {
+  position: absolute;
+  left: 31.3%;
+  top: 95%;
+  width: 0;
+  height: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.hose-smoke i {
+  position: absolute;
+  left: 0;
+  top: -3px;
+  width: 30px;
+  height: 10px;
+  border-radius: 50%;
+  background: radial-gradient(
+    ellipse,
+    rgba(162, 166, 183, 0.87) 0%,
+    rgba(184, 188, 202, 0.8) 25%,
+    rgba(208, 211, 221, 0.47) 48%,
+    transparent 76%
+  );
+  filter: blur(0.8px);
+  opacity: 0;
+  transform-origin: left center;
+  animation: hose-drift 3s linear infinite;
+}
+
+.hose-smoke i:nth-child(2) { animation-delay: -0.6s; }
+.hose-smoke i:nth-child(3) { animation-delay: -1.2s; }
+.hose-smoke i:nth-child(4) { animation-delay: -1.8s; }
+.hose-smoke i:nth-child(5) { animation-delay: -2.4s; }
+
+@keyframes hose-drift {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) scale(0.3, 0.45) rotate(-4deg);
+  }
+  15% {
+    opacity: 0.8;
+  }
+  45% {
+    opacity: 0.65;
+    transform: translate(18px, -5px) scale(1.1, 1) rotate(-12deg);
+  }
+  75% {
+    opacity: 0.3;
+    transform: translate(34px, -16px) scale(1.7, 1.7) rotate(-20deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(48px, -29px) scale(2, 2.2) rotate(-28deg);
+  }
+}
+
+/* Дышащий LED на под-системе — дословно из демо. */
+.pod-led {
+  position: absolute;
+  z-index: 4;
+  left: 54.18%;
+  top: 59.17%;
+  transform: translate(-50%, -50%);
+  width: 1%;
+  height: 10.5%;
+  border-radius: 999px;
+  background: #fff4ee;
+  box-shadow:
+    0 0 3px 1px #fff1e6,
+    0 0 6px 2px #ff2222,
+    0 0 12px 5px rgba(255, 0, 0, 0.67),
+    0 0 21px 7px rgba(255, 0, 0, 0.3);
+  opacity: 0.65;
+  pointer-events: none;
+  animation: pod-breathe 3s ease-in-out infinite;
+}
+
+@keyframes pod-breathe {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* Подпись: 1в1 с плитками «Избранное»/«Часто покупают» —
+   Montserrat 600 (в демо был тонкий Arial-medium). */
+.assortment__label {
+  display: block;
   font-family: "Montserrat", sans-serif;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
-  line-height: 15px;
+  line-height: 17px;
+  letter-spacing: -0.25px;
+  margin-top: 9px;
   text-align: center;
-  letter-spacing: 0.008em;
   color: #000000;
-  margin: 0;
-  /* Ровно по ширине карточки: иначе длинное название вылезает за её края и
-     подпись перестаёт читаться как центрированная под картинкой. */
-  width: 100%;
 }
 
-/* Сетка категорий - автоматические равномерные отступы включая края экрана */
-.category-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 107px);
-  justify-content: space-around;
-  row-gap: 12px;
-  padding: 0;
-  width: 100%;
-  box-sizing: border-box;
-}
-
-@media (max-width: 393px) {
-  /* iPhone 14/15 и аналогичные - 393px ширина */
-  .category-grid {
-    grid-template-columns: repeat(3, 107px);
-    row-gap: 12px;
-    padding: 0;
+/* Десктоп с мышью: наклон вместо блика (как в демо). */
+@media (hover: hover) and (pointer: fine) {
+  .assortment-picture::after {
+    display: none;
+    animation: none;
   }
 }
 
-@media (max-width: 375px) {
-  /* iPhone SE/Mini - чуть меньше отступы */
-  .category-grid {
-    grid-template-columns: repeat(3, 103px);
-    row-gap: 10px;
-    padding: 0;
-  }
-
-  .category-card-box {
-    width: 103px;
-    height: 103px;
+@media (max-width: 350px) {
+  .assortment-picture {
+    height: 106px;
+    border-radius: 18px;
   }
 }
 
-@media (max-width: 360px) {
-  .active-order-banner {
-    padding: 16px;
-    align-items: stretch;
-    flex-direction: column;
+@media (prefers-reduced-motion: reduce) {
+  .assortment-picture::after {
+    animation: none;
   }
 
-  .active-order-action {
-    width: 100%;
+  .hose-smoke {
+    display: none;
   }
 
-  /* 360px экраны */
-  .category-grid {
-    grid-template-columns: repeat(3, 97px);
-    row-gap: 8px;
-    padding: 0;
+  .pod-led {
+    animation: none;
+    opacity: 0.6;
   }
 
-  .category-card-box {
-    width: 97px;
-    height: 97px;
-    border-radius: 14px;
-  }
-
-  .category-card-title {
-    font-size: 11px;
-    line-height: 14px;
-  }
-
-  .main-content-wrapper {
-    padding-bottom: 88px;
-  }
-
-  .cart-wrapper {
-    bottom: calc(var(--app-cart-bottom-offset) + 12px);
+  .assortment-stage {
+    transition: none;
+    transform: none !important;
   }
 }
-
-@media (max-width: 320px) {
-  /* 320px экраны */
-  .category-grid {
-    grid-template-columns: repeat(3, 85px);
-    row-gap: 6px;
-    padding: 0;
-  }
-
-  .category-card-box {
-    width: 85px;
-    height: 85px;
-    border-radius: 12px;
-  }
-
-  .category-card-title {
-    font-size: 10px;
-    line-height: 13px;
-  }
-}
-
-/* Main Content Wrapper */
+/* Main Content Wrapper: нижний отступ — только safe-area
+   (футер и нижняя кнопка корзины удалены). */
 .main-content-wrapper {
   max-width: 1280px;
   margin: 0 auto;
-  padding: 0 16px 96px 16px;
+  padding: 0 16px calc(24px + env(safe-area-inset-bottom, 0px)) 16px;
   position: relative;
   z-index: 10;
 }
 
-.category-section {
+.assortment-section {
   position: relative;
   min-height: 0;
   margin-top: 1rem;
   width: 100%;
   box-sizing: border-box;
-}
-
-/* ===== Cart Button Styles (Brutal Card Style) ===== */
-.cart-wrapper {
-  position: fixed;
-  bottom: var(--app-cart-bottom-offset);
-  left: 0;
-  right: 0;
-  z-index: 50;
-  padding: 0 1rem;
-  pointer-events: none;
-  transition: bottom 0.28s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.cart-button {
-  width: 100%;
-  max-width: 345px;
-  height: 64px;
-  margin: 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.75rem;
-  padding: 0 2rem;
-  position: relative;
-
-  /* Figma: Red gradient */
-  background: linear-gradient(90deg, #f50302 0%, #a90f0e 100%);
-  border: none;
-  border-radius: 528px;
-
-  cursor: pointer;
-  pointer-events: auto;
-  transition: transform 0.25s ease;
-}
-
-.cart-button:hover {
-  transform: translateY(-2px);
-}
-
-.cart-button:active {
-  transform: translateY(-1px);
-}
-
-.cart-icon {
-  flex-shrink: 0;
-  color: #ffffff;
-  transition: transform 0.25s ease;
-}
-
-.cart-button:hover .cart-icon {
-  transform: scale(1.1);
-}
-
-.cart-text {
-  font-family: "Montserrat", sans-serif;
-  font-size: 16px;
-  font-weight: 500;
-  color: #ffffff;
-}
-
-/* Slide up animation with bounce */
-.cart-slide-enter-active {
-  transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-.cart-slide-leave-active {
-  transition: all 0.3s ease-out;
-}
-
-.cart-slide-enter-from {
-  transform: translateY(150%);
-  opacity: 0;
-}
-
-.cart-slide-leave-to {
-  transform: translateY(150%);
-  opacity: 0;
-}
-
-/* Mobile adjustments */
-@media (max-width: 768px) {
-  .cart-wrapper {
-    padding: 0 0.75rem;
-  }
-
-  .cart-button {
-    max-width: 320px;
-    height: 56px;
-    padding: 0 1.5rem;
-  }
-
-  .cart-text {
-    font-size: 15px;
-  }
-
-  .cart-icon {
-    width: 16px;
-    height: 15px;
-  }
-}
-
-@media (max-width: 480px) {
-  .cart-wrapper {
-    padding: 0 0.5rem;
-  }
-
-  .cart-button {
-    max-width: 300px;
-    height: 52px;
-    padding: 0 1.25rem;
-    gap: 0.5rem;
-  }
-
-  .cart-text {
-    font-size: 14px;
-  }
-
-  .cart-icon {
-    width: 15px;
-    height: 14px;
-  }
 }
 </style>

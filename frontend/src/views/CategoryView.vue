@@ -2,53 +2,33 @@
   <div class="min-h-screen" style="background: #f5f7fa">
     <SmokeParticles :count="4" area="full" />
 
-    <!-- Хедер категории -->
-    <div class="liquid-category-header">
-      <div class="liquid-category-header-content">
-        <button class="liquid-back-button" @click="goBack" aria-label="Назад">
-          <svg
-            class="liquid-back-icon"
-            width="7"
-            height="12"
-            viewBox="0 0 7 12"
-            fill="none"
-          >
-            <path
-              d="M6 1L1 6L6 11"
-              stroke="#191919"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
+    <!-- Хедер категории удалён: название показывают кнопки быстрой
+         навигации снизу, выход — «На главную» в верхней панели. -->
+
+    <!-- Плавная смена экрана категории: контент мягко уходит вниз
+         с растворением и приходит снизу при переключении в панели. -->
+    <Transition name="qnav-screen" mode="out-in">
+      <div :key="screenKey" class="qnav-screen">
+        <div v-if="showCompatibilityNotice" class="compatibility-notice-sticky">
+          <div class="compatibility-notice-inner">
+            <CompatibilityNotice />
+          </div>
+        </div>
+
+        <div class="main-content-wrapper">
+          <div v-if="showCategoryFilters" class="category-content">
+            <CategoryFilterBar
+              :profile="storefrontFiltersProfile"
+              :top-active="filterTopActive"
+              :strength-tier="filterStrengthTier"
+              :top-loading="filterTopSalesLoading"
+              :discount-active="filterDiscountActive"
+              :discount-count="discountedGroupsCount"
+              @toggle-top="toggleTopFilter()"
+              @toggle-strength="toggleStrengthFilter($event)"
+              @toggle-discount="toggleDiscountFilter()"
             />
-          </svg>
-        </button>
-        <h1 class="liquid-category-title">
-          {{ selectedCategory?.name || "Категория" }}
-        </h1>
-      </div>
-    </div>
-
-    <!-- Плашка консультации: закреплена под хедером расходников -->
-    <div v-if="showCompatibilityNotice" class="compatibility-notice-sticky">
-      <div class="compatibility-notice-inner">
-        <CompatibilityNotice />
-      </div>
-    </div>
-
-    <div class="main-content-wrapper">
-      <div v-if="showCategoryFilters" class="category-content">
-        <CategoryFilterBar
-          :profile="storefrontFiltersProfile"
-          :top-active="filterTopActive"
-          :strength-tier="filterStrengthTier"
-          :top-loading="filterTopSalesLoading"
-          :discount-active="filterDiscountActive"
-          :discount-count="discountedGroupsCount"
-          @toggle-top="toggleTopFilter()"
-          @toggle-strength="toggleStrengthFilter($event)"
-          @toggle-discount="toggleDiscountFilter()"
-        />
-      </div>
+          </div>
 
       <!-- Cross-sell товары (без заголовка, первыми) -->
       <div
@@ -302,46 +282,15 @@
           </button>
         </div>
       </section>
-    </div>
-
-    <!-- Cart Button - Figma Redesign -->
-    <Transition name="cart-slide">
-      <div v-if="totalCartItems > 0" class="cart-wrapper">
-        <button class="cart-button" @click="goToCheckout">
-          <svg
-            width="17"
-            height="16"
-            viewBox="0 0 17 16"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-            class="cart-icon"
-          >
-            <path
-              d="M1 1H3.5L4.5 3M4.5 3L6.5 9H13.5L15.5 3H4.5Z"
-              stroke="currentColor"
-              stroke-width="1.6"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            />
-            <circle
-              cx="6"
-              cy="13"
-              r="1.5"
-              stroke="currentColor"
-              stroke-width="1.6"
-            />
-            <circle
-              cx="13"
-              cy="13"
-              r="1.5"
-              stroke="currentColor"
-              stroke-width="1.6"
-            />
-          </svg>
-          <span class="cart-text">Заказ на {{ totalCartAmount }} BYN</span>
-        </button>
+        </div>
       </div>
     </Transition>
+
+    <!-- Быстрая навигация по категориям: закреплена снизу, не
+         пропадает внутри «Наш ассортимент» — переключение экранов. -->
+    <div class="qnav-dock">
+      <CategoryQuickNav />
+    </div>
 
     <!-- Toast Notification -->
     <ToastNotification
@@ -382,6 +331,7 @@ import CategoryFilterBar from "@/components/product/CategoryFilterBar.vue";
 import SingleProductCard from "@/components/product/SingleProductCard.vue";
 import { useProductCardLayout } from "@/composables/useProductCardLayout";
 import { useCategoryFilters } from "@/composables/useCategoryFilters";
+import CategoryQuickNav from "@/components/CategoryQuickNav.vue";
 
 const props = defineProps<{
   slug: string;
@@ -394,6 +344,10 @@ const wholesaleStore = useWholesaleStore();
 const router = useRouter();
 const route = useRoute();
 const categoryFilters = useCategoryFilters();
+
+/** Ключ «экрана» категории: смена slug переключает контент с
+ *  плавным переходом (fade + лёгкий сдвиг), а не пересборкой. */
+const screenKey = computed(() => `screen-${props.slug}`);
 const {
   topActive: filterTopActive,
   strengthTier: filterStrengthTier,
@@ -941,12 +895,9 @@ const showProducts = computed(() => {
   return catalogStore.activeGroup !== null;
 });
 
-const totalCartItems = computed(() => cartStore.totalItems);
-const totalCartAmount = computed(() => cartStore.totalAmount.toFixed(2));
+// Тост над футером: нижняя кнопка корзины убрана, смещение не нужно.
 const toastBottomOffset = computed(() =>
-  totalCartItems.value > 0
-    ? "calc(var(--app-bottom-tab-bar-height, 130px) + 80px)"
-    : "calc(var(--app-bottom-tab-bar-height, 130px) + 20px)",
+  "calc(var(--app-bottom-tab-bar-height, 130px) + 20px)",
 );
 
 function getProductBadges(product: Product): ProductBadge[] {
@@ -1020,10 +971,6 @@ function openProduct(product: Product) {
   catalogStore.currentProduct = product;
   router.push({ name: "product", params: { id: product.id } });
   catalogStore.fetchProduct(product.id);
-}
-
-function goToCheckout() {
-  router.push("/checkout");
 }
 
 function toggleLiquidExpansion(groupId: string) {
@@ -1238,178 +1185,76 @@ watch(
 </script>
 
 <style scoped>
-/* Main Content Wrapper */
+/* Main Content Wrapper: снизу — резерв под быструю навигацию. */
 .main-content-wrapper {
   max-width: 1280px;
   margin: 0 auto;
-  padding: 0 0 130px 0;
+  padding: 0 0 calc(140px + env(safe-area-inset-bottom, 0px)) 0;
   position: relative;
   z-index: 10;
 }
 
-/* Liquid Category Header Styles - Figma Redesign */
-.liquid-category-header {
-  position: sticky;
-  /* Залипает под закреплённой верхней панелью (TopCartBar), а не под
-     viewport-top — иначе хедер уходит под панель при прокрутке. */
-  top: var(--app-topbar-offset, 0px);
-  z-index: 20;
-  background: #ffffff;
-  backdrop-filter: blur(11.5px);
-  border-radius: 0 0 24px 24px;
-  padding: 0;
-  margin: 0 0 16px 0;
-  box-shadow: 0 4px 32px rgba(170, 178, 189, 0.32);
+/* ===== Быстрая навигация по категориям ===== */
+.qnav-dock {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  width: min(calc(100% - 16px), 446px);
+  z-index: 40;
 }
 
-.liquid-category-header-content {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-  padding: 16px 16px 20px 16px;
-  min-height: 56px;
+/* ===== Плавный переход между экранами категорий =====
+   Уходящий контент растворяется и мягко уезжает вниз; входящий
+   приходит снизу с коротким разгоном — быстрый (0.22s) и понятный. */
+.qnav-screen {
+  will-change: opacity;
 }
 
-/* Плашка консультации: прилипает вплотную к шапке — 4px от
-   слова «Расходники». Снизу 16px до линеек, как между блоками. */
+.qnav-screen-enter-active,
+.qnav-screen-leave-active {
+  transition:
+    opacity 0.22s ease,
+    transform 0.22s cubic-bezier(0.2, 0.65, 0.3, 1);
+}
+
+.qnav-screen-enter-from {
+  opacity: 0;
+  transform: translateY(14px);
+}
+
+.qnav-screen-leave-to {
+  opacity: 0;
+  transform: translateY(10px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .qnav-screen-enter-active,
+  .qnav-screen-leave-active {
+    transition: opacity 0.15s ease;
+  }
+
+  .qnav-screen-enter-from,
+  .qnav-screen-leave-to {
+    transform: none;
+  }
+}
+
+/* Плашка консультации: хедер категории удалён — залипает прямо
+   под закреплённой верхней панелью (TopCartBar). */
 .compatibility-notice-sticky {
   position: sticky;
-  /* Реальная высота шапки: 16 паддинг + 24 тайтл + 20 паддинг
-     минус скругление ≈ 46px; сверху зазор 12px — как между
-     линейками «Картриджи» и «Испарители». Залипает под хедером,
-     который сам липнет под верхней панелью. */
-  top: calc(var(--app-topbar-offset, 0px) + 58px);
+  top: var(--app-topbar-offset, 0px);
   z-index: 19;
   padding: 0 16px 16px;
-  /* Зазор от шапки: 16px (хедер) − 4px = 12px, как gap линеек. */
-  margin: -4px 0 16px;
+  margin: 0 0 16px;
   /* При прилипании мягкий градиент вниз, без резкой подложки. */
   background: linear-gradient(#f5f7fa 86%, rgba(245, 247, 250, 0));
   border-radius: 0 0 24px 24px;
 }
-
 .compatibility-notice-inner {
   max-width: 430px;
   margin: 0 auto;
-}
-
-.liquid-back-button {
-  position: absolute;
-  left: 16px;
-  top: 50%;
-  transform: translateY(-50%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  border-radius: 50%;
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  transition: background 0.2s ease;
-}
-
-.liquid-back-button:hover {
-  background: #f5f7fa;
-}
-
-.liquid-back-button:active {
-  background: #e6e9ed;
-}
-
-.liquid-back-icon {
-  flex-shrink: 0;
-  width: 7px;
-  height: 12px;
-}
-
-.liquid-category-title {
-  font-family: "Montserrat", sans-serif;
-  font-style: normal;
-  font-weight: 700;
-  font-size: 20px;
-  line-height: 24px;
-  text-align: center;
-  color: #191919;
-  margin: 0;
-}
-
-@media (max-width: 768px) {
-  .liquid-category-header {
-    border-radius: 0 0 20px 20px;
-    margin-bottom: 12px;
-  }
-
-  .liquid-category-header-content {
-    padding: 14px 14px 18px 14px;
-    min-height: 52px;
-  }
-
-  .liquid-back-button {
-    left: 14px;
-    width: 30px;
-    height: 30px;
-  }
-
-  .liquid-category-title {
-    font-size: 18px;
-    line-height: 22px;
-  }
-}
-
-@media (max-width: 480px) {
-  .liquid-category-header {
-    border-radius: 0 0 18px 18px;
-    margin-bottom: 10px;
-  }
-
-  .liquid-category-header-content {
-    padding: 12px 12px 16px 12px;
-    min-height: 48px;
-  }
-
-  .liquid-back-button {
-    left: 12px;
-    width: 28px;
-    height: 28px;
-  }
-
-  .liquid-category-title {
-    font-size: 16px;
-    line-height: 20px;
-  }
-}
-
-@media (max-width: 360px) {
-  .liquid-category-header {
-    border-radius: 0 0 16px 16px;
-    margin-bottom: 8px;
-  }
-
-  .liquid-category-header-content {
-    padding: 10px 10px 14px 10px;
-    min-height: 44px;
-  }
-
-  .liquid-back-button {
-    left: 10px;
-    width: 26px;
-    height: 26px;
-  }
-
-  .liquid-back-icon {
-    width: 6px;
-    height: 10px;
-  }
-
-  .liquid-category-title {
-    font-size: 15px;
-    line-height: 18px;
-  }
 }
 
 /* Category Content - контейнер для контента категории */
@@ -1716,128 +1561,6 @@ watch(
 
 .product-card-price-currency {
   color: var(--navalivay-black);
-}
-
-/* Cart Button Styles */
-.cart-wrapper {
-  position: fixed;
-  bottom: var(--app-cart-bottom-offset);
-  left: 0;
-  right: 0;
-  z-index: 50;
-  padding: 0 1rem;
-  pointer-events: none;
-  transition: bottom 0.28s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.cart-button {
-  width: 100%;
-  max-width: 345px;
-  height: 64px;
-  margin: 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.75rem;
-  padding: 0 2rem;
-  position: relative;
-
-  /* Figma: Red gradient */
-  background: linear-gradient(90deg, #f50302 0%, #a90f0e 100%);
-  border: none;
-  border-radius: 528px;
-
-  cursor: pointer;
-  pointer-events: auto;
-  transition: transform 0.25s ease;
-}
-
-.cart-button:hover {
-  transform: translateY(-2px);
-}
-
-.cart-button:active {
-  transform: translateY(-1px);
-}
-
-.cart-icon {
-  flex-shrink: 0;
-  color: #ffffff;
-  transition: transform 0.25s ease;
-}
-
-.cart-button:hover .cart-icon {
-  transform: scale(1.1);
-}
-
-.cart-text {
-  font-family: "Montserrat", sans-serif;
-  font-size: 16px;
-  font-weight: 500;
-  color: #ffffff;
-}
-
-/* Slide up animation with bounce */
-.cart-slide-enter-active {
-  transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-.cart-slide-leave-active {
-  transition: all 0.3s ease-out;
-}
-
-.cart-slide-enter-from {
-  transform: translateY(150%);
-  opacity: 0;
-}
-
-.cart-slide-leave-to {
-  transform: translateY(150%);
-  opacity: 0;
-}
-
-/* Mobile adjustments */
-@media (max-width: 768px) {
-  .cart-wrapper {
-    padding: 0 0.75rem;
-  }
-
-  .cart-button {
-    max-width: 320px;
-    height: 56px;
-    padding: 0 1.5rem;
-  }
-
-  .cart-text {
-    font-size: 15px;
-  }
-
-  .cart-icon {
-    width: 16px;
-    height: 15px;
-  }
-}
-
-@media (max-width: 480px) {
-  .cart-wrapper {
-    padding: 0 0.5rem;
-  }
-
-  .cart-button {
-    max-width: 300px;
-    height: 52px;
-    padding: 0 1.25rem;
-    gap: 0.5rem;
-  }
-
-  .cart-text {
-    font-size: 14px;
-  }
-
-  .cart-icon {
-    width: 15px;
-    height: 14px;
-  }
 }
 
 /* Deep styles for liquid components */

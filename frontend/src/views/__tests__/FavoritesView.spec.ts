@@ -410,7 +410,7 @@ describe('FavoritesView (карточки каталога LiquidLineTree)', () 
     wrapper.unmount()
   })
 
-  it('shows red cart CTA when cart has items, hidden when empty', async () => {
+  it('нижняя кнопка корзины удалена: не рендерится ни с пустой, ни с непустой корзиной', async () => {
     const cartStore = useCartStore()
 
     const emptyWrapper = await mountView([favoriteGroup()])
@@ -419,25 +419,95 @@ describe('FavoritesView (карточки каталога LiquidLineTree)', () 
 
     cartStore.items = [{ productId: 'prod1', title: 'Товар один', priceRub: 10, quantity: 2 }]
     const wrapper = await mountView([favoriteGroup()])
-    const cta = wrapper.find('.cart-button')
-    expect(cta.exists()).toBe(true)
-    expect(cta.text()).toContain('Заказ на 20.00 BYN')
-
-    await cta.trigger('click')
-    expect(routerPush).toHaveBeenCalledWith('/checkout')
+    // Функционал корзины живёт в верхней панели (TopCartBar).
+    expect(wrapper.find('.cart-button').exists()).toBe(false)
     wrapper.unmount()
   })
 
-  it('cart CTA hidden while editing order', async () => {
-    const cartStore = useCartStore()
-    cartStore.items = [{ productId: 'prod1', title: 'Товар один', priceRub: 10, quantity: 1 }]
-
+  it('после drag-n-drop и сохранения карточки не дублируются', async () => {
+    // Две независимые группы: drag физически переставляет DOM-узлы
+    // insertBefore «за спиной» Vue; сохранение обновляет порядок в
+    // сторе — без пересборки v-for патч клонировал переставленные
+    // карточки.
+    const groups = [
+      favoriteGroup({ groupId: 'grp1', groupSlug: 'pp', items: [favoriteItem({ productId: 'prod1', groupId: 'grp1' })] }),
+      favoriteGroup({
+        groupId: 'grp_second',
+        groupSlug: 'second',
+        groupName: 'ЗЛАЯ МОНАШКА',
+        items: [favoriteItem({ productId: 'prod2', groupId: 'grp_second', title: 'Второй товар', groupName: 'ЗЛАЯ МОНАШКА' })],
+      }),
+    ]
+    // Вторая группа должна быть в каталоге отдельным корнем.
+    seedCatalogStore()
+    const catalogStore = useCatalogStore()
+    const category = catalogStore.categories[0] as unknown as { groups: Array<Record<string, unknown>> }
+    category.groups.push({
+      id: 'grp_second',
+      slug: 'second',
+      name: 'ЗЛАЯ МОНАШКА',
+      order: 3,
+      productCount: 1,
+      coverImage: null,
+      hasCoverImage: false,
+      parentId: null,
+      mark: null,
+    })
+    catalogStore.allProducts.push({
+      id: 'prod2',
+      categoryId: 'cat1',
+      groupId: 'grp_second',
+      title: 'Второй товар',
+      priceRub: 12,
+      description: '',
+      images: [],
+      createdAt: '',
+      stock: 3,
+      hasVariants: false,
+    } as never)
+    fetchFavoritesMock.mockResolvedValue(payload(groups))
     reorderFavoritesApiMock.mockResolvedValue(undefined)
-    const wrapper = await mountView([favoriteGroup()])
-    expect(wrapper.find('.cart-button').exists()).toBe(true)
 
-    await wrapper.find('.reorder').trigger('click')
-    expect(wrapper.find('.cart-button').exists()).toBe(false)
+    const wrapper = mount(FavoritesView, {
+      global: { stubs: { ToastNotification: { template: '<div />' } } },
+    })
+    await flushPromises()
+
+    // Входим в режим сортировки: две карточки.
+    await wrapper.find('#edit').trigger('click')
+    const cardsAfterEdit = wrapper.findAll('.card:not(.card--skeleton)')
+    expect(cardsAfterEdit.length).toBe(2)
+
+    // Имитируем drag: переставляем DOM-узлы руками (как это делает
+    // placeRow: insertBefore второй карточки перед первой).
+    const list = wrapper.find('.list').element as HTMLElement
+    const [first, second] = [...list.children] as HTMLElement[]
+    list.insertBefore(second, first)
+    expect([...list.children].map((el) => (el as HTMLElement).dataset.id)).toEqual([
+      'grp_second',
+      'grp1',
+    ])
+
+    // Сохраняем: сервер получил новый порядок, стор обновился.
+    await wrapper.find('#edit').trigger('click')
+    await flushPromises()
+
+    // Вышли из режима сортировки: снова карточки каталога.
+    // Ключевой ассерт: карточки НЕ задвоились.
+    const lineCards = wrapper.findAll('.liquid-line-card')
+    expect(lineCards.length).toBe(2)
+    // Порядок в DOM соответствует сохранённому.
+    expect(lineCards.map((c) => c.find('.liquid-line-title').text())).toEqual([
+      'ЗЛАЯ МОНАШКА',
+      'PODONKI PODGON',
+    ])
+    // Сервер получил правильный порядок id.
+    expect(reorderFavoritesApiMock).toHaveBeenCalledWith(['grp_second', 'grp1'])
+
+    // Повторный вход в режим сортировки — тоже без дублей.
+    await wrapper.find('#edit').trigger('click')
+    expect(wrapper.findAll('.card:not(.card--skeleton)').length).toBe(2)
+
     wrapper.unmount()
   })
 })

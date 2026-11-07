@@ -25,7 +25,7 @@ vi.mock('@/utils/favoritesApi', () => ({
   FavoritesAuthError: class extends Error {},
 }))
 
-describe('HomeView favorites banner', () => {
+describe('HomeView shortcuts (Избранное / Часто покупают)', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
@@ -38,7 +38,7 @@ describe('HomeView favorites banner', () => {
     vi.spyOn(catalogStore, 'initialize').mockResolvedValue(undefined)
   })
 
-  it('renders the favorites banner button below the banner area', async () => {
+  it('renders the shortcuts pair above the category grid', async () => {
     const wrapper = mount(HomeView, {
       global: {
         stubs: {
@@ -51,15 +51,19 @@ describe('HomeView favorites banner', () => {
 
     await flushPromises()
 
-    const banner = wrapper.find('.favorites')
-    expect(banner.exists()).toBe(true)
-    expect(banner.attributes('aria-label')).toBe('Открыть избранное')
-    expect(wrapper.find('.favorites__title').text()).toBe('Избранное')
+    // Две плитки: рабочая «Избранное» и заглушка «Часто покупают».
+    const items = wrapper.findAll('.home-shortcuts__item')
+    expect(items.length).toBe(2)
+    expect(wrapper.find('.home-shortcuts__label').text()).toBe('Избранное')
+    expect(wrapper.text()).toContain('Часто покупают')
+
+    // Старая длинная кнопка избранного больше не рендерится.
+    expect(wrapper.find('.favorites').exists()).toBe(false)
 
     wrapper.unmount()
   })
 
-  it('navigates to /favorites on click', async () => {
+  it('navigates to /favorites on Избранное click', async () => {
     const wrapper = mount(HomeView, {
       global: {
         stubs: {
@@ -72,8 +76,29 @@ describe('HomeView favorites banner', () => {
 
     await flushPromises()
 
-    await wrapper.find('.favorites').trigger('click')
+    await wrapper.find('.home-shortcuts__item:not(.home-shortcuts__item--placeholder)').trigger('click')
     expect(routerPush).toHaveBeenCalledWith({ name: 'favorites' })
+
+    wrapper.unmount()
+  })
+
+  it('Часто покупают: заглушка без функционала — клик никуда не ведёт', async () => {
+    const wrapper = mount(HomeView, {
+      global: {
+        stubs: {
+          SmokeParticles: { template: '<div />' },
+          BannerCarousel: { template: '<div />' },
+          FloatingCartBar: { template: '<div />' },
+        },
+      },
+    })
+
+    await flushPromises()
+
+    const placeholder = wrapper.find('.home-shortcuts__item--placeholder')
+    expect(placeholder.exists()).toBe(true)
+    // Это не кнопка: ни обработчика, ни навигации.
+    expect(placeholder.element.tagName).not.toBe('BUTTON')
 
     wrapper.unmount()
   })

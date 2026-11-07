@@ -109,7 +109,8 @@ describe("SingleProductCard → CategoryView: один клик = один то�
     await addBtn.trigger("click");
     expect(useCartStore().totalItems).toBe(1);
     expect(useCartStore().items[0]?.quantity).toBe(1);
-    expect(wrapper.text()).toContain("Заказ на 25.00 BYN");
+    // Сумма в реальном состоянии корзины (показывается в верхней панели).
+    expect(useCartStore().totalAmount).toBe(25);
 
     // Повторное нажатие (инкремент) — тоже ровно +1.
     await wrapper.find(".single-qty-btn-plus").trigger("click");

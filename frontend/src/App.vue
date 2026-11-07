@@ -3,7 +3,6 @@ import { RouterView } from "vue-router";
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import VapeSmoke from "@/components/VapeSmoke.vue";
-import BottomTabBar from "@/components/BottomTabBar.vue";
 import BlockedScreen from "@/components/BlockedScreen.vue";
 import WheelHomeWidget from "@/components/wheel/WheelHomeWidget.vue";
 import ReviewPromptModal from "@/components/reviews/ReviewPromptModal.vue";
@@ -78,21 +77,19 @@ const showOfflinePlaceholder = computed(
       (catalogStore.offline && !catalogStore.categories.length)),
 );
 
-const showTabBar = computed(() => {
+/* Нижний красный футер (домик/рулетка/человечек) удалён: главная и
+   профиль доступны из верхней панели, корзина — там же, рулетка —
+   через плавающий виджет на главном экране. Промпт отзывов живёт
+   только на витринных экранах (не чекаут/заказ/админ). */
+const showReviewPrompt = computed(() => {
   const path = route.path;
   if (path.startsWith("/admin")) return false;
   if (path === "/checkout") return false;
   if (path === "/my-order") return false;
   if (path === "/favorites") return false;
-  // Опт получает свой набор табов вместо скрытого футера -
-  // см. docs/wholesale-rules.md и спецификацию рулетки.
   return true;
 });
 
-const showReviewPrompt = computed(() => showTabBar.value);
-// Гейт авторизации нужен только при живом сервере: когда сеть лежит,
-// его модалки «Не удалось проверить доступ» перекрывают оффлайн-
-// заглушку. Гейт смонтируется после перезагрузки по кнопке.
 const showReferralGate = computed(
   () => !isAdminRoute.value && !isBlocked.value && !showOfflinePlaceholder.value,
 );
@@ -141,7 +138,7 @@ onMounted(() => {
 <template>
   <div
     class="app-shell"
-    :class="{ 'app-shell--with-tab-bar': showCustomerContent && showTabBar, 'app-shell--admin': isAdminRoute }"
+    :class="{ 'app-shell--admin': isAdminRoute }"
     style="background: var(--app-page-background, #ffffff)"
   >
     <!-- Оффлайн-заглушка: сервер недоступен — вместо всего клиентского
@@ -166,7 +163,6 @@ onMounted(() => {
         </RouterView>
       </div>
       <VapeSmoke />
-      <BottomTabBar v-if="showTabBar" />
       <ReviewPromptModal v-if="showReviewPrompt" />
       <WheelHomeWidget v-if="showWheelWidget" />
     </div>
@@ -186,7 +182,10 @@ onMounted(() => {
 <style>
 :root {
   --app-screen-max-width: 393px;
-  --app-bottom-tab-bar-height: 130px;
+  /* Нижний футер удалён, но переменную оставляем: отступы тостов,
+     модалок и виджетов отсчитывались от неё — теперь она задаёт
+     безопасный нижний отступ (safe-area) для тех же элементов. */
+  --app-bottom-tab-bar-height: calc(24px + env(safe-area-inset-bottom, 0px));
   --app-cart-bottom-offset: var(--app-bottom-tab-bar-height, 130px);
   --app-page-background: #f5f7fa;
   /* Высота закреплённой верхней панели (16px + safe-area + 54px) и
@@ -212,11 +211,6 @@ body,
    не перекрывался. */
 .app-shell__topbar-sizer {
   height: var(--app-topbar-offset);
-}
-
-.app-shell--with-tab-bar {
-  padding-bottom: var(--app-bottom-tab-bar-height, 130px);
-  box-sizing: border-box;
 }
 
 /* Desktop admin content owns its scroll; customer and mobile pages stay in document flow. */

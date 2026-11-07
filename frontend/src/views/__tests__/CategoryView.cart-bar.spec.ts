@@ -89,7 +89,7 @@ async function mountCategory() {
   return wrapper;
 }
 
-describe("CategoryView cart bar visibility", () => {
+describe("CategoryView: нижняя кнопка корзины удалена", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
     localStorage.clear();
@@ -98,22 +98,22 @@ describe("CategoryView cart bar visibility", () => {
     vi.restoreAllMocks();
   });
 
-  it("shows the checkout cart bar for retail customers when cart has items", async () => {
+  it("не рендерит нижнюю кнопку корзины при непустой корзине", async () => {
     installCatalogData();
     addCartItem();
 
     const wrapper = await mountCategory();
 
-    expect(wrapper.find(".cart-wrapper").exists()).toBe(true);
-    expect(wrapper.text()).toContain("Заказ на 25.00 BYN");
-
-    await wrapper.find(".cart-button").trigger("click");
-    expect(routerPush).toHaveBeenCalledWith("/checkout");
+    // Функционал корзины живёт в верхней панели (TopCartBar),
+    // дубль снизу удалён.
+    expect(useCartStore().totalItems).toBe(1);
+    expect(wrapper.find(".cart-wrapper").exists()).toBe(false);
+    expect(wrapper.find(".cart-button").exists()).toBe(false);
 
     wrapper.unmount();
   });
 
-  it("keeps the checkout cart bar visible for wholesale customers with cart items", async () => {
+  it("не рендерит нижнюю кнопку и для оптовиков с корзиной", async () => {
     installCatalogData();
     useWholesaleStore().applyOrderWholesaleContext({
       code: "100",
@@ -127,26 +127,18 @@ describe("CategoryView cart bar visibility", () => {
 
     expect(useWholesaleStore().isWholesale).toBe(true);
     expect(useCartStore().totalItems).toBe(1);
-    expect(wrapper.find(".cart-wrapper").exists()).toBe(true);
-    expect(wrapper.text()).toContain("Заказ на 25.00 BYN");
+    expect(wrapper.find(".cart-wrapper").exists()).toBe(false);
 
     wrapper.unmount();
   });
 
-  it("does not show the cart bar in wholesale mode when the cart is empty", async () => {
+  it("категория рендерится и с пустой корзиной", async () => {
     installCatalogData();
-    useWholesaleStore().applyOrderWholesaleContext({
-      code: "100",
-      secret: "secret",
-      label: "Опт от 100 BYN",
-      minOrderAmount: 100,
-    });
 
     const wrapper = await mountCategory();
 
-    expect(useWholesaleStore().isWholesale).toBe(true);
     expect(useCartStore().totalItems).toBe(0);
-    expect(wrapper.find(".cart-wrapper").exists()).toBe(false);
+    expect(wrapper.text()).toContain("Жидкости");
 
     wrapper.unmount();
   });

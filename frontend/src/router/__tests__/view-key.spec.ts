@@ -44,10 +44,13 @@ describe("ключ верхнего RouterView", () => {
     expect(topLevelViewKey(first)).not.toBe(topLevelViewKey(second));
   });
 
-  it("меняется при переходе на другую категорию", () => {
+  it("не меняется при переходе на другую категорию", () => {
+    // «Наш ассортимент»: категории переключаются быстрой навигацией
+    // внутри одного экрана CategoryView (watch по slug) — пересборка
+    // верхнего экрана сломала бы плавный переход.
     const liquids = route("/category/liquids", ["/category/:slug"], { slug: "liquids" });
     const pods = route("/category/pods", ["/category/:slug"], { slug: "pods" });
-    expect(topLevelViewKey(liquids)).not.toBe(topLevelViewKey(pods));
+    expect(topLevelViewKey(liquids)).toBe(topLevelViewKey(pods));
   });
 
   it("различает разные экраны верхнего уровня", () => {
