@@ -107,13 +107,13 @@ describe("CategoryQuickNav", () => {
     // Две страницы дорожки.
     const pages = wrapper.findAll(".qnav__page");
     expect(pages.length).toBe(2);
-    // В первой странице — жидкости/расходники/устройства.
+    // В первой странице — жидкости/расходники/снюс.
     expect(pages[0].text()).toContain("Жидкости");
     expect(pages[0].text()).toContain("Расходники");
-    expect(pages[0].text()).toContain("Устройства");
-    // Во второй — одноразки/снюс/кальянка.
+    expect(pages[0].text()).toContain("Снюс");
+    // Во второй — одноразки/устройства/кальянка.
     expect(pages[1].text()).toContain("Одноразки");
-    expect(pages[1].text()).toContain("Снюс");
+    expect(pages[1].text()).toContain("Устройства");
     expect(pages[1].text()).toContain("Кальянка");
     // Точки-индикаторы.
     expect(wrapper.findAll(".qnav__dot").length).toBe(2);
@@ -122,12 +122,12 @@ describe("CategoryQuickNav", () => {
   });
 
   it("активная категория на второй странице раскрывает её", async () => {
-    routeParams.value = { slug: "snyus-i-plastiny" };
+    routeParams.value = { slug: "ustrojstva" };
     const wrapper = mount(CategoryQuickNav);
 
-    // Активная категория снюс — панель листается на вторую страницу.
+    // Активная категория устройства — панель листается на вторую страницу.
     const active = wrapper.find(".qnav__category--active");
-    expect(active.text()).toContain("Снюс");
+    expect(active.text()).toContain("Устройства");
     const track = wrapper.find(".qnav__track");
     expect(track.attributes("style")).toContain("-100%");
 

@@ -15,6 +15,20 @@ vi.mock("vue-router", () => ({
   }),
 }));
 
+/* happy-dom не даёт canvas 2D-контекст: lottie-web при импорте
+   рисует тестовый пиксель и падает. Мокаем плеер пустышкой —
+   анимацию в юнит-тестах не проверяем. */
+vi.mock("lottie-web", () => ({
+  default: {
+    loadAnimation: () => ({
+      setSpeed: () => undefined,
+      goToAndStop: () => undefined,
+      destroy: () => undefined,
+      totalFrames: 0,
+    }),
+  },
+}));
+
 function createJsonResponse(data: unknown, ok = true, status = 200) {
   return {
     ok,

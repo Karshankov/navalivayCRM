@@ -1,44 +1,35 @@
 <template>
-  <div class="checkout-page" @click="handlePageClick">
+  <div
+    ref="pageEl"
+    class="checkout-page"
+    :style="pageMinHeight !== null ? { minHeight: `${pageMinHeight}px` } : undefined"
+    @click="handlePageClick"
+  >
+    <!-- Хедер из демо: сетка назад / заголовок / очистить. -->
     <div class="header-area">
       <div class="checkout-header">
-        <button class="checkout-back-button" @click="handleBack" aria-label="Назад">
-          <svg
-            class="checkout-back-icon"
-            width="7"
-            height="12"
-            viewBox="0 0 7 12"
-            fill="none"
-          >
-            <path
-              d="M6 1L1 6L6 11"
-              stroke="#191919"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            />
+        <button class="icon-button" @click="handleBack" aria-label="Назад">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+            <path d="m15 5-7 7 7 7" />
           </svg>
         </button>
         <h1 class="checkout-title">{{ checkoutTitle }}</h1>
         <button
           v-if="cartStore.items.length"
           @click="handleClearCart"
-          class="header-trash-btn"
+          class="icon-button icon-button--muted"
           aria-label="Очистить корзину"
         >
-          <svg width="18" height="20" viewBox="0 0 18 20" fill="none">
-            <path
-              d="M1 5H17M15 5V17C15 18 14 19 13 19H5C4 19 3 18 3 17V5M6 5V3C6 2 7 1 8 1H10C11 1 12 2 12 3V5"
-              stroke="#AAB2BD"
-              stroke-width="1.5"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            />
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 6h16M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 6v13a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V6" />
           </svg>
         </button>
+        <span v-else class="icon-button icon-button--muted" aria-hidden="true"></span>
       </div>
     </div>
 
+    <!-- main: единственный скроллируемый блок (демо). -->
+    <main class="checkout-main">
     <div class="checkout-container">
       <div v-if="!cartStore.items.length" class="empty-cart">
         <div class="empty-cart-icon">🛒</div>
@@ -49,44 +40,34 @@
       </div>
 
       <div v-else class="checkout-content">
-        <div class="cart-card">
-          <div class="cart-items">
-            <TransitionGroup name="list" tag="div">
-              <div
-                v-for="(item, index) in displayedItems"
-                :key="item.productId + (item.variantId || '')"
-                class="cart-item"
-                :class="{
-                  'cart-item-border': index < displayedItems.length - 1,
-                }"
-              >
-                <div class="cart-item-image-wrap">
-                  <div class="cart-item-image">
+        <!-- Карточка заказа из демо: компактные строки, сворачивание
+             «Ещё N товаров», итого внутри карточки. -->
+        <div class="order-card">
+          <section class="cart-items" aria-label="Товары в корзине">
+            <!-- Первая строка — всегда видна. -->
+            <article
+              v-for="item in visibleItems"
+              :key="item.productId + (item.variantId || '')"
+              class="cart-item"
+            >
+                <div class="cart-item-visual">
+                  <span class="cart-item-thumb">
                     <img
                       v-if="item.image"
                       :src="item.image"
                       :alt="item.title"
                     />
-                    <div v-else class="cart-item-placeholder">
-                      <svg
-                        width="24"
-                        height="24"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="#ccc"
-                        stroke-width="1.5"
-                      >
-                        <rect
-                          x="3"
-                          y="3"
-                          width="18"
-                          height="18"
-                          rx="2"
-                          ry="2"
-                        />
-                      </svg>
-                    </div>
-                  </div>
+                    <svg
+                      v-else
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.5"
+                      aria-hidden="true"
+                    >
+                      <path d="M4 7l8-4 8 4v10l-8 4-8-4zM4 7l8 4 8-4M12 11v10" />
+                    </svg>
+                  </span>
                   <span v-if="isIceProduct(item)" class="ice-badge">
                     <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
                       <path
@@ -109,17 +90,6 @@
                   <p class="cart-item-meta" v-if="item.variantName">
                     {{ item.variantName }}
                   </p>
-                  <p v-if="getItemMetaText(item)" class="cart-item-meta cart-item-meta-info">
-                    {{ getItemMetaText(item) }}
-                  </p>
-
-                  <!-- <div class="item-badge-new">
-                    <svg width="7" height="10" viewBox="0 0 7 10" fill="white">
-                      <path d="M4.5 0L0 5.5H3L2.5 10L7 4.5H4L4.5 0Z" />
-                    </svg>
-                    <span>Новинка</span>
-                  </div> -->
-
                   <p class="cart-item-price">
                     <span v-if="getItemOldTotal(item)" class="cart-item-price-old">
                       {{ formatPrice(getItemOldTotal(item)!) }}
@@ -130,40 +100,158 @@
 
                 <div class="cart-item-controls">
                   <button
+                    @click="decrementQuantity(item.productId, item.variantId)"
+                    class="qty-btn"
+                    :aria-label="`Уменьшить количество: ${item.title}`"
+                  >
+                    <span>−</span>
+                  </button>
+                  <span class="qty-value">
+                    <span>{{ item.quantity }}</span>
+                  </span>
+                  <button
                     @click="incrementQuantity(item.productId, item.variantId)"
                     class="qty-btn"
                     :class="{ 'qty-btn-disabled': !canIncrement(item) }"
                     :disabled="!canIncrement(item)"
-                    aria-label="Увеличить количество"
+                    :aria-label="`Увеличить количество: ${item.title}`"
                   >
                     <span>+</span>
                   </button>
-                  <div class="qty-value">
-                    <span>{{ item.quantity }}</span>
-                  </div>
-                  <button
-                    @click="decrementQuantity(item.productId, item.variantId)"
-                    class="qty-btn"
-                    aria-label="Уменьшить количество"
+                </div>
+              </article>
+
+            <!-- Сворачиваемый хвост «Ещё N товаров» (демо .more):
+                 сначала список, кнопка — В КОНЦЕ, после строк. -->
+            <div
+              v-if="collapsedItems.length"
+              class="cart-more"
+              :class="{ 'cart-more--open': isItemsExpanded }"
+            >
+              <div class="cart-more-list">
+                <div>
+                  <article
+                    v-for="item in collapsedItems"
+                    :key="item.productId + (item.variantId || '')"
+                    class="cart-item"
                   >
-                    <span>−</span>
-                  </button>
+                    <div class="cart-item-visual">
+                      <span class="cart-item-thumb">
+                        <img
+                          v-if="item.image"
+                          :src="item.image"
+                          :alt="item.title"
+                        />
+                        <svg
+                          v-else
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="1.5"
+                          aria-hidden="true"
+                        >
+                          <path d="M4 7l8-4 8 4v10l-8 4-8-4zM4 7l8 4 8-4M12 11v10" />
+                        </svg>
+                      </span>
+                      <span v-if="isIceProduct(item)" class="ice-badge">
+                        <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                          <path
+                            d="M5 0.5V9.5M0.5 5H9.5M1.5 1.5L8.5 8.5M8.5 1.5L1.5 8.5"
+                            stroke="white"
+                            stroke-width="1.4"
+                            stroke-linecap="round"
+                          />
+                        </svg>
+                      </span>
+                    </div>
+
+                    <div class="cart-item-info">
+                      <p v-if="item.groupName" class="cart-item-group">
+                        {{ item.groupName }}
+                      </p>
+                      <h3 class="cart-item-title">
+                        {{ item.title }}
+                      </h3>
+                      <p class="cart-item-meta" v-if="item.variantName">
+                        {{ item.variantName }}
+                      </p>
+                      <p class="cart-item-price">
+                        <span v-if="getItemOldTotal(item)" class="cart-item-price-old">
+                          {{ formatPrice(getItemOldTotal(item)!) }}
+                        </span>
+                        {{ formatPrice(item.priceRub * item.quantity) }} BYN
+                      </p>
+                    </div>
+
+                    <div class="cart-item-controls">
+                      <button
+                        @click="decrementQuantity(item.productId, item.variantId)"
+                        class="qty-btn"
+                        :aria-label="`Уменьшить количество: ${item.title}`"
+                      >
+                        <span>−</span>
+                      </button>
+                      <span class="qty-value">
+                        <span>{{ item.quantity }}</span>
+                      </span>
+                      <button
+                        @click="incrementQuantity(item.productId, item.variantId)"
+                        class="qty-btn"
+                        :class="{ 'qty-btn-disabled': !canIncrement(item) }"
+                        :disabled="!canIncrement(item)"
+                        :aria-label="`Увеличить количество: ${item.title}`"
+                      >
+                        <span>+</span>
+                      </button>
+                    </div>
+                  </article>
                 </div>
               </div>
-            </TransitionGroup>
+              <!-- Кнопка — в конце списка (демо: label после .more-list). -->
+              <button
+                type="button"
+                class="cart-more-link"
+                :aria-expanded="isItemsExpanded ? 'true' : 'false'"
+                aria-label="Показать остальные товары"
+                @click="toggleMoreItems"
+              >
+                <span class="closed">Посмотреть все товары</span>
+                <span class="opened">Свернуть список</span>
+              </button>
+            </div>
+          </section>
+
+          <!-- Незабранный заказ: анимированный восклицательный знак
+               в треугольнике (Telegram Lottie, NewsEmoji red warning)
+               + текст-подчерк и сумма — как строка итого. Разделения
+               строк нет: дата и «подробнее» в одну строку;
+               «подробнее» открывает модалку-согласие. -->
+          <div v-if="unclaimedOrder" class="unclaimed-block">
+            <LottiePlayer
+              src="/lottie/red-warning.json"
+              :size="28"
+              :speed="1"
+            />
+            <span class="unclaimed-copy">
+              <span class="unclaimed-title">Заказ который не забрали</span>
+              <span class="unclaimed-date">
+                {{ unclaimedOrder.date }}
+                <button
+                  type="button"
+                  class="unclaimed-details"
+                  @click="openUnclaimedAgreement"
+                >подробнее</button>
+              </span>
+            </span>
+            <span class="unclaimed-amount">{{ unclaimedOrder.amount }} BYN</span>
+          </div>
+
+          <!-- Итого внутри карточки (демо .total). -->
+          <div class="total-block">
+            <span class="total-label">Итого</span>
+            <strong class="total-amount">{{ formatPrice(finalTotal) }} BYN</strong>
           </div>
         </div>
-
-        <button
-          v-if="cartStore.items.length > 1"
-          @click="toggleItemsExpanded"
-          class="toggle-items-btn"
-        >
-          <span>{{
-            isItemsExpanded ? "Скрыть товары" : "Показать товары"
-          }}</span>
-          <span class="toggle-count">{{ cartStore.items.length }}</span>
-        </button>
 
         <div v-if="isEditingOrder" class="editing-order-card">
           <p class="editing-order-kicker">Редактирование заказа</p>
@@ -312,20 +400,6 @@
           <span class="summary-discount">-{{ formatPrice(loyaltyDiscountAmount) }} BYN</span>
         </div>
 
-        <div class="total-block">
-          <span class="total-label">Итого</span>
-          <span class="total-amount"
-            >{{ formatPrice(finalTotal) }} BYN</span
-          >
-        </div>
-
-        <CheckoutAgreements
-          v-if="!isEditingOrder"
-          v-model="acceptedAgreementIds"
-          :missing-ids="missingAgreementIds"
-          @loaded="onAgreementsLoaded"
-        />
-
         <div
           v-if="shouldShowOpenInTelegramForWholesale"
           class="user-info-card user-info-card-warning"
@@ -390,15 +464,25 @@
         <div v-if="errors.address" class="submit-error">{{ errors.address }}</div>
       </div>
     </div>
+    </main>
 
-    <!-- Закреплённый низ экрана: кнопка промокода над «Оформить заказ».
-         Плашка всегда видна при прокрутке; контент получает отступ
-         снизу, чтобы последний блок не уходил под кнопки. -->
+    <!-- Футер (демо .checkout-footer): обычный блок flex-колонки —
+         НЕ fixed. main скроллится над ним, перекрытий нет. -->
     <div class="checkout-footer" v-if="cartStore.items.length">
       <div v-if="submitError" class="submit-error">{{ submitError }}</div>
 
+      <!-- Согласия в футере — как в демо .consents. -->
+      <div v-if="!isEditingOrder" class="checkout-footer__agreements">
+        <CheckoutAgreements
+          ref="checkoutAgreementsRef"
+          v-model="acceptedAgreementIds"
+          :missing-ids="missingAgreementIds"
+          @loaded="onAgreementsLoaded"
+        />
+      </div>
+
       <!-- Кнопка промокода — сразу над «Оформить заказ».
-           Габариты и скругление — как у кнопки заказа (64px, 528px),
+           Габариты и скругление — как у кнопки заказа (62px, 999px),
            но чёрная: вторичная по смыслу. Всегда открывает модалку:
            и для ввода, и для просмотра/снятия применённого кода.
            При заморозке скидок — скрыта. -->
@@ -804,7 +888,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, watch, nextTick } from "vue";
+import { ref, reactive, computed, onMounted, onBeforeUnmount, watch, nextTick } from "vue";
 import { useRouter } from "vue-router";
 import { useCartStore } from "@/stores/cart";
 import { useCatalogStore } from "@/stores/catalog";
@@ -826,6 +910,7 @@ import {
   LOYALTY_RULES_MODAL_TITLE,
 } from "@/constants/loyalty";
 import CheckoutAgreements from "@/components/checkout/CheckoutAgreements.vue";
+import LottiePlayer from "@/components/LottiePlayer.vue";
 import ToastNotification from "@/components/ToastNotification.vue";
 import {
   fetchMyActiveOrder,
@@ -871,6 +956,43 @@ interface CheckoutLoyaltyChoice {
 }
 
 const isItemsExpanded = ref(false);
+
+/* ===== Высота страницы: явно из DOM =====
+   Telegram WebView врёт и в 100vh, и в 100dvh (панель Telegram
+   сверху/снизу): футер «не доходил» до низа экрана на 15-20%.
+   Берём фактическую видимую высоту контейнера, который отвёл
+   app-shell (окно минус верхняя панель), и применяем как
+   min-height flex-колонки: футер прижимается к низу точно.
+   Пересчёт на resize (поворот/панель Telegram). */
+const pageEl = ref<HTMLElement | null>(null);
+const pageMinHeight = ref<number | null>(null);
+
+function syncPageMinHeight() {
+  if (!pageEl.value) return;
+  // Родитель app-shell__content занимает остаток экрана ниже
+  // topbar-sizer'а: его видимая высота и есть доступное место.
+  const host = pageEl.value.parentElement;
+  if (!host) return;
+  const viewport = window.innerHeight;
+  const hostRect = host.getBoundingClientRect();
+  // Если хост уже вытянут (длинный контент) — ограничение не нужно.
+  if (hostRect.height >= viewport) {
+    pageMinHeight.value = null;
+    return;
+  }
+  // Доступно: от верха хоста до низа окна (topbar уже учтён позицией).
+  const available = Math.round(viewport - hostRect.top);
+  pageMinHeight.value = Math.max(available, 0);
+}
+
+onMounted(() => {
+  syncPageMinHeight();
+  window.addEventListener("resize", syncPageMinHeight);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener("resize", syncPageMinHeight);
+});
 const promoCode = ref("");
 const promoValidating = ref(false);
 const promoResult = ref<{
@@ -1170,32 +1292,74 @@ const shouldShowManualUsernameInput = computed(() => {
   return !wholesaleStore.isWholesale && !hasTelegramUserAuth.value;
 });
 
-const displayedItems = computed(() => {
-  if (isItemsExpanded.value || cartStore.items.length <= 1) {
-    return cartStore.items;
+/** Компактный список (демо): первая строка всегда видна,
+ *  остальные — под сворачивающимся «Ещё N товаров».
+ *  collapsedItems НЕ зависит от isItemsExpanded: хвост всегда
+ *  есть в DOM (кнопка сворачивания не должна исчезать),
+ *  видимость управляется классом cart-more--open. */
+/** Незабранный прошлый заказ: показывается над итого строкой
+ *  «Заказ который не забрали {дата} … {сумма}». Пока каркас:
+ *  источник данных подключим к API истории заказов. */
+const unclaimedOrder = computed<{ date: string; amount: string } | null>(() => {
+  // TODO(backend): получать из fetchMyActiveOrder/history статус
+  // не забранного заказа. Демо-значение для визуальной проверки:
+  return { date: "04.11.2026", amount: "5" };
+});
+
+/** Открывает текст соглашения «заберу сегодня» в той же штатной
+ *  модалке, что используется в футере CheckoutAgreements. */
+const checkoutAgreementsRef = ref<{ openAgreementByQuery: (query: string) => Promise<boolean> } | null>(null);
+
+async function openUnclaimedAgreement() {
+  const opened = await checkoutAgreementsRef.value?.openAgreementByQuery("заберу сегодня");
+  if (!opened) {
+    showToast("Соглашение «заберу сегодня» не найдено", "error");
   }
+}
+const visibleItems = computed(() => {
   return cartStore.items.slice(0, 1);
 });
 
-const groupMetaMap = computed(() => {
-  const map = new Map<string, string>();
-  for (const category of catalogStore.categories) {
-    for (const group of category.groups || []) {
-      const label = (group.metaLabel ?? "").trim();
-      const value = (group.metaValue ?? "").trim();
-      const text = label && value ? `${label} ${value}` : (label || value);
-      if (text) {
-        map.set(group.id, text);
-      }
-    }
-  }
-  return map;
+const collapsedItems = computed(() => {
+  return cartStore.items.slice(1);
 });
 
-function getItemMetaText(item: (typeof cartStore.items)[0]): string | null {
-  if (!item.groupId) return null;
-  return groupMetaMap.value.get(item.groupId) || null;
+/** Переключение «Ещё N товаров».
+ *
+ * Закрытие с большим списком «дёргало» экран: grid-анимация
+ * сжимает страницу на сотни пикселей за 0.3 с, а скролл окна
+ * оставался на месте — вьюпорт прыгал. Теперь при закрытии
+ * доводим окно скроллом к кнопке тем же плавным темпом: viewport
+ * едет вместе с сжимающейся страницей, рывка нет. */
+const COLLAPSE_MS = 340;
+
+function toggleMoreItems() {
+  const wasExpanded = isItemsExpanded.value;
+  isItemsExpanded.value = !isItemsExpanded.value;
+
+  if (!wasExpanded) return; // дёргаем только при закрытии
+
+  const list = document.querySelector(".cart-more-list");
+  if (!list) return;
+  const startY = window.scrollY;
+  const targetY = Math.max(
+    0,
+    startY + list.getBoundingClientRect().top - window.innerHeight / 3,
+  );
+  if (Math.abs(targetY - startY) < 4) return;
+
+  const startTime = performance.now();
+  const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
+
+  const step = (now: number) => {
+    const t = Math.min(1, (now - startTime) / COLLAPSE_MS);
+    window.scrollTo(0, startY + (targetY - startY) * easeOut(t));
+    if (t < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
 }
+
+
 
 /**
  * Цены до скидки берём из каталога, а не из самой корзины. Корзина лежит в
@@ -1290,10 +1454,6 @@ function accusativePositions(value: number) {
 
 function checkoutLoyaltyCategoryLabel(category: LoyaltyPreviewCategory) {
   return LOYALTY_CATEGORY_LABELS[category.category_key] || category.title;
-}
-
-function toggleItemsExpanded() {
-  isItemsExpanded.value = !isItemsExpanded.value;
 }
 
 function handlePromoInputDone() {
@@ -2283,106 +2443,98 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
 </script>
 
 <style scoped>
+/* Страница — flex-колонка на доступную высоту: min-height приходит
+   инлайном из JS (реальная видимая высота, immune к vh/dvh-причудам
+   Telegram WebView). Фолбэк на vh — только до первого измерения. */
 .checkout-page {
-  min-height: 100vh;
-  background: #f5f7fa;
-  /* Место под закреплённый футер с кнопками (промокод + заказ). */
-  padding-bottom: calc(144px + env(safe-area-inset-bottom, 0px));
-}
-
-/* Закреплённые внизу экрана кнопки «У меня есть промокод» и
- * «Оформить заказ»: без подложки, прямо на фоне страницы. */
-.checkout-footer {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 20;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+  min-height: calc(100vh - var(--app-topbar-offset, 86px));
+  background: #f2f3f6;
+}
+
+.header-area {
+  position: relative;
+  background: #ffffff;
+  border-radius: 0 0 20px 20px;
+  padding: 0;
+  box-shadow: 0 4px 32px rgba(170, 178, 189, 0.32);
+  z-index: 20;
+}
+
+/* main — растягивается на всё свободное место (прижимая футер
+   вниз), скроллит документ. Верхний отступ под хедер. */
+.checkout-main {
+  flex: 1 0 auto;
+  display: block;
+  padding-top: 14px;
+}
+
+/* Футер: короткая страница — прижат к низу ЭКРАНА (margin-top: auto
+   дополнительно к flex-росту main — двойная страховка), длинная —
+   стоит после контента. Sticky при прокрутке: кнопки всегда внизу. */
+.checkout-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 16px max(16px, env(safe-area-inset-bottom, 0px));
+  background: #f2f3f6;
 }
 
 .checkout-footer .submit-error {
   margin: 0 0 -4px;
 }
 
-.header-area {
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  background: #ffffff;
-  backdrop-filter: blur(11.5px);
-  border-radius: 0 0 24px 24px;
-  padding: 0;
-  margin-bottom: 16px;
-  box-shadow: 0 4px 32px rgba(170, 178, 189, 0.32);
+/* Согласия внутри футера (демо .consents). */
+.checkout-footer__agreements {
+  max-width: 355px;
 }
 
+/* Хедер из демо: сетка назад/заголовок/очистить 44px. */
 .checkout-header {
-  display: flex;
+  display: grid;
+  grid-template-columns: 44px 1fr 44px;
   align-items: center;
-  justify-content: center;
-  position: relative;
-  padding: 16px 16px 20px 16px;
-  min-height: 56px;
+  padding: 8px 12px;
 }
 
-.checkout-back-button {
-  position: absolute;
-  left: 16px;
-  top: 50%;
-  transform: translateY(-50%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  border-radius: 50%;
-  background: transparent;
-  border: none;
+.icon-button {
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: none;
+  color: #26272a;
   cursor: pointer;
+  border-radius: 50%;
   transition: background 0.2s ease;
 }
 
-.checkout-back-button:hover {
+.icon-button:hover {
   background: #f5f7fa;
 }
 
-.checkout-back-button:active {
-  background: #e6e9ed;
+.icon-button--muted {
+  color: #7b8190;
 }
 
-.checkout-back-icon {
-  flex-shrink: 0;
-  width: 7px;
-  height: 12px;
+.icon-button svg {
+  width: 22px;
+  height: 22px;
 }
 
 .checkout-title {
   font-family: "Montserrat", sans-serif;
   font-weight: 700;
-  font-size: 20px;
-  line-height: 24px;
-  color: #191919;
+  font-size: clamp(17px, 5vw, 21px);
+  line-height: 1.2;
+  text-align: center;
+  color: #18191b;
   margin: 0;
-}
-
-.header-trash-btn {
-  position: absolute;
-  right: 16px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 40px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: none;
-  cursor: pointer;
 }
 
 .checkout-container {
@@ -2425,63 +2577,71 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   gap: 16px;
 }
 
-.cart-card {
+/* ===== Карточка заказа (демо .order-card) ===== */
+.order-card {
   background: #ffffff;
   border-radius: 20px;
   overflow: hidden;
 }
 
 .cart-items {
-  padding: 16px;
-}
-
-.cart-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 16px;
-  padding-bottom: 16px;
-}
-
-.cart-item-border {
-  border-bottom: 1px solid #e6e9ed;
-  margin-bottom: 16px;
-}
-
-.cart-item-image-wrap {
-  position: relative;
-  flex-shrink: 0;
-}
-
-.cart-item-image {
-  width: 88px;
-  height: 104px;
-  border: 1px solid #e6e9ed;
-  border-radius: 16px;
   overflow: hidden;
-  background: #ffffff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
-.cart-item-image img {
+/* Компактная строка из демо: сетка 49px / 1fr / 91px. */
+.cart-item {
+  display: grid;
+  grid-template-columns: 49px minmax(0, 1fr) 91px;
+  gap: 10px;
+  align-items: center;
+  padding: 9px 10px;
+  min-height: 72px;
+}
+
+.cart-item + .cart-item {
+  border-top: 1px solid #eceef2;
+}
+
+.cart-item-visual {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+}
+
+/* Миниатюра: маленькая, с рамкой (демо .thumb). */
+.cart-item-thumb {
+  display: grid;
+  place-items: center;
+  width: 49px;
+  height: 54px;
+  border-radius: 9px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  overflow: hidden;
+  color: #a0a7b3;
+}
+
+.cart-item-thumb img {
+  display: block;
   width: 100%;
   height: 100%;
+  padding: 4px;
   object-fit: contain;
+  object-position: center;
 }
 
-.cart-item-placeholder {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.cart-item-thumb svg {
+  width: 20px;
+  height: 20px;
 }
 
 .ice-badge {
   position: absolute;
-  bottom: 0px;
-  right: 0px;
-  width: 24px;
-  height: 24px;
+  bottom: -2px;
+  right: -2px;
+  width: 20px;
+  height: 20px;
   background: linear-gradient(90deg, #09b5fd 0%, #00499f 100%);
   box-shadow: 0px 4px 24px rgba(0, 73, 159, 0.12);
   border-radius: 50%;
@@ -2492,96 +2652,79 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
 }
 
 .cart-item-info {
-  flex: 1;
   min-width: 0;
 }
 
+/* Линейка — бренд: цвет кнопки «посмотреть отзывы» (#0273f5). */
 .cart-item-group {
   font-family: "Montserrat", sans-serif;
-  font-weight: 600;
-  font-size: 12px;
-  line-height: 16px;
-  color: #2563eb;
+  font-weight: 700;
+  font-size: 10px;
+  line-height: 12px;
+  color: #0273f5;
   margin: 0 0 2px;
 }
 
 .cart-item-title {
   font-family: "Montserrat", sans-serif;
   font-weight: 700;
-  font-size: 16px;
-  line-height: 20px;
-  color: #191919;
-  margin: 0 0 4px;
+  font-size: 13px;
+  line-height: 1.25;
+  color: #18191b;
+  margin: 2px 0;
+  overflow-wrap: anywhere;
 }
 
 .cart-item-meta {
   font-family: -apple-system, "SF Pro Display", sans-serif;
   font-weight: 400;
-  font-size: 14px;
-  line-height: 17px;
-  color: #aab2bd;
-  margin: 0 0 8px;
-}
-
-.cart-item-meta-info {
-  font-weight: 500;
-  font-size: 16.8px;
-  line-height: 20.2px;
-}
-
-.item-badge-new {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 6px 10px;
-  background: linear-gradient(90deg, #f50302 0%, #a90f0e 100%);
-  border-radius: 23px;
-  margin-bottom: 8px;
-}
-
-.item-badge-new span {
-  font-family: -apple-system, "SF Pro Display", sans-serif;
-  font-weight: 500;
-  font-size: 10px;
-  line-height: 12px;
-  text-transform: uppercase;
-  color: #ffffff;
-}
-
-.cart-item-price {
-  font-family: "Montserrat", sans-serif;
-  font-weight: 700;
-  font-size: 20px;
-  line-height: 24px;
-  color: #191919;
+  font-size: 11px;
+  line-height: 13px;
+  color: #707684;
   margin: 0;
 }
 
+.cart-item-price {
+  font-family: -apple-system, "SF Pro Display", sans-serif;
+  font-weight: 500;
+  font-size: 13px;
+  line-height: 16px;
+  color: #18191b;
+  margin: 2px 0 0;
+}
+
 .cart-item-price-old {
-  margin-right: 6px;
+  margin-right: 4px;
   color: #98a2b3;
   opacity: 0.6;
   text-decoration: line-through;
+  font-size: 11px;
 }
 
+/* Ступенька количества: горизонтальная (демо .stepper). */
 .cart-item-controls {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 34px 23px 34px;
   align-items: center;
-  gap: 8px;
+  justify-content: end;
+  text-align: right;
 }
 
 .qty-btn {
-  width: 40px;
-  height: 40px;
+  height: 34px;
+  border: none;
+  border-radius: 11px;
+  background: #f2f3f6;
+  color: #18191b;
+  cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f5f7fa;
-  border: none;
-  border-radius: 512px;
-  cursor: pointer;
   transition: background 0.15s;
+  font-size: 20px;
+  line-height: 1;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .qty-btn:hover:not(:disabled) {
@@ -2597,61 +2740,114 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
 .qty-btn span {
   font-family: -apple-system, "SF Pro Display", sans-serif;
   font-weight: 500;
-  font-size: 16px;
-  line-height: 19px;
-  color: #191919;
+  font-size: 18px;
+  line-height: 1;
+  color: #18191b;
+  margin-top: -2px;
 }
 
 .qty-value {
-  width: 40px;
-  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #ffffff;
-  border: 1px solid #e6e9ed;
-  border-radius: 12px;
+  text-align: center;
 }
 
 .qty-value span {
   font-family: -apple-system, "SF Pro Display", sans-serif;
-  font-weight: 500;
-  font-size: 16px;
-  line-height: 19px;
-  color: #191919;
+  font-weight: 650;
+  font-size: 13px;
+  line-height: 16px;
+  color: #18191b;
 }
 
-.toggle-items-btn {
-  width: 100%;
-  height: 64px;
+/* ===== Сворачивание «Ещё N товаров» (демо .more) =====
+   Состояние — класс cart-more--open (управляет Vue).
+   Закрытие длинного списка мягче раскрытия: 0.45s и ease-out —
+   страница сжимается без рывка (скролл доводится в JS тем же
+   темпом, см. toggleMoreItems). */
+.cart-more-list {
+  display: grid;
+  grid-template-rows: 0fr;
+  visibility: hidden;
+  transition:
+    grid-template-rows 0.45s cubic-bezier(0.33, 1, 0.68, 1),
+    visibility 0s linear 0.45s;
+}
+
+.cart-more-list > div {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.cart-more--open .cart-more-list {
+  grid-template-rows: 1fr;
+  visibility: visible;
+  transition-delay: 0s;
+}
+
+.cart-more-link {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  background: #ffffff;
-  border: 1px solid #e6e9ed;
-  border-radius: 528px;
+  gap: 9px;
+  min-height: 42px;
+  padding: 0 12px;
+  /* Цвет и шрифт — 1в1 с кнопкой «посмотреть отзывы»
+     (ReviewRatingLink): #0273f5, SF Pro Display 12px.
+     Кнопка по центру строки. */
+  color: #0273f5;
+  font-family: -apple-system, "SF Pro Display", sans-serif;
+  font-size: 12px;
+  line-height: 14px;
+  font-weight: 400;
+  border: 0;
+  background: none;
   cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  width: 100%;
+  transition: opacity 0.2s ease;
 }
 
-.toggle-items-btn:hover {
-  background: #fafafa;
+.cart-more-link:active {
+  opacity: 0.72;
 }
 
-.toggle-items-btn span:first-child {
-  font-family: "Montserrat", sans-serif;
-  font-weight: 500;
-  font-size: 16px;
-  line-height: 20px;
-  color: #191919;
+.cart-more-link::after {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border: solid currentColor;
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg);
+  transition: transform 0.3s;
 }
 
-.toggle-count {
-  font-family: "Montserrat", sans-serif;
-  font-weight: 500;
-  font-size: 16px;
-  line-height: 20px;
-  color: #aab2be;
+.cart-more--open .cart-more-link::after {
+  transform: rotate(225deg);
+}
+
+.cart-more--open .cart-more-link .closed {
+  display: none;
+}
+
+.cart-more-link .opened {
+  display: none;
+}
+
+.cart-more--open .cart-more-link .opened {
+  display: inline;
+}
+
+.cart-more-link:hover {
+  opacity: 0.8;
+}
+
+.cart-more-link:focus-visible {
+  outline: 2px solid #0273f5;
+  outline-offset: -3px;
 }
 
 .editing-order-card {
@@ -2706,10 +2902,11 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   justify-content: center;
   gap: 10px;
   width: 100%;
-  height: 64px;
+  min-height: 62px;
+  padding: 12px;
   border: none;
-  border-radius: 528px;
-  background: #101010;
+  border-radius: 999px;
+  background: #111111;
   color: #ffffff;
   font-family: "Montserrat", sans-serif;
   font-weight: 500;
@@ -2724,7 +2921,7 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
 }
 
 .promo-open-btn:active {
-  opacity: 0.9;
+  transform: scale(0.985);
 }
 
 .promo-open-btn__label {
@@ -3231,40 +3428,127 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   color: #aab2bd;
 }
 
-.total-block {
+/* Незабранный заказ: строка над итого — Lottie-восклицание слева,
+   заголовок; дата и «подробнее» В ОДНУ строку (без разделения),
+   сумма справа (как итого). */
+.unclaimed-block {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 12px 0;
+}
+
+.unclaimed-copy {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 0px;
-  padding: 0 8px;
-  margin-top: 10px;
+  gap: 2px;
+}
+
+.unclaimed-title {
+  font-family: -apple-system, "SF Pro Display", sans-serif;
+  font-weight: 600;
+  font-size: 13px;
+  line-height: 16px;
+  color: #18191b;
+}
+
+/* Дата и «подробнее» одной строкой. */
+.unclaimed-date {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-family: -apple-system, "SF Pro Display", sans-serif;
+  font-weight: 400;
+  font-size: 12px;
+  line-height: 14px;
+  color: #8a93a0;
+}
+
+/* «подробнее» — цвет и шрифт «посмотреть отзывы» (#0273f5). */
+.unclaimed-details {
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  font-family: -apple-system, "SF Pro Display", sans-serif;
+  font-weight: 400;
+  font-size: 12px;
+  line-height: 14px;
+  color: #0273f5;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 0.2s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.unclaimed-details:active {
+  opacity: 0.72;
+}
+
+.unclaimed-amount {
+  font-family: "Montserrat", sans-serif;
+  font-weight: 700;
+  font-size: 15px;
+  line-height: 18px;
+  color: #18191b;
+  white-space: nowrap;
+}
+
+/* Модалка незабранного заказа. */
+.unclaimed-modal-text {
+  margin: 0 0 10px;
+  font-family: -apple-system, "SF Pro Display", sans-serif;
+  font-size: 14px;
+  line-height: 20px;
+  color: #18191b;
+}
+
+.unclaimed-modal-hint {
+  margin: 0;
+  font-family: -apple-system, "SF Pro Display", sans-serif;
+  font-size: 13px;
+  line-height: 18px;
+  color: #656b75;
+}
+
+/* Итого внутри карточки заказа: без полосы между предупреждением
+   о незабранном заказе и итоговой суммой. */
+.total-block {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 12px 13px;
+  border-top: 0;
 }
 
 .total-label {
-  font-family: "Montserrat", sans-serif;
-  font-weight: 700;
-  font-size: 16px;
-  line-height: 20px;
-  color: #191919;
-  margin-bottom: 4px;
+  font-family: -apple-system, "SF Pro Display", sans-serif;
+  font-weight: 500;
+  font-size: 15px;
+  line-height: 18px;
+  color: #656b75;
 }
 
 .total-amount {
   font-family: "Montserrat", sans-serif;
   font-weight: 700;
-  font-size: 24px;
-  line-height: 29px;
-  color: #191919;
+  font-size: 19px;
+  line-height: 23px;
+  color: #18191b;
 }
 
 .submit-button {
   width: 100%;
-  height: 64px;
+  min-height: 62px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(90deg, #f50302 0%, #a90f0e 100%);
+  background: linear-gradient(100deg, #e32d18 0%, #982119 100%);
   border: none;
-  border-radius: 528px;
+  border-radius: 999px;
   font-family: "Montserrat", sans-serif;
   font-weight: 500;
   font-size: 16px;
@@ -3273,6 +3557,7 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   cursor: pointer;
   position: relative;
   z-index: 10;
+  padding: 12px;
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
   user-select: none;
@@ -3652,21 +3937,6 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
     border-radius: 0 0 20px 20px;
   }
 
-  .checkout-header {
-    padding: 14px 14px 18px 14px;
-    min-height: 52px;
-  }
-
-  .checkout-back-button {
-    left: 14px;
-    width: 30px;
-    height: 30px;
-  }
-
-  .header-trash-btn {
-    right: 14px;
-  }
-
   .checkout-title {
     font-size: 18px;
     line-height: 22px;
@@ -3678,21 +3948,6 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
     border-radius: 0 0 18px 18px;
   }
 
-  .checkout-header {
-    padding: 12px 12px 16px 12px;
-    min-height: 48px;
-  }
-
-  .checkout-back-button {
-    left: 12px;
-    width: 28px;
-    height: 28px;
-  }
-
-  .header-trash-btn {
-    right: 12px;
-  }
-
   .checkout-title {
     font-size: 16px;
     line-height: 20px;
@@ -3701,55 +3956,30 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
 
 @media (max-width: 360px) {
   .checkout-container {
-    padding: 0 12px;
+    padding: 0 10px;
   }
 
-  .cart-item-image {
-    width: 72px;
-    height: 88px;
+  /* Демо: на узких экранах строки компактнее. */
+  .cart-item {
+    gap: 7px;
+    padding-inline: 7px;
   }
 
   .cart-item-title {
-    font-size: 14px;
-  }
-
-  .cart-item-price {
-    font-size: 18px;
-  }
-
-  .qty-btn,
-  .qty-value {
-    width: 36px;
-    height: 36px;
-  }
-
-  .checkout-back-button {
-    left: 10px;
-    width: 26px;
-    height: 26px;
-  }
-
-  .checkout-back-icon {
-    width: 6px;
-    height: 10px;
+    font-size: 12px;
   }
 
   .header-area {
     border-radius: 0 0 16px 16px;
   }
 
-  .checkout-header {
-    padding: 10px 10px 14px 10px;
-    min-height: 44px;
-  }
-
-  .header-trash-btn {
-    right: 10px;
-  }
-
   .checkout-title {
     font-size: 15px;
     line-height: 18px;
+  }
+
+  .checkout-footer {
+    padding-inline: 10px;
   }
 
   .loyalty-card--checkout {

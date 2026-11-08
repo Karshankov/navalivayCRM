@@ -591,20 +591,25 @@ onMounted(async () => {
     transform: none !important;
   }
 }
-/* Main Content Wrapper: нижний отступ — только safe-area
-   (футер и нижняя кнопка корзины удалены). */
+/* Main Content Wrapper: композиция главной центрируется в доступной
+   области под верхней панелью; если контента больше экрана, flex
+   естественно переходит в обычный поток без обрезки. */
 .main-content-wrapper {
   max-width: 1280px;
+  min-height: calc(100dvh - var(--app-topbar-offset, 86px));
   margin: 0 auto;
-  padding: 0 16px calc(24px + env(safe-area-inset-bottom, 0px)) 16px;
+  padding: 24px 16px calc(24px + env(safe-area-inset-bottom, 0px));
   position: relative;
   z-index: 10;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
 .assortment-section {
   position: relative;
   min-height: 0;
-  margin-top: 1rem;
+  margin-top: 0;
   width: 100%;
   box-sizing: border-box;
 }

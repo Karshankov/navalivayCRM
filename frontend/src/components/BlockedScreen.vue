@@ -6,31 +6,46 @@
     aria-labelledby="blocked-screen-title"
     data-no-smoke
   >
-    <div class="blocked-card">
-      <div class="blocked-pill">Блокировка</div>
-
-      <div class="blocked-icon" aria-hidden="true">
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
-          <circle cx="12" cy="12" r="10" />
-          <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
+    <main class="blocked-screen__page">
+      <section class="blocked-screen__message" aria-labelledby="blocked-screen-title">
+        <!-- Маскот из демо: замки-цифры в глазах мерцают (flicker). -->
+        <svg class="blocked-screen__mascot" viewBox="0 0 470 420" aria-hidden="true">
+          <image width="470" height="420" href="/blocked/mascot.png" />
+          <defs>
+            <path
+              id="blocked-lock"
+              class="blocked-screen__lock"
+              d="M4 8V5a4 4 0 0 1 8 0v3m-9 0h10a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2Zm5 4v3"
+            />
+          </defs>
+          <g class="blocked-screen__digits" transform="translate(161 134) rotate(-18) scale(.7)">
+            <use href="#blocked-lock" />
+          </g>
+          <g
+            class="blocked-screen__digits blocked-screen__digits--right"
+            transform="translate(231 138) rotate(8) scale(1.1)"
+          >
+            <use href="#blocked-lock" />
+          </g>
         </svg>
-      </div>
 
-      <div class="blocked-copy">
-        <h1 id="blocked-screen-title" class="blocked-title">Доступ к заказам ограничен</h1>
-        <p class="blocked-subtitle">{{ reasonHeading }}</p>
-        <p v-if="reason" class="blocked-reason">{{ reason }}</p>
-      </div>
+        <h1 id="blocked-screen-title" class="blocked-screen__title">
+          Аккаунт заблокирован
+        </h1>
 
-      <div class="blocked-info">
-        <p class="blocked-info-label">{{ countdownLabel }}</p>
-        <p v-if="countdownValue" class="blocked-info-value">{{ countdownValue }}</p>
-      </div>
-
-      <p class="blocked-hint">
-        Если блокировка по ошибке — напиши нам в Telegram.
-      </p>
-    </div>
+        <!-- Карточка деталей: причина и срок — из реального состояния. -->
+        <dl class="blocked-screen__details">
+          <div class="blocked-screen__detail">
+            <dt>Причина блокировки</dt>
+            <dd>{{ reasonText }}</dd>
+          </div>
+          <div class="blocked-screen__detail">
+            <dt>Когда снимется блокировка</dt>
+            <dd>{{ countdownText }}</dd>
+          </div>
+        </dl>
+      </section>
+    </main>
   </div>
 </template>
 
@@ -96,38 +111,21 @@ watch(remainingMs, (val) => {
   }
 })
 
-const reason = computed(() => (props.reason || '').trim() || null)
-
-// Подзаголовок-вступление для блока с причиной. По фидбэку Кости (08.05.2026):
-// раньше «Не прошли авторизацию у менеджера» сливалось с заголовком и было
-// неясно, что это конкретная причина. Теперь — явное «Причина блокировки:» как
-// якорь, и сам текст причины — отдельной строкой.
-const reasonHeading = computed(() => (reason.value ? 'Причина блокировки:' : 'Причина не указана.'))
+const reasonText = computed(() => (props.reason || '').trim() || 'Причина не указана')
 
 /**
- * Метка-описатель и значение в зависимости от срока:
+ * Строка срока в зависимости от состояния:
  *   - бессрочно → «Блокировка бессрочна»
- *   - меньше 24 часов → таймер «Доступ откроется через X»
- *   - сутки и больше → дата и время «15 апреля в 14:45»
+ *   - истёк, ждём сервер → «Проверяем доступ…»
+ *   - меньше 24 часов → таймер «через X минут/часов»
+ *   - сутки и больше → дата и время «15 апреля 2026 в 14:45»
  */
-const countdownLabel = computed(() => {
+const countdownText = computed(() => {
   if (blockUntilMs.value === null) return 'Блокировка бессрочна'
-  // Срок истёк, но сервер ещё не подтвердил снятие (или часы клиента опережают).
-  // На каждом тике setInterval мы уже дёргаем refreshBlock — экран снимется как
-  // только бэкенд тоже посчитает блок истёкшим.
   if (remainingMs.value === 0) return 'Проверяем доступ…'
-  if (remainingMs.value !== null && remainingMs.value < 24 * 60 * 60 * 1000) {
-    return 'Доступ откроется через'
-  }
-  return 'Доступ откроется'
-})
-
-const countdownValue = computed(() => {
-  if (blockUntilMs.value === null) return ''
-  if (remainingMs.value === 0) return ''
 
   if (remainingMs.value !== null && remainingMs.value < 24 * 60 * 60 * 1000) {
-    return formatRemainingShort(remainingMs.value)
+    return `Доступ откроется через ${formatRemainingShort(remainingMs.value)}`
   }
   return new Date(blockUntilMs.value).toLocaleString('ru-RU', {
     day: '2-digit',
@@ -169,163 +167,177 @@ function pluralizeHours(n: number): string {
 </script>
 
 <style scoped>
+/* Полноэкранный дизайн из демо account-blocked.html:
+   белый фон, маскот с мерцающими замками в глазах, карточка деталей. */
 .blocked-screen {
   position: fixed;
   inset: 0;
   z-index: 200;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  background: rgba(8, 9, 12, 0.78);
-  backdrop-filter: blur(8px);
+  background: #ffffff;
+  color: #101010;
+  font-family:
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    "SF Pro Display",
+    Arial,
+    sans-serif;
+  -webkit-text-size-adjust: 100%;
 }
 
-.blocked-card {
-  position: relative;
+.blocked-screen__page {
+  width: 100%;
+  max-width: 480px;
+  min-height: 100vh;
+  min-height: 100svh;
+  margin: 0 auto;
+  padding:
+    max(24px, env(safe-area-inset-top, 0px))
+    20px
+    max(24px, env(safe-area-inset-bottom, 0px));
+  display: flex;
+  flex-direction: column;
+}
+
+.blocked-screen__message {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 20px 0;
+}
+
+/* ===== Маскот с замками в глазах ===== */
+.blocked-screen__mascot {
+  display: block;
+  width: 250px;
+  max-width: 80%;
+  height: auto;
   overflow: hidden;
-  width: 100%;
-  max-width: 420px;
-  border-radius: 24px;
-  padding: 24px 22px 26px;
-  background: linear-gradient(135deg, #18181b 0%, #2a2a2f 52%, #17171a 100%);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 28px 60px rgba(8, 10, 16, 0.55);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
+  margin: 0 0 12px;
+  flex-shrink: 0;
+}
+
+/* Замки-цифры: красные, с лёгким свечением, мерцают по очереди
+   (правый глаз со сдвигом фазы — как в демо .digits.right). */
+.blocked-screen__digits {
+  fill: #ff2626;
+  font-family: monospace;
+  font-weight: 700;
+  text-anchor: middle;
+  dominant-baseline: central;
+  filter: drop-shadow(0 0 2px #f00);
+  animation: blocked-flicker 3.8s linear infinite;
+}
+
+.blocked-screen__digits--right {
+  animation-delay: -1.3s;
+}
+
+@keyframes blocked-flicker {
+  0%,
+  100% {
+    opacity: 0.95;
+  }
+  15% {
+    opacity: 0.6;
+  }
+  18%,
+  43% {
+    opacity: 1;
+  }
+  46% {
+    opacity: 0.2;
+  }
+  49%,
+  76% {
+    opacity: 1;
+  }
+  79% {
+    opacity: 0.45;
+  }
+  83% {
+    opacity: 1;
+  }
+}
+
+/* ===== Заголовок ===== */
+.blocked-screen__title {
+  margin: 0;
+  font-family: "Montserrat", sans-serif;
+  font-size: clamp(21px, 5.6vw, 27px);
+  font-weight: 800;
+  line-height: 1.18;
+  letter-spacing: -0.65px;
   text-align: center;
-  gap: 16px;
+  color: #101010;
 }
 
-/* Декоративное свечение в углу — как в order-status-card */
-.blocked-card::before {
-  content: "";
-  position: absolute;
-  inset: auto -14% -42% auto;
-  width: 200px;
-  height: 200px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(239, 68, 68, 0.18) 0%, rgba(239, 68, 68, 0) 72%);
-  pointer-events: none;
+/* ===== Карточка деталей (причина / срок) ===== */
+.blocked-screen__details {
+  width: 100%;
+  max-width: 355px;
+  margin: 24px 0 0;
+  padding: 0 16px;
+  background: #f5f6f8;
+  border-radius: 18px;
 }
 
-.blocked-pill {
-  position: relative;
-  z-index: 1;
-  align-self: center;
-  padding: 8px 16px;
-  border-radius: 14px;
-  font-family: -apple-system, "SF Pro Display", sans-serif;
+.blocked-screen__detail {
+  padding: 13px 0;
+}
+
+.blocked-screen__detail + .blocked-screen__detail {
+  border-top: 1px solid #e5e7eb;
+}
+
+.blocked-screen__detail dt {
+  margin-bottom: 5px;
+  color: #656b75;
   font-size: 12px;
   line-height: 14px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  color: #ffffff;
-  background: linear-gradient(90deg, #ef4444 0%, #b91c1c 100%);
-  box-shadow: 0 10px 22px rgba(239, 68, 68, 0.32);
 }
 
-.blocked-icon {
-  position: relative;
-  z-index: 1;
-  width: 64px;
-  height: 64px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #ffffff;
-  background: rgba(239, 68, 68, 0.18);
-  box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.06),
-    0 0 24px rgba(239, 68, 68, 0.55),
-    inset 0 0 18px rgba(239, 68, 68, 0.25);
-}
-
-.blocked-copy {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-}
-
-.blocked-title {
+.blocked-screen__detail dd {
   margin: 0;
-  font-family: "Montserrat", sans-serif;
-  font-size: 22px;
-  line-height: 26px;
-  font-weight: 700;
-  color: #ffffff;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  color: #101010;
 }
 
-.blocked-subtitle {
-  margin: 0;
-  font-family: -apple-system, "SF Pro Display", sans-serif;
-  font-size: 13px;
-  line-height: 16px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.55);
+/* Контур замка внутри SVG. */
+.blocked-screen__lock {
+  fill: none;
+  stroke: #ff3232;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
-.blocked-reason {
-  margin: 0;
-  font-family: -apple-system, "SF Pro Display", sans-serif;
-  font-size: 16px;
-  line-height: 22px;
-  font-weight: 600;
-  color: #ffffff;
-  max-width: 320px;
+@media (max-height: 580px) {
+  .blocked-screen__message {
+    padding: 8px 0 24px;
+  }
+
+  .blocked-screen__mascot {
+    width: 180px;
+  }
+
+  .blocked-screen__title {
+    font-size: 22px;
+  }
+
+  .blocked-screen__details {
+    margin-top: 12px;
+  }
 }
 
-.blocked-info {
-  position: relative;
-  z-index: 1;
-  width: 100%;
-  border-radius: 16px;
-  padding: 16px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.blocked-info-label {
-  margin: 0;
-  font-family: -apple-system, "SF Pro Display", sans-serif;
-  font-size: 12px;
-  line-height: 14px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.6);
-}
-
-.blocked-info-value {
-  margin: 0;
-  font-family: "Montserrat", sans-serif;
-  font-size: 22px;
-  line-height: 26px;
-  font-weight: 700;
-  color: #fbbf24;
-  text-shadow: 0 0 18px rgba(251, 191, 36, 0.35);
-}
-
-.blocked-hint {
-  position: relative;
-  z-index: 1;
-  margin: 0;
-  font-family: -apple-system, "SF Pro Display", sans-serif;
-  font-size: 12px;
-  line-height: 16px;
-  color: rgba(255, 255, 255, 0.55);
-  max-width: 300px;
+@media (prefers-reduced-motion: reduce) {
+  .blocked-screen__digits {
+    animation: none;
+  }
 }
 </style>

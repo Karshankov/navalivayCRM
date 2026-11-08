@@ -95,6 +95,22 @@ function closeModal() {
   activeAgreement.value = null;
 }
 
+/** Открывает соглашение из внешнего триггера, например «подробнее».
+ * Ищем по заголовку и тексту, чтобы не зависеть от регистра или
+ * небольшой редакторской правки названия в админке. */
+async function openAgreementByQuery(query: string): Promise<boolean> {
+  if (!agreements.value.length) await fetchAgreements();
+  const needle = query.trim().toLocaleLowerCase("ru-RU");
+  if (!needle) return false;
+  const agreement = agreements.value.find((item) => {
+    const haystack = `${item.title} ${item.modal_title || ""} ${item.body}`.toLocaleLowerCase("ru-RU");
+    return haystack.includes(needle);
+  });
+  if (!agreement) return false;
+  openModal(agreement);
+  return true;
+}
+
 // Заголовок модалки: если у соглашения есть собственный modal_title (поле
 // «Заголовок модалки» в админке) — используем его. Иначе fallback на title
 // (то самое слово-ссылка из чекбокса). Без fallback'а у админов которые не
@@ -157,37 +173,35 @@ onMounted(() => {
   fetchAgreements();
 });
 
-defineExpose({ refresh: fetchAgreements });
+defineExpose({ refresh: fetchAgreements, openAgreementByQuery });
 </script>
 
 <style scoped>
+/* Согласия в футере чекаута (демо .consents): без карточки,
+ * сетка чекбокс-текст, компактные строки. */
 .checkout-agreements {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin: 16px 0;
+  gap: 0;
+  margin: 0;
 }
 
 .checkout-agreement-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 10px 12px;
-  background: #ffffff;
-  border: 1.5px solid #e1e6ec;
-  border-radius: 14px;
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+  padding: 4px 0;
+  min-height: 42px;
   cursor: pointer;
-  transition: border-color 0.2s ease, background 0.2s ease;
   -webkit-tap-highlight-color: transparent;
-}
-
-.checkout-agreement-row:hover {
-  background: #f7f9fb;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  transition: none;
 }
 
 .checkout-agreement-row--invalid {
-  border-color: #e53935;
-  background: #fdecea;
   animation: agreement-shake 0.4s ease;
 }
 
@@ -203,20 +217,50 @@ defineExpose({ refresh: fetchAgreements });
   }
 }
 
+/* Чекбокс из демо: кастомный квадрат с красной галочкой. */
 .checkout-agreement-checkbox {
-  flex-shrink: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  flex: none;
   width: 22px;
   height: 22px;
-  margin-top: 1px;
-  accent-color: #191919;
+  margin: 0;
+  border-radius: 6px;
+  border: 1.5px solid #a6abb5;
+  background: #ffffff;
+  display: grid;
+  place-items: center;
   cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
 }
 
+.checkout-agreement-checkbox:checked {
+  background: linear-gradient(120deg, #ef3933, #df302a);
+  border-color: transparent;
+}
+
+.checkout-agreement-checkbox:checked::after {
+  content: "";
+  width: 6px;
+  height: 10px;
+  border: solid #ffffff;
+  border-width: 0 2px 2px 0;
+  transform: translateY(-1px) rotate(45deg);
+}
+
+.checkout-agreement-checkbox:focus-visible {
+  outline: 2px solid #0273f5;
+  outline-offset: 2px;
+}
+
+/* Текст «Соглашаюсь с …»: чёрный, ссылка — цвет кнопки
+   «посмотреть отзывы» (#0273f5), SF Pro 12px. */
 .checkout-agreement-label {
-  font-size: 14px;
-  line-height: 1.4;
-  color: #191919;
-  font-weight: 500;
+  font-family: -apple-system, "SF Pro Display", sans-serif;
+  font-size: 12px;
+  line-height: 1.3;
+  color: #151515;
+  font-weight: 400;
 }
 
 .checkout-agreement-link {
@@ -225,16 +269,16 @@ defineExpose({ refresh: fetchAgreements });
   padding: 0;
   background: none;
   border: none;
-  color: #1565c0;
+  color: #0273f5;
   font: inherit;
-  font-weight: 600;
+  font-weight: 400;
   text-decoration: underline;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
 
 .checkout-agreement-link:hover {
-  color: #0d47a1;
+  color: #0156b8;
 }
 
 .checkout-agreement-modal-body {

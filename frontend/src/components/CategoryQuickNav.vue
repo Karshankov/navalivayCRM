@@ -28,7 +28,7 @@
             type="button"
             class="qnav__category"
             :class="{ 'qnav__category--active': isActive(cat.slug) }"
-            :data-index="cat.index"
+            :data-wide="cat.wideIcon ? 'true' : undefined"
             :style="{ '--particle': `url(${cat.particle})` }"
             :aria-label="cat.name"
             @click="select(cat, $event)"
@@ -100,21 +100,24 @@ import { useRoute, useRouter } from "vue-router";
  */
 
 interface QuickNavItem {
-  index: number;
   slug: string;
   name: string;
   icon: string;
   particle: string;
+  /** Широкая иконка (снюс) занимает больше колонки кнопки. */
+  wideIcon?: boolean;
 }
 
-/** Разделы по реальным slug каталога (демо-названия сохранены). */
+/** Разделы по реальным slug каталога (демо-названия сохранены).
+ *  Порядок: снюс на первой странице (третья кнопка), устройства
+ *  открываются свайпом на второй. */
 const items: QuickNavItem[] = [
-  { index: 0, slug: "zhidkosti", name: "Жидкости", icon: "/quicknav/liquids-icon.png", particle: "/quicknav/liquids-particle.png" },
-  { index: 1, slug: "rashodniki", name: "Расходники", icon: "/quicknav/rashodniki-icon.png", particle: "/quicknav/rashodniki-particle.png" },
-  { index: 2, slug: "ustrojstva", name: "Устройства", icon: "/quicknav/ustrojstva-icon.png", particle: "/quicknav/ustrojstva-particle.png" },
-  { index: 3, slug: "odnorazki", name: "Одноразки", icon: "/quicknav/disposable-icon.png", particle: "/quicknav/disposable-particle.png" },
-  { index: 4, slug: "snyus-i-plastiny", name: "Снюс", icon: "/quicknav/snus-icon.png", particle: "/quicknav/snus-particle.png" },
-  { index: 5, slug: "kalyanka", name: "Кальянка", icon: "/quicknav/hookah-icon.png", particle: "/quicknav/hookah-particle.png" },
+  { slug: "zhidkosti", name: "Жидкости", icon: "/quicknav/liquids-icon.png", particle: "/quicknav/liquids-particle.png" },
+  { slug: "rashodniki", name: "Расходники", icon: "/quicknav/rashodniki-icon.png", particle: "/quicknav/rashodniki-particle.png" },
+  { slug: "snyus-i-plastiny", name: "Снюс", icon: "/quicknav/snus-icon.png", particle: "/quicknav/snus-particle.png", wideIcon: true },
+  { slug: "odnorazki", name: "Одноразки", icon: "/quicknav/disposable-icon.png", particle: "/quicknav/disposable-particle.png" },
+  { slug: "ustrojstva", name: "Устройства", icon: "/quicknav/ustrojstva-icon.png", particle: "/quicknav/ustrojstva-particle.png" },
+  { slug: "kalyanka", name: "Кальянка", icon: "/quicknav/hookah-icon.png", particle: "/quicknav/hookah-particle.png" },
 ];
 
 const PER_PAGE = 3;
@@ -168,6 +171,12 @@ function onPointerMove(event: PointerEvent) {
   // Начинаем перетаскивание только при выраженном горизонтальном
   // движении — иначе это тап или вертикальный скролл.
   if (!isDragging.value && Math.abs(dx) < 10) return;
+  // Первый реальный драг гасит подсказку навсегда: tease-анимация
+  // крутит transform дорожки и перебивает inline-переход страниц
+  // (первый свайп выглядел мгновенным/дёрганым).
+  if (isDragging.value === false && teasingAnimating.value) {
+    teasingAnimating.value = false;
+  }
   isDragging.value = true;
 
   // Резиновые края: за пределами первой/последней страницы
@@ -260,6 +269,10 @@ function launchBurst(cat: QuickNavItem, button: HTMLElement) {
 
 function select(cat: QuickNavItem, event?: MouseEvent) {
   haptic();
+  // Любое взаимодействие с панелью гасит подсказку: tease-анимация
+  // перебивает transform дорожки и ломает переход свайпа.
+  teasing.value = false;
+  teasingAnimating.value = false;
   // Взрыв — от нажатой кнопки, всегда поверх.
   if (event?.currentTarget instanceof HTMLElement) {
     launchBurst(cat, event.currentTarget);
@@ -472,12 +485,12 @@ watch(
   }
 }
 
-/* Снюс-иконка шире остальных (как в демо data-index="4"). */
-.qnav__category[data-index="4"] {
+/* Снюс-иконка шире остальных (как в демо). */
+.qnav__category[data-wide] {
   grid-template-columns: 36px minmax(0, 1fr);
 }
 
-.qnav__category[data-index="4"] .qnav__icon-pair {
+.qnav__category[data-wide] .qnav__icon-pair {
   width: 36px;
 }
 
@@ -590,11 +603,11 @@ watch(
     height: 56px;
   }
 
-  .qnav__category[data-index="4"] {
+  .qnav__category[data-wide] {
     grid-template-columns: 30px minmax(0, 1fr);
   }
 
-  .qnav__category[data-index="4"] .qnav__icon-pair {
+  .qnav__category[data-wide] .qnav__icon-pair {
     width: 30px;
   }
 
