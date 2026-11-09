@@ -2,6 +2,7 @@
   <div
     ref="pageEl"
     class="checkout-page"
+    :class="{ 'checkout-page--confirmation': isOrderConfirmation }"
     :style="pageMinHeight !== null ? { minHeight: `${pageMinHeight}px` } : undefined"
     @click="handlePageClick"
   >
@@ -15,7 +16,7 @@
         </button>
         <h1 class="checkout-title">{{ checkoutTitle }}</h1>
         <button
-          v-if="cartStore.items.length"
+          v-if="cartStore.items.length && !isOrderConfirmation"
           @click="handleClearCart"
           class="icon-button icon-button--muted"
           aria-label="Очистить корзину"
@@ -37,6 +38,17 @@
         <button @click="handleBack" class="back-to-shop-btn">
           Вернуться к покупкам
         </button>
+      </div>
+
+      <div v-else-if="isOrderConfirmation" class="order-confirmation" role="status" aria-live="polite">
+        <LottiePlayer
+          class="order-confirmation__emoji"
+          src="/lottie/confirmation-emoji.json"
+          :size="88"
+          :speed="1"
+        />
+        <p class="order-confirmation__title">{{ confirmationText }}</p>
+        <p class="order-confirmation__small-text">{{ confirmationSmallText }}</p>
       </div>
 
       <div v-else class="checkout-content">
@@ -246,10 +258,106 @@
             <span class="unclaimed-amount">{{ unclaimedOrder.amount }} BYN</span>
           </div>
 
-          <!-- Итого внутри карточки (демо .total). -->
+          <div v-if="canChooseCheckoutPayment" class="payment-note">
+            <!-- Нативная анимация Telegram-стикера «Heavy Dollar Sign»
+                 (TGS → Lottie JSON) вместо статичного знака «?». -->
+            <span class="payment-note__mark" aria-hidden="true">
+              <LottiePlayer
+                class="payment-note__dollar"
+                src="/lottie/dollar-emoji.json"
+                :size="26"
+                :speed="1"
+              />
+            </span>
+            <span class="payment-note__label">Способ оплаты</span>
+            <div class="payment-note__choices" role="radiogroup" aria-label="Способ оплаты">
+              <span
+                class="payment-note__selection"
+                :class="selectedPaymentMethod === 'card' ? 'payment-note__selection--card' : 'payment-note__selection--cash'"
+                aria-hidden="true"
+              ></span>
+              <button
+                type="button"
+                class="payment-note__choice"
+                role="radio"
+                :class="{ 'payment-note__choice--selected': selectedPaymentMethod === 'cash' }"
+                :aria-checked="selectedPaymentMethod === 'cash'"
+                :tabindex="selectedPaymentMethod === 'cash' ? 0 : -1"
+                aria-label="Наличными"
+                @click="selectCheckoutPayment('cash')"
+                @keydown="handlePaymentChoiceKeydown($event, 'cash')"
+              >
+                <img src="/checkout/cash-wallet.webp" alt="" />
+              </button>
+              <span class="payment-note__card" ref="cardChoiceWrapRef">
+                <button
+                  type="button"
+                  role="radio"
+                  :aria-checked="selectedPaymentMethod === 'card'"
+                  :aria-disabled="isCardBlockedForOrder ? 'true' : 'false'"
+                  :tabindex="selectedPaymentMethod === 'card' ? 0 : -1"
+                  aria-label="Картой"
+                  :class="[
+                    'payment-note__choice',
+                    'payment-note__choice--card',
+                    { 'payment-note__choice--selected': selectedPaymentMethod === 'card', 'payment-note__choice--blocked': isCardBlockedForOrder },
+                  ]"
+                  :disabled="isCheckingCardPaymentStatus"
+                  @click="selectCheckoutPayment('card')"
+                  @keydown="handlePaymentChoiceKeydown($event, 'card')"
+                >
+                  <img src="/checkout/card-terminal.webp" alt="" />
+                </button>
+              </span>
+            </div>
+          </div>
+
+          <!-- Плашка по демо-образцу navalivay-card-limit-popover.
+               Рендерится через Teleport прямо в body: карточка заказа
+               обрезает контент (overflow:hidden + скругление), из-за чего
+               плашка резалась об край. Снаружи она лежит поверх всего. -->
+          <Teleport to="body">
+            <Transition name="payment-note-pop">
+              <div
+                v-if="cardErrorText && cardPopoverStyle"
+                class="payment-note__popover"
+                role="alert"
+                :style="{ ...cardPopoverStyle, '--duration': `${CARD_ERROR_RESET_MS}ms` }"
+              >
+                <div class="payment-note__popover-copy">
+                  <strong>{{ cardErrorTitle }}</strong>
+                  <p>{{ cardErrorText }}</p>
+                </div>
+                <button
+                  type="button"
+                  class="payment-note__popover-close"
+                  aria-label="Закрыть предупреждение"
+                  @click="clearCardError"
+                >
+                  <svg viewBox="0 0 40 40" aria-hidden="true">
+                    <circle class="payment-note__popover-track" cx="20" cy="20" r="17" />
+                    <circle class="payment-note__popover-ring" cx="20" cy="20" r="17" />
+                    <path d="m15 15 10 10m0-10L15 25" />
+                  </svg>
+                </button>
+              </div>
+            </Transition>
+          </Teleport>
+
           <div class="total-block">
             <span class="total-label">Итого</span>
-            <strong class="total-amount">{{ formatPrice(finalTotal) }} BYN</strong>
+            <div class="total-value-with-payment">
+              <strong class="total-amount">{{ formatPrice(finalTotal) }} BYN</strong>
+              <!-- Способ оплаты — текущее состояние, а не результат клика:
+                   «Наличными» видно сразу, до первого выбора. -->
+              <span class="total-payment-label" aria-live="polite">
+                <Transition name="total-payment-swap" mode="out-in">
+                  <span :key="effectivePaymentMethod" class="total-payment-label__text">
+                    {{ effectivePaymentMethod === 'card' ? 'Картой' : 'Наличными' }}
+                  </span>
+                </Transition>
+              </span>
+            </div>
           </div>
         </div>
 
@@ -442,7 +550,7 @@
         </div>
 
         <div
-          v-else-if="requiresTelegramUsername"
+          v-else-if="shouldShowUsernameWarning"
           class="user-info-card user-info-card-warning"
         >
           <p class="user-info-label">Нужен Telegram username</p>
@@ -471,36 +579,24 @@
     <div class="checkout-footer" v-if="cartStore.items.length">
       <div v-if="submitError" class="submit-error">{{ submitError }}</div>
 
-      <!-- Согласия в футере — как в демо .consents. -->
-      <div v-if="!isEditingOrder" class="checkout-footer__agreements">
-        <CheckoutAgreements
-          ref="checkoutAgreementsRef"
-          v-model="acceptedAgreementIds"
-          :missing-ids="missingAgreementIds"
-          @loaded="onAgreementsLoaded"
-        />
-      </div>
-
-      <!-- Кнопка промокода — сразу над «Оформить заказ».
-           Габариты и скругление — как у кнопки заказа (62px, 999px),
-           но чёрная: вторичная по смыслу. Всегда открывает модалку:
-           и для ввода, и для просмотра/снятия применённого кода.
-           При заморозке скидок — скрыта. -->
-      <button
-        v-if="!discountBlocked"
-        type="button"
-        class="promo-open-btn"
-        data-test="promo-open-btn"
-        @click="openPromoModal"
-      >
-        <span class="promo-open-btn__label">{{
-          promoResult ? 'Промокод применён' : 'У меня есть промокод'
-        }}</span>
-      </button>
+      <template v-if="!isOrderConfirmation">
+        <!-- Кнопка промокода — сразу над «Оформить заказ». -->
+        <button
+          v-if="!discountBlocked"
+          type="button"
+          class="promo-open-btn"
+          data-test="promo-open-btn"
+          @click="openPromoModal"
+        >
+          <span class="promo-open-btn__label">{{
+            promoResult ? 'Промокод применён' : 'У меня есть промокод'
+          }}</span>
+        </button>
+      </template>
 
       <button
         @click="beginCheckout"
-        :disabled="isSubmitting || isCheckingCardPaymentStatus || checkoutCalculationPending || isWholesaleSubmitBlocked || shouldShowOpenInTelegramForWholesale"
+        :disabled="isSubmitting || isConfirmingOrder || isCheckingCardPaymentStatus || checkoutCalculationPending || isWholesaleSubmitBlocked || shouldShowOpenInTelegramForWholesale"
         class="submit-button"
         type="button"
         style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
@@ -524,142 +620,6 @@
       :image="settingsStore.settings.delivery_conditions_image"
       @close="showDeliveryConditionsBanner = false"
     />
-
-    <CustomerModalShell
-      :open="showCardPaymentModal"
-      title="Как хотите оплатить заказ?"
-      close-label="Закрыть окно"
-      @close="showCardPaymentModal = false"
-    >
-      <div class="checkout-modal-copy">
-        <div class="card-payment-choice">
-          <button
-            type="button"
-            :class="{ 'card-payment-choice--active': selectedPaymentMethod === 'cash' }"
-            @click="selectedPaymentMethod = 'cash'"
-          >Наличными</button>
-          <button
-            type="button"
-            :class="{
-              'card-payment-choice--active': selectedPaymentMethod === 'card',
-            }"
-            @click="selectCardPayment"
-          >Картой</button>
-        </div>
-
-        <!-- Виджет оплаты картой: лимит, пауза со шкалой, действия.
-             Показывается при выборе «Картой» — даже если карта на паузе
-             или лимит исчерпан: клиент может всё посмотреть, но оформить
-             заказ картой в этом состоянии нельзя. -->
-        <div v-if="selectedPaymentMethod === 'card'" class="card-widget" role="status">
-          <div class="card-widget__head">
-            <span class="card-widget__badge" aria-hidden="true">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                <rect x="2.5" y="5" width="19" height="14" rx="3" stroke="currentColor" stroke-width="1.8" />
-                <path d="M2.5 9.5H21.5" stroke="currentColor" stroke-width="1.8" />
-                <path d="M6 15H10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
-              </svg>
-            </span>
-            <div class="card-widget__limit">
-              <strong class="card-widget__limit-value">
-                Лимит на заказ {{ formatCardMoney(cardPersonalLimitMinor) }}р
-              </strong>
-              <span class="card-widget__limit-note">картой можно оплатить заказ целиком в пределах лимита</span>
-            </div>
-          </div>
-
-          <!-- Пауза: дата следующей доступной оплаты -->
-          <div v-if="isCardPaused" class="card-widget__state card-widget__state--pause" role="alert">
-            <div class="card-widget__state-row">
-              <span class="card-widget__state-icon" aria-hidden="true">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                  <circle cx="12" cy="12" r="9.2" stroke="currentColor" stroke-width="1.9" />
-                  <path d="M12 7.4v5.2" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
-                  <circle cx="12" cy="16.6" r="1.25" fill="currentColor" />
-                </svg>
-              </span>
-              <strong>Оплата картой недоступна</strong>
-            </div>
-            <p class="card-widget__state-copy">
-              Следующая оплата будет доступна
-              <span class="card-widget__state-date">{{ formatCardPauseDate(cardPaymentStatus?.cooldown_until) }}</span>
-            </p>
-          </div>
-
-          <!-- Корзина больше личного лимита -->
-          <div
-            v-else-if="cardOrderExceedsPersonalLimitMinor > 0"
-            class="card-widget__state card-widget__state--blocked"
-            role="alert"
-          >
-            <div class="card-widget__state-row">
-              <span class="card-widget__state-icon" aria-hidden="true">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                  <circle cx="12" cy="12" r="9.2" stroke="currentColor" stroke-width="1.9" />
-                  <path d="M12 7.4v5.2" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
-                  <circle cx="12" cy="16.6" r="1.25" fill="currentColor" />
-                </svg>
-              </span>
-              <strong>Заказ больше лимита на {{ formatCardMoney(cardOrderExceedsPersonalLimitMinor) }}р</strong>
-            </div>
-            <p class="card-widget__state-copy">
-              Уберите товары на {{ formatCardMoney(cardOrderExceedsPersonalLimitMinor) }}р,
-              оплатите наличными или увеличьте лимиты.
-            </p>
-          </div>
-
-          <!-- Лимит исчерпан: дневной остаток магазина кончился или заказ
-               больше остатка — картой сейчас оформить нельзя -->
-          <div
-            v-else-if="isCardDailyLimitReached || cardOrderExceedsDailyMinor"
-            class="card-widget__state card-widget__state--blocked"
-            role="alert"
-          >
-            <div class="card-widget__state-row">
-              <span class="card-widget__state-icon" aria-hidden="true">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                  <circle cx="12" cy="12" r="9.2" stroke="currentColor" stroke-width="1.9" />
-                  <path d="M12 7.4v5.2" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
-                  <circle cx="12" cy="16.6" r="1.25" fill="currentColor" />
-                </svg>
-              </span>
-              <strong>Оплата картой недоступна</strong>
-            </div>
-            <p class="card-widget__state-copy">
-              Оформите заказ за наличные. Общий лимит на сегодня исчерпан.
-            </p>
-          </div>
-
-          <!-- Всё в порядке -->
-          <div v-else class="card-widget__state card-widget__state--ok">
-            <div class="card-widget__state-row">
-              <span class="card-widget__state-dot card-widget__state-dot--ok" aria-hidden="true" />
-              <strong>Оплата картой разрешена</strong>
-            </div>
-          </div>
-        </div>
-
-        <p v-if="submitError" class="card-payment-warning" role="alert">
-          {{ submitError }}
-        </p>
-      </div>
-      <template #footer>
-        <div class="card-payment-modal-actions">
-          <button
-            v-if="selectedPaymentMethod === 'card'"
-            type="button"
-            class="checkout-modal-cta checkout-modal-cta--dark"
-            @click="openCardTariffs"
-          >Увеличить лимиты</button>
-          <button
-            type="button"
-            class="checkout-modal-cta"
-            :disabled="isSubmitting || isCheckingCardPaymentStatus || (selectedPaymentMethod === 'card' && isCardBlockedForOrder)"
-            @click="submitOrder(selectedPaymentMethod)"
-          >Оформить заказ</button>
-        </div>
-      </template>
-    </CustomerModalShell>
 
     <CardTariffSheet
       v-model="selectedCardTariff"
@@ -822,7 +782,7 @@
     </CustomerModalShell>
 
     <CustomerModalShell
-      :open="showUsernameRequiredModal"
+      :open="isUsernameModalOpen"
       title="Нужен Telegram username"
       close-label="Закрыть окно"
       @close="closeUsernameRequiredModal"
@@ -844,6 +804,22 @@
           Закрыть и перезайти
         </button>
       </template>
+    </CustomerModalShell>
+
+    <CustomerModalShell
+      :open="Boolean(activeAgreement)"
+      :title="activeAgreement?.modal_title?.trim() || activeAgreement?.title || ''"
+      close-label="Закрыть окно"
+      @close="activeAgreement = null"
+    >
+      <div class="checkout-agreement-modal-body">
+        <p v-for="(paragraph, index) in agreementModalParagraphs" :key="index" class="checkout-agreement-modal-paragraph">
+          {{ paragraph }}
+        </p>
+        <p v-if="!agreementModalParagraphs.length" class="checkout-agreement-modal-empty">
+          Текст соглашения ещё не заполнен. Уточните у продавца.
+        </p>
+      </div>
     </CustomerModalShell>
 
     <CustomerModalShell
@@ -909,7 +885,6 @@ import {
   LOYALTY_RULES_MODAL_PARAGRAPHS,
   LOYALTY_RULES_MODAL_TITLE,
 } from "@/constants/loyalty";
-import CheckoutAgreements from "@/components/checkout/CheckoutAgreements.vue";
 import LottiePlayer from "@/components/LottiePlayer.vue";
 import ToastNotification from "@/components/ToastNotification.vue";
 import {
@@ -988,10 +963,16 @@ function syncPageMinHeight() {
 onMounted(() => {
   syncPageMinHeight();
   window.addEventListener("resize", syncPageMinHeight);
+  // Плашка ошибки карты в fixed-координатах — держим её у кнопки
+  // при скролле и изменении окна.
+  window.addEventListener("resize", handlePopoverReposition);
+  window.addEventListener("scroll", handlePopoverReposition, { passive: true });
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener("resize", syncPageMinHeight);
+  window.removeEventListener("resize", handlePopoverReposition);
+  window.removeEventListener("scroll", handlePopoverReposition);
 });
 const promoCode = ref("");
 const promoValidating = ref(false);
@@ -1027,6 +1008,10 @@ function closePromoModal() {
   promoError.value = '';
 }
 const telegramUser = ref<TelegramMiniAppUser | null>(null);
+/** Окно «Нужен Telegram username» открывается только явными обработчиками
+ *  (кнопка «Как поставить username» или попытка оформить заказ). При входе
+ *  в корзину оно не показывается: данные Telegram ещё досинхронизируются,
+ *  и окно успевало мигнуть на долю секунды. */
 const showUsernameRequiredModal = ref(false);
 // Окно «Лимит превышен» при изменении карточного заказа: сервер отклонил
 // изменение, потому что новая сумма не проходит по лимиту.
@@ -1052,16 +1037,25 @@ const errors = reactive({
 });
 
 const isSubmitting = ref(false);
+/** Финальное подтверждение заказа уже обрабатывается (сверка карты + отправка). */
+const isConfirmingOrder = ref(false);
 const submitError = ref("");
 
-// Соглашения перед заказом. acceptedAgreementIds — список id принятых
-// чекбоксов; missingAgreementIds — те, что фронт (или бэк после ответа)
-// помечает как непринятые при попытке сабмита (используются для подсветки
-// в CheckoutAgreements). loadedAgreements — полный список активных
-// соглашений, опубликованный компонентом через @loaded.
+// Соглашения перед заказом. Активные id подставляются автоматически
+// при финальном подтверждении; клиент больше не видит отдельные чекбоксы.
 const acceptedAgreementIds = ref<number[]>([]);
 const missingAgreementIds = ref<number[]>([]);
-const loadedAgreements = ref<Array<{ id: number; title: string }>>([]);
+const loadedAgreements = ref<Array<{ id: number; title: string; modal_title?: string; body: string }>>([]);
+const isOrderConfirmation = ref(false);
+const confirmationPaymentMethod = ref<"cash" | "card">("cash");
+const confirmationText = computed(() =>
+  settingsStore.settings.order_agreement_main_text?.trim() ||
+  settingsStore.settings.order_confirmation_text?.trim() ||
+  "Нажав кнопку «Оформить заказ», вы автоматически соглашаетесь с условиями оформления заказа.",
+);
+const confirmationSmallText = computed(() =>
+  settingsStore.settings.order_agreement_small_text?.trim() || "Проверьте состав заказа перед отправкой.",
+);
 
 const toastMessage = ref("");
 const toastType = ref<"info" | "success" | "error">("info");
@@ -1074,9 +1068,20 @@ function showToast(message: string, type: "info" | "success" | "error" = "info")
   toastKey.value += 1;
 }
 
-function onAgreementsLoaded(items: Array<{ id: number; title: string }>) {
-  loadedAgreements.value = items;
+async function fetchCheckoutAgreements() {
+  try {
+    const response = await fetch("/api/agreements", { credentials: "include" });
+    if (!response.ok) return;
+    const data = (await response.json()) as { items?: Array<{ id: number; title: string; modal_title?: string; body: string }> };
+    loadedAgreements.value = Array.isArray(data.items) ? data.items : [];
+  } catch {
+    loadedAgreements.value = [];
+  }
 }
+
+onMounted(() => {
+  void fetchCheckoutAgreements();
+});
 
 function computeLocalMissingAgreementIds(): number[] {
   if (!loadedAgreements.value.length) return [];
@@ -1093,10 +1098,44 @@ const deliveryConditionsShown = ref(false);
 const editingOrderDetails = ref<CustomerActiveOrder | null>(null);
 const showLoyaltyRulesModal = ref(false);
 const showLoyaltyPopup = ref(false);
-const showCardPaymentModal = ref(false);
 const selectedPaymentMethod = ref<"cash" | "card">("cash");
-const cardPaymentStatus = ref<any>(null);
+
+/** Кэш статуса оплаты картой между заходами в корзину.
+ *  Без него блок «Способ оплаты» появлялся последним: он виден только когда
+ *  пришёл сетевой ответ, а запрос стартует уже после монтирования экрана.
+ *  Кэш даёт мгновенный первый кадр, а свежий ответ затем его уточняет. */
+const CARD_STATUS_CACHE_KEY = "navalivay_card_status_cache";
+const CARD_STATUS_CACHE_TTL_MS = 5 * 60 * 1000;
+
+function readCachedCardStatus(): any | null {
+  try {
+    const raw = localStorage.getItem(CARD_STATUS_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { at?: number; status?: any };
+    if (!parsed?.status || !parsed?.at) return null;
+    if (Date.now() - Number(parsed.at) > CARD_STATUS_CACHE_TTL_MS) return null;
+    return parsed.status;
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedCardStatus(status: any) {
+  try {
+    localStorage.setItem(CARD_STATUS_CACHE_KEY, JSON.stringify({ at: Date.now(), status }));
+  } catch {
+    /* приватный режим или квота — кэш просто не сохранится */
+  }
+}
+
+const cardPaymentStatus = ref<any>(readCachedCardStatus());
 const isCheckingCardPaymentStatus = ref(false);
+const canChooseCheckoutPayment = computed(
+  () => !isEditingOrder.value && cardPaymentStatus.value?.enabled === true,
+);
+const effectivePaymentMethod = computed<"cash" | "card">(() =>
+  canChooseCheckoutPayment.value && selectedPaymentMethod.value === "card" ? "card" : "cash",
+);
 const remainingDailyCardLimitMinor = computed(() => {
   const limits = cardPaymentStatus.value?.limits;
   if (!limits) return 0;
@@ -1163,6 +1202,119 @@ function formatCardPauseDate(value: unknown) {
     month: "long",
     timeZone: "Europe/Minsk",
   }).format(date);
+}
+
+/** Точное сообщение при клике на заблокированную карту. */
+const cardBlockToast = computed(() => {
+  if (isCardPaused.value) {
+    const until = formatCardPauseDate(cardPaymentStatus.value?.cooldown_until);
+    return until
+      ? `Оплата картой на паузе до ${until}. Выберите наличные.`
+      : "Оплата картой на паузе. Выберите наличные.";
+  }
+  if (cardOrderExceedsPersonalLimitMinor.value > 0) {
+    return `Ваш лимит на заказ — ${formatCardMoney(cardPersonalLimitMinor.value)} BYN, заказ — ${formatPrice(finalTotal.value)} BYN. Уберите товары или оплатите наличными.`;
+  }
+  if (isSharedCardLimitExhausted.value) {
+    return "Дневной лимит оплаты картой в магазине исчерпан. Оплатите наличными.";
+  }
+  if (cardOrderExceedsDailyMinor.value) {
+    return `Заказ больше дневного остатка (${formatCardMoney(remainingDailyCardLimitMinor.value)} BYN). Оплатите наличными или уменьшите корзину.`;
+  }
+  return "Оплата картой сейчас недоступна. Выберите наличные.";
+});
+
+/**
+ * Плашка ошибки карты над кнопкой «Картой»
+ * (демо-образец navalivay-card-limit-popover: тёмная капсула со стрелкой
+ * к кнопке и кольцом-таймером у кнопки закрытия).
+ */
+const cardErrorText = ref("");
+
+/** Обёртка кнопки «Картой»: плашка позиционируется от её границ.
+ *  Плашка отрисована через Teleport в body (карточка заказа режет
+ *  контент overflow:hidden), поэтому координаты считаем в viewport. */
+const cardChoiceWrapRef = ref<HTMLElement | null>(null);
+const cardPopoverStyle = ref<Record<string, string> | null>(null);
+
+const POPOVER_WIDTH_PX = 272;
+
+/** Считает позицию плашки под кнопкой «Картой»: капсула центрируется
+ *  под кнопкой, стрелка — ровно под её центром; у краёв экрана плашка
+ *  прижимается внутрь, а стрелка сдвигается вместе с центром кнопки. */
+function syncCardPopoverPosition() {
+  const anchor = cardChoiceWrapRef.value;
+  if (!anchor || !cardErrorText.value) {
+    cardPopoverStyle.value = null;
+    return;
+  }
+  const rect = anchor.getBoundingClientRect();
+  const viewportWidth = window.innerWidth;
+  const width = Math.min(POPOVER_WIDTH_PX, viewportWidth - 16);
+  const buttonCenter = Math.round(rect.left + rect.width / 2);
+  // Центр кнопки — центр плашки, но не дальше краёв экрана.
+  const centeredLeft = Math.round(buttonCenter - width / 2);
+  const left = Math.min(
+    Math.max(8, centeredLeft),
+    Math.max(8, viewportWidth - width - 8),
+  );
+  // Стрелка указывает на центр кнопки: расстояние от правого края плашки
+  // до центра кнопки (стрелка 10px, минус полширины для центра).
+  const arrowFromRight = Math.max(
+    8,
+    Math.round(left + width - buttonCenter - 5),
+  );
+  cardPopoverStyle.value = {
+    position: "fixed",
+    left: `${left}px`,
+    top: `${Math.round(rect.bottom - 12)}px`,
+    width: `${width}px`,
+    "--popover-arrow-from-right": `${arrowFromRight}px`,
+  };
+}
+
+/** Заголовок плашки — короткая суть проблемы (цифры в тексте ниже). */
+const cardErrorTitle = computed(() => {
+  if (isCardPaused.value) return "Оплата картой на паузе";
+  if (cardOrderExceedsPersonalLimitMinor.value > 0) {
+    return `Лимит оплаты картой — ${formatCardMoney(cardPersonalLimitMinor.value)} BYN`;
+  }
+  if (isSharedCardLimitExhausted.value || cardOrderExceedsDailyMinor.value) {
+    return "Дневной лимит карты исчерпан";
+  }
+  return "Оплата картой недоступна";
+});
+
+/** Автоскрытие плашки: кольцо вокруг кнопки закрытия дотает,
+ *  и плашка гаснет сама. */
+const CARD_ERROR_RESET_MS = 7000;
+let cardErrorTimer: number | null = null;
+
+function showCardError(message: string) {
+  if (!message) return;
+  cardErrorText.value = message;
+  nextTick(() => syncCardPopoverPosition());
+  if (cardErrorTimer !== null) window.clearTimeout(cardErrorTimer);
+  cardErrorTimer = window.setTimeout(() => {
+    cardErrorTimer = null;
+    cardErrorText.value = "";
+    cardPopoverStyle.value = null;
+  }, CARD_ERROR_RESET_MS);
+}
+
+/** Плашка живёт в fixed-координатах: при скролле/повороте экрана
+ *  пересчитываем позицию, чтобы она не отставала от кнопки. */
+function handlePopoverReposition() {
+  if (cardErrorText.value) syncCardPopoverPosition();
+}
+
+function clearCardError() {
+  cardErrorText.value = "";
+  cardPopoverStyle.value = null;
+  if (cardErrorTimer !== null) {
+    window.clearTimeout(cardErrorTimer);
+    cardErrorTimer = null;
+  }
 }
 const showCardTariffsModal = ref(false);
 const cardTariffs = ref<CardTariffPlan[]>([]);
@@ -1242,7 +1394,8 @@ const submitButtonLabel = computed(() => {
       ? `Доберите еще ${wholesaleRemaining.value} ${accusativePositions(wholesaleRemaining.value)}`
       : `Доберите еще ${wholesaleRemaining.value.toFixed(2)} BYN`;
   }
-  return isEditingOrder.value ? "Сохранить изменения" : "Оформить заказ";
+  return isEditingOrder.value ? "Сохранить изменения" :
+    isOrderConfirmation.value ? "Принимаю условия, отправить заказ" : "Оформить заказ";
 });
 
 const minDeliveryAmount = computed(() => {
@@ -1263,6 +1416,22 @@ const hasTelegramUserAuth = computed(() => hasTelegramMiniAppUserContext());
 const requiresTelegramUsername = computed(() => {
   return hasTelegramUserAuth.value && !verifiedTelegramUsername.value;
 });
+
+/** Пока идёт первичная синхронизация данных Telegram, предупреждение
+ *  «Нужен Telegram username» не показываем: username ещё не проверен,
+ *  и блок успевал мигнуть на долю секунды при входе в корзину. */
+const telegramSyncSettled = ref(false);
+
+/** Предупреждение в карточке заказа: только после синхронизации Telegram. */
+const shouldShowUsernameWarning = computed(
+  () => telegramSyncSettled.value && requiresTelegramUsername.value,
+);
+
+/** Окно с инструкцией: пока данные Telegram не досинхронизированы, оно не
+ *  открывается ни при каких условиях — иначе успевало мигнуть на входе. */
+const isUsernameModalOpen = computed(
+  () => telegramSyncSettled.value && showUsernameRequiredModal.value,
+);
 
 const shouldShowOpenInTelegramForWholesale = computed(() => {
   return wholesaleStore.isWholesale && !hasTelegramUserAuth.value;
@@ -1306,15 +1475,20 @@ const unclaimedOrder = computed<{ date: string; amount: string } | null>(() => {
   return { date: "04.11.2026", amount: "5" };
 });
 
-/** Открывает текст соглашения «заберу сегодня» в той же штатной
- *  модалке, что используется в футере CheckoutAgreements. */
-const checkoutAgreementsRef = ref<{ openAgreementByQuery: (query: string) => Promise<boolean> } | null>(null);
+/** Открывает текст соглашения «заберу сегодня» в собственной
+ * штатной модалке checkout, используя тот же ответ /api/agreements. */
+const activeAgreement = ref<{ title: string; modal_title?: string; body: string } | null>(null);
+const agreementModalParagraphs = computed(() =>
+  (activeAgreement.value?.body || "").trim().split(/\n{2,}/).map((part) => part.trim()).filter(Boolean),
+);
 
 async function openUnclaimedAgreement() {
-  const opened = await checkoutAgreementsRef.value?.openAgreementByQuery("заберу сегодня");
-  if (!opened) {
-    showToast("Соглашение «заберу сегодня» не найдено", "error");
-  }
+  if (!loadedAgreements.value.length) await fetchCheckoutAgreements();
+  const needle = "заберу сегодня";
+  activeAgreement.value = loadedAgreements.value.find((item) =>
+    `${item.title} ${item.modal_title || ""} ${item.body}`.toLocaleLowerCase("ru-RU").includes(needle),
+  ) || null;
+  if (!activeAgreement.value) showToast("Соглашение «заберу сегодня» не найдено", "error");
 }
 const visibleItems = computed(() => {
   return cartStore.items.slice(0, 1);
@@ -1850,7 +2024,21 @@ watch(
 );
 
 onMounted(async () => {
-  await settingsStore.fetchSettings();
+  // Всё, что не зависит друг от друга, грузим параллельно: раньше статус
+  // карты запрашивался последним в цепочке, из-за чего блок «Способ оплаты»
+  // появлялся заметно позже остального экрана.
+  const cardStatusPromise = loadCardPaymentStatus();
+  const settingsPromise = settingsStore.fetchSettings();
+  const stockPromise = fetchStockLimits();
+
+  // Пока грузятся данные — сразу синхронизируем контекст Telegram из
+  // уже доступного клиента, чтобы не ждать сетевых ответов.
+  syncTelegramUserData({ trustCurrentUser: true });
+  // Данные Telegram получены и username проверен — с этого момента
+  // предупреждение «Нужен Telegram username» показывается по факту.
+  telegramSyncSettled.value = true;
+
+  await settingsPromise;
   if (!catalogStore.categories.length) {
     const hasGroupItems = cartStore.items.some((item) => item.groupId);
     if (hasGroupItems) {
@@ -1859,8 +2047,7 @@ onMounted(async () => {
   }
   // Персональный минимум мог смениться админом среди сессии — обновляем
   // после восстановления контекста редактируемого заказа.
-  await fetchStockLimits();
-  syncTelegramUserData({ trustCurrentUser: true });
+  await stockPromise;
   await hydrateEditingOrder();
   if (wholesaleStore.isWholesale) {
     await wholesaleStore.refreshEffectiveMinimum();
@@ -1879,10 +2066,12 @@ onMounted(async () => {
       console.warn("[Checkout] Failed to fetch loyalty snapshot", error);
     }
   }
-  if (requiresTelegramUsername.value) {
-    showUsernameRequiredModal.value = true;
-  }
-  await loadCardPaymentStatus();
+  // Окно «Нужен Telegram username» намеренно НЕ открывается при входе:
+  // в карточке заказа уже есть встроенное предупреждение с кнопкой
+  // «Как поставить username», а при попытке оформления modal откроется сам
+  // (см. beginCheckout/submitOrder). Автопоказ на монтировании успевал
+  // мигнуть на долю секунды, пока данные Telegram ещё досинхронизируются.
+  await cardStatusPromise;
 });
 
 watch(
@@ -2091,18 +2280,27 @@ function validateForm(): boolean {
   return true;
 }
 
-async function loadCardPaymentStatus() {
-  isCheckingCardPaymentStatus.value = true;
+/**
+ * Обновляет статус оплаты картой.
+ * silent — фоновая сверка (например, при выборе «Картой»): не блокируем
+ * кнопку «Оформить заказ», иначе она мигает на каждый клик по способу
+ * оплаты. Гонки не будет: beginCheckout сам выходит, пока идёт проверка.
+ */
+async function loadCardPaymentStatus(options: { silent?: boolean } = {}) {
+  const silent = options.silent === true;
+  if (!silent) isCheckingCardPaymentStatus.value = true;
   try {
     const response = await fetch("/api/card-payment/status", {
       headers: withTelegramAuthHeaders(),
     });
     if (!response.ok) return;
-    cardPaymentStatus.value = await response.json();
+    const status = await response.json();
+    cardPaymentStatus.value = status;
+    writeCachedCardStatus(status);
   } catch (error) {
     console.warn("[Checkout] Card payment status unavailable", error);
   } finally {
-    isCheckingCardPaymentStatus.value = false;
+    if (!silent) isCheckingCardPaymentStatus.value = false;
   }
 }
 
@@ -2110,28 +2308,85 @@ function formatCardMoney(amountMinor: number) {
   return (Number(amountMinor || 0) / 100).toFixed(2);
 }
 
-async function selectCardPayment() {
-  selectedPaymentMethod.value = "card";
+function handlePaymentChoiceKeydown(event: KeyboardEvent, current: "cash" | "card") {
+  const target = event.currentTarget as HTMLButtonElement;
+  let next: "cash" | "card" | null = null;
+  if (event.key === "ArrowRight" || event.key === "ArrowDown" || event.key === "End") next = "card";
+  else if (event.key === "ArrowLeft" || event.key === "ArrowUp" || event.key === "Home") next = "cash";
+  if (!next) return;
+  event.preventDefault();
+  // Кнопка «Картой» обёрнута в span с плашкой ошибки, поэтому ищем пару
+  // не в parentElement, а в общей группе радиокнопок.
+  const group = target.closest('[role="radiogroup"]');
+  const nextButton = group?.querySelector<HTMLButtonElement>(
+    next === "cash" ? '[aria-label="Наличными"]' : '[aria-label="Картой"]',
+  );
+  if (!nextButton || nextButton.disabled) return;
+  nextButton.focus();
+  void selectCheckoutPayment(next);
+}
+
+async function selectCheckoutPayment(method: "cash" | "card") {
+  if (method === "cash") {
+    selectedPaymentMethod.value = method;
+    submitError.value = "";
+    clearCardError();
+    return;
+  }
+
+  await loadCardPaymentStatus({ silent: true });
+  if (!canChooseCheckoutPayment.value) {
+    showCardError("Оплата картой для вашего аккаунта недоступна.");
+    return;
+  }
+
+  selectedPaymentMethod.value = method;
   submitError.value = "";
-  await loadCardPaymentStatus();
+  if (isCardBlockedForOrder.value) {
+    // Плашка у способа оплаты вместо всплывашки снизу (демо-образец).
+    showCardError(cardBlockToast.value);
+  }
 }
 
 async function beginCheckout() {
-  if (isSubmitting.value || isCheckingCardPaymentStatus.value || checkoutCalculationPending.value) return;
-  if (showCardPaymentModal.value || showCardTariffsModal.value) return;
+  if (isSubmitting.value || isConfirmingOrder.value || isCheckingCardPaymentStatus.value || checkoutCalculationPending.value) return;
+  if (isOrderConfirmation.value) {
+    // Ветка финального подтверждения содержит сетевой запрос (сверка статуса
+    // карты) до вызова submitOrder. Без отдельного флага второй клик в это
+    // окно прошёл бы гейт выше и — так как isOrderConfirmation уже снят —
+    // вернул клиента на экран подтверждения поверх летящего заказа.
+    // isSubmitting здесь не подходит: submitOrder сам выходит по нему, поэтому
+    // держим собственный флаг ровно на время подтверждения.
+    isConfirmingOrder.value = true;
+    try {
+      acceptedAgreementIds.value = loadedAgreements.value.map((agreement) => agreement.id);
+      const previousPaymentMethod = confirmationPaymentMethod.value;
+      await loadCardPaymentStatus();
+      const paymentMethod = effectivePaymentMethod.value;
+      if (previousPaymentMethod === "card" && paymentMethod !== "card") {
+        selectedPaymentMethod.value = "cash";
+        confirmationPaymentMethod.value = "cash";
+        isOrderConfirmation.value = false;
+        showToast("Оплата картой больше недоступна. Проверьте способ оплаты и подтвердите заказ ещё раз.", "error");
+        return;
+      }
+      confirmationPaymentMethod.value = paymentMethod;
+      isOrderConfirmation.value = false;
+      await submitOrder(paymentMethod);
+    } finally {
+      isConfirmingOrder.value = false;
+    }
+    return;
+  }
+  if (showCardTariffsModal.value) return;
   if (requiresTelegramUsername.value) {
     showUsernameRequiredModal.value = true;
     return;
   }
   await loadCardPaymentStatus();
-  // Показываем выбор оплаты, если карта вообще включена аккаунту — даже
-  // когда карта на паузе или лимит исчерпан: клиент открывает вкладку
-  // «Картой», смотрит виджет (лимит, шкалу паузы), но «Оформить заказ»
-  // заблокирован. Если карта не разрешена — выбора нет, заказ уходит
-  // наличными автоматически.
-  if (cardPaymentStatus.value?.enabled && !isEditingOrder.value) {
-    selectedPaymentMethod.value = "cash";
-    showCardPaymentModal.value = true;
+  if (!isEditingOrder.value) {
+    confirmationPaymentMethod.value = effectivePaymentMethod.value;
+    isOrderConfirmation.value = true;
     return;
   }
   void submitOrder("cash");
@@ -2157,7 +2412,6 @@ async function openCardTariffsFromEditLimit() {
 async function openCardTariffs() {
   cardRequestError.value = "";
   cardRequestSuccess.value = false;
-  showCardPaymentModal.value = false;
   try {
     const response = await fetch("/api/card-payment/tariffs", {
       headers: withTelegramAuthHeaders(),
@@ -2169,7 +2423,8 @@ async function openCardTariffs() {
     showCardTariffsModal.value = true;
   } catch (error: any) {
     showToast(error?.message || "Не удалось загрузить тарифы", "error");
-    showCardPaymentModal.value = true;
+    selectedPaymentMethod.value = "cash";
+    confirmationPaymentMethod.value = "cash";
   }
 }
 
@@ -2328,8 +2583,8 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
         result?.error === "daily_limit_exceeded_by_order" ||
         result?.error === "card_payment_not_allowed"
       ) {
-        showCardPaymentModal.value = true;
         selectedPaymentMethod.value = "cash";
+        confirmationPaymentMethod.value = "cash";
         submitError.value = result?.error === "daily_limit_exhausted"
           ? (result?.message || "Лимит оплаты по карте на сегодня уже занят другим заказом. Вы можете оформить этот заказ только за наличные.")
           : result?.error === "daily_limit_exceeded_by_order"
@@ -2343,8 +2598,8 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
         result?.error === "personal_monthly_limit_exceeded" ||
         result?.error === "personal_cooldown"
       ) {
-        showCardPaymentModal.value = true;
         selectedPaymentMethod.value = "cash";
+        confirmationPaymentMethod.value = "cash";
         submitError.value = result?.error === "personal_limit_exceeded"
           ? (result?.message || "Заказ больше вашего лимита на оплату картой. Уберите лишние товары, оплатите наличными или увеличьте лимиты.")
           : result?.error === "personal_monthly_limit_exceeded"
@@ -2426,7 +2681,6 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
     const wasEditingOrder = isEditingOrder.value;
     cartStore.clearCart();
     cartStore.finishOrderEdit();
-    showCardPaymentModal.value = false;
     // Смешанной оплаты больше нет: заказ либо целиком картой в пределах
     // лимита, либо целиком наличными. Отдельное уведомление о «наличной
     // части» не требуется.
@@ -2462,6 +2716,24 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   z-index: 20;
 }
 
+.checkout-page--confirmation .checkout-main {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+.checkout-page--confirmation .checkout-container {
+  flex: 1 1 auto;
+  display: flex;
+  min-height: 0;
+}
+
+.checkout-page--confirmation .checkout-footer {
+  flex: 0 0 auto;
+  margin-top: 0;
+}
+
 /* main — растягивается на всё свободное место (прижимая футер
    вниз), скроллит документ. Верхний отступ под хедер. */
 .checkout-main {
@@ -2487,11 +2759,6 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
 
 .checkout-footer .submit-error {
   margin: 0 0 -4px;
-}
-
-/* Согласия внутри футера (демо .consents). */
-.checkout-footer__agreements {
-  max-width: 355px;
 }
 
 /* Хедер из демо: сетка назад/заголовок/очистить 44px. */
@@ -2577,7 +2844,55 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   gap: 16px;
 }
 
-/* ===== Карточка заказа (демо .order-card) ===== */
+.order-confirmation {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 28px 20px;
+  text-align: center;
+  background: transparent;
+  border-radius: 0;
+}
+
+.order-confirmation__emoji {
+  margin: 0 0 8px;
+}
+
+.order-confirmation__title {
+  max-width: 340px;
+  margin: 0;
+  color: #18191b;
+  font-family: "Montserrat", sans-serif;
+  font-size: 21px;
+  font-weight: 800;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+
+.order-confirmation__text {
+  margin: 0;
+  color: #656b75;
+  font-family: -apple-system, "SF Pro Display", sans-serif;
+  font-size: 14px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.order-confirmation__small-text {
+  max-width: 340px;
+  margin: 0;
+  color: #8a93a0;
+  font-family: -apple-system, "SF Pro Display", sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+
 .order-card {
   background: #ffffff;
   border-radius: 20px;
@@ -3513,6 +3828,369 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   color: #656b75;
 }
 
+/* Способ оплаты по референсу: две компактные 3D-иконки перед итогом. */
+.payment-note {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  margin: 4px 12px 0;
+  padding-block: 4px;
+}
+
+.payment-note__mark {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+}
+
+/* Стикер «Heavy Dollar Sign» в слоте 26×26: строка «Способ оплаты»
+   держит постоянную высоту, пока Lottie проигрывает анимацию. */
+.payment-note__dollar {
+  width: 26px;
+  height: 26px;
+}
+
+.payment-note__label {
+  align-self: center;
+  margin-left: -2px;
+  color: #25262a;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.23;
+}
+
+/* Кнопка «Картой» в своей ячейке группы выбора. */
+.payment-note__card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+}
+
+/* Плашка ошибки карты по демо-образцу navalivay-card-limit-popover:
+   тёмная капсула #5d5c65 с хвостиком-стрелкой к кнопке «Картой»,
+   заголовок + пояснение, справа кнопка закрытия с кольцом-таймером.
+   Плашка отрендерена через Teleport в body (карточка заказа режет
+   контент overflow:hidden), позиция задаётся inline: fixed-координаты
+   пересчитываются от кнопки при показе, скролле и ресайзе. */
+.payment-note__popover {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px;
+  align-items: center;
+  gap: 9px;
+  padding: 11px 10px 11px 13px;
+  border-radius: 16px;
+  background: #5d5c65;
+  color: #ffffff;
+  box-shadow: 0 10px 26px #1d1e2936;
+  z-index: 9000;
+}
+
+/* Хвостик-стрелка, указывающий на кнопку «Картой» сверху. */
+.payment-note__popover::before {
+  content: "";
+  position: absolute;
+  right: var(--popover-arrow-from-right, 29px);
+  top: -5px;
+  width: 10px;
+  height: 10px;
+  background: inherit;
+  transform: rotate(45deg);
+}
+
+.payment-note__popover-copy {
+  min-width: 0;
+}
+
+.payment-note__popover-copy strong {
+  display: block;
+  font-family: "Montserrat", sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.payment-note__popover-copy p {
+  margin: 4px 0 0;
+  font-family: -apple-system, "SF Pro Display", sans-serif;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.4;
+}
+
+.payment-note__popover-close {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  background: none;
+  color: #ffffff;
+  cursor: pointer;
+  border-radius: 50%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.payment-note__popover-close:active {
+  opacity: 0.7;
+}
+
+.payment-note__popover-close:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 2px;
+}
+
+.payment-note__popover-close svg {
+  width: 40px;
+  height: 40px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+/* Кольцо-таймер: дотает за время жизни плашки (r=17 → длина 106.814). */
+.payment-note__popover-track {
+  opacity: 0.23;
+}
+
+.payment-note__popover-ring {
+  stroke-dasharray: 106.814;
+  animation: payment-note-countdown var(--duration, 7s) linear both;
+}
+
+@keyframes payment-note-countdown {
+  to {
+    stroke-dashoffset: 106.814;
+  }
+}
+
+/* Появление/исчезание плашки: выезжает снизу вверх,
+   закрывается мягко — тем же движением вниз и медленным fade. */
+.payment-note-pop-enter-active {
+  transition: opacity 0.16s ease, transform 0.22s ease;
+}
+
+.payment-note-pop-leave-active {
+  transition: opacity 0.28s ease, transform 0.26s ease;
+}
+
+.payment-note-pop-enter-from {
+  opacity: 0;
+  transform: translateY(10px);
+}
+
+.payment-note-pop-leave-to {
+  opacity: 0;
+  transform: translateY(8px) scale(0.98);
+}
+
+/* Появление и закрытие — только через Vue Transition (keyframes больше
+   не нужны): появление снизу вверх, закрытие — мягкий уход вниз с fade. */
+
+@media (prefers-reduced-motion: reduce) {
+  .payment-note__popover-ring {
+    animation-duration: 0.01ms;
+  }
+
+  .payment-note__popover,
+  .payment-note-pop-enter-active,
+  .payment-note-pop-leave-active {
+    animation: none;
+    transition: none;
+  }
+}
+
+.payment-note__choices {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: center;
+  gap: 0;
+  padding: 2px;
+  border-radius: 12px;
+  background: #f6f7f8;
+  isolation: isolate;
+}
+
+.payment-note__selection {
+  position: absolute;
+  z-index: -1;
+  top: 2px;
+  bottom: 2px;
+  left: 2px;
+  width: calc(50% - 2px);
+  border-radius: 9px;
+  background: linear-gradient(105deg, #f80008, #ad1010);
+  box-shadow: 0 2px 8px #c715152b;
+  transition: transform 0.22s ease, opacity 0.16s ease;
+}
+
+.payment-note__selection--cash {
+  transform: translateX(0);
+}
+
+.payment-note__selection--card {
+  transform: translateX(100%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .payment-note__selection {
+    transition: none;
+  }
+}
+
+.payment-note__choice {
+  display: grid;
+  place-items: center;
+  width: 68px;
+  min-width: 68px;
+  min-height: 56px;
+  padding: 3px;
+  border: 2px solid transparent;
+  border-radius: 11px;
+  background: transparent;
+  color: #23242a;
+  cursor: pointer;
+  transition: box-shadow 0.18s ease, background 0.18s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.payment-note__choice img {
+  display: block;
+  width: 50px;
+  height: 42px;
+  object-fit: contain;
+  transition: filter 0.18s ease, transform 0.18s ease;
+}
+
+.payment-note__choice--card img {
+  width: 59px;
+  height: 46px;
+  transform: rotate(-8deg) scale(1.16);
+}
+
+.payment-note__choice--selected {
+  background: transparent;
+  box-shadow: none;
+}
+
+.payment-note__choice--selected img {
+  filter: grayscale(1) brightness(2.6) contrast(0.72) brightness(1.12)
+    drop-shadow(0 0 2px #ffffffba) drop-shadow(0 0 4px #ffffff70);
+}
+
+.payment-note__choice--blocked {
+  opacity: 0.52;
+  filter: grayscale(0.35);
+}
+
+.payment-note__choice--blocked:hover {
+  opacity: 0.62;
+}
+
+.payment-note__choice:focus-visible {
+  outline: 2px solid #286bf0;
+  outline-offset: 2px;
+}
+
+.total-value-with-payment {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 0;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.total-payment-label {
+  display: block;
+  width: max-content;
+  padding-left: 0.28em;
+  /* Как у суммы: подпись способа оплаты — часть той же строки итога,
+     поэтому начертание и кегль совпадают с .total-amount. */
+  color: inherit;
+  font-family: "Montserrat", sans-serif;
+  font-weight: 700;
+  font-size: 19px;
+  line-height: 23px;
+  opacity: 1;
+}
+
+.total-payment-label__text {
+  display: inline-block;
+}
+
+/* Смена способа оплаты: старая подпись уезжает вверх и гаснет,
+   новая поднимается снизу — без дёрганья суммы слева. */
+.total-payment-swap-enter-active,
+.total-payment-swap-leave-active {
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
+
+.total-payment-swap-enter-from {
+  opacity: 0;
+  transform: translateY(5px);
+}
+
+.total-payment-swap-leave-to {
+  opacity: 0;
+  transform: translateY(-5px);
+}
+
+@media (max-width: 320px) {
+  .payment-note {
+    grid-template-columns: 24px minmax(0, 1fr) auto;
+    gap: 3px;
+    margin-inline: 4px;
+  }
+
+  .payment-note__choice {
+    width: 54px;
+    min-width: 54px;
+    min-height: 52px;
+  }
+
+  .payment-note__choice img {
+    width: 42px;
+    height: 38px;
+  }
+
+  .payment-note__choice--card img {
+    width: 48px;
+    height: 40px;
+  }
+}
+
+@media (max-width: 360px) {
+
+
+  .payment-note__choice {
+    width: 58px;
+    min-width: 58px;
+  }
+
+  .payment-note__choice img {
+    width: 46px;
+  }
+
+  .payment-note__choice--card img {
+    width: 52px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .payment-note__choice,
+  .payment-note__choice img,
+  .total-payment-swap-enter-active,
+  .total-payment-swap-leave-active {
+    transition: none;
+  }
+}
+
 /* Итого внутри карточки заказа: без полосы между предупреждением
    о незабранном заказе и итоговой суммой. */
 .total-block {
@@ -3562,6 +4240,9 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   -webkit-tap-highlight-color: transparent;
   user-select: none;
   -webkit-user-select: none;
+  /* Плавное изменение прозрачности: без перехода любой кратковременный
+     disabled (сверка статуса карты) выглядел как резкое мигание. */
+  transition: opacity 0.16s ease, transform 0.16s ease;
 }
 
 .submit-button:hover:not(:disabled) {

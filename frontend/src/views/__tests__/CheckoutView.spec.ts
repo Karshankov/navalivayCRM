@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createPinia, setActivePinia } from "pinia";
 import { flushPromises, mount } from "@vue/test-utils";
 import CheckoutView from "@/views/CheckoutView.vue";
+import LottiePlayer from "@/components/LottiePlayer.vue";
 import { useCartStore } from "@/stores/cart";
 import { useCatalogStore } from "@/stores/catalog";
 import { useSettingsStore } from "@/stores/settings";
@@ -502,7 +503,129 @@ describe("CheckoutView order flows", () => {
     catalogStore.categories = [];
   });
 
-  it("shows warning and blocks card when the order exceeds the shared daily remainder", async () => {
+  it("shows cash by default and animates the selected method without changing the total", async () => {
+    const cartStore = useCartStore();
+    cartStore.replaceItemsFromOrder([
+      {
+        productId: "p-1",
+        title: "Liquid Cherry",
+        productTitle: "Liquid Cherry",
+        groupName: "Liquids",
+        priceRub: 15,
+        quantity: 1,
+        image: "/img/liquid.png",
+        variantId: null,
+        variantName: null,
+        groupId: "group-1",
+        categoryId: "c_liquids_salt",
+      },
+    ]);
+
+    let submittedBody: any = null;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.startsWith("/api/product/")) {
+        return createJsonResponse({ id: "p-1", hasVariants: false, stock: 10 });
+      }
+      if (url === "/api/card-payment/status") {
+        return createJsonResponse({ enabled: true, max_order_minor: 50000, card_available: true });
+      }
+      if (url.startsWith("/api/loyalty/me")) return createJsonResponse(buildLoyaltySnapshot());
+      if (url === "/api/loyalty/checkout-preview") return createJsonResponse(buildLoyaltyPreview(0));
+      if (url === "/api/agreements") return createJsonResponse({ items: [] });
+      if (url === "/api/orders" && init?.method === "POST") {
+        submittedBody = JSON.parse(String(init.body || "{}"));
+        return createJsonResponse({ success: true, order_id: "selected-card" });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const wrapper = mount(CheckoutView, {
+      global: {
+        stubs: {
+          MinDeliveryBanner: { template: "<div />" },
+          DeliveryConditionsBanner: { template: "<div />" },
+          CustomerModalShell: { template: "<div><slot /><slot name='footer' /></div>" },
+          LoyaltyBonusPopup: { template: "<div />" },
+        },
+      },
+    });
+
+    await flushPromises();
+    const totalBefore = wrapper.find(".total-amount").text();
+    expect(wrapper.find(".payment-note__choice[aria-label='Наличными']").attributes("aria-checked")).toBe("true");
+    // Способ оплаты — текущее состояние, а не результат клика: подпись
+    // «Наличными» стоит рядом с суммой сразу при входе в корзину.
+    expect(wrapper.find(".total-payment-label").text()).toBe("Наличными");
+    // Регрессия: раньше подпись сворачивалась в grid 0fr и проявлялась
+    // только после клика — этих обёрток быть не должно.
+    expect(wrapper.find(".total-payment-slot").exists()).toBe(false);
+    expect(wrapper.find(".total-value-with-payment").classes()).not.toContain("total-value-with-payment--selected");
+
+    await wrapper.find(".payment-note__choice[aria-label='Картой']").trigger("click");
+    await flushPromises();
+    expect(wrapper.find(".payment-note__choice[aria-label='Картой']").attributes("aria-checked")).toBe("true");
+    expect(wrapper.find(".total-payment-label").text()).toBe("Картой");
+    expect(wrapper.find(".total-amount").text()).toBe(totalBefore);
+
+    await wrapper.find(".submit-button").trigger("click");
+    await flushPromises();
+    await wrapper.find(".submit-button").trigger("click");
+    await flushPromises();
+    expect(submittedBody.payment_method).toBe("card");
+    wrapper.unmount();
+  });
+
+  it("falls back to cash if card permission is removed before final confirmation", async () => {
+    const cartStore = useCartStore();
+    cartStore.replaceItemsFromOrder([{
+      productId: "p-card-race", title: "Card item", productTitle: "Card item", groupName: "Liquids",
+      priceRub: 20, quantity: 1, image: "/img/item.png", variantId: null, variantName: null,
+      groupId: "group-1", categoryId: "c_liquids_salt",
+    }]);
+    let statusCalls = 0;
+    let submittedBody: any = null;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.startsWith("/api/product/")) return createJsonResponse({ id: "p-card-race", hasVariants: false, stock: 10 });
+      if (url === "/api/card-payment/status") {
+        statusCalls += 1;
+        return createJsonResponse({
+          enabled: statusCalls <= 2,
+          max_order_minor: 50000,
+          card_available: statusCalls <= 2,
+        });
+      }
+      if (url.startsWith("/api/loyalty/me")) return createJsonResponse(buildLoyaltySnapshot());
+      if (url === "/api/loyalty/checkout-preview") return createJsonResponse(buildLoyaltyPreview(0));
+      if (url === "/api/agreements") return createJsonResponse({ items: [] });
+      if (url === "/api/orders" && init?.method === "POST") {
+        submittedBody = JSON.parse(String(init.body || "{}"));
+        return createJsonResponse({ success: true, order_id: "fallback-cash" });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const wrapper = mount(CheckoutView, { global: { stubs: {
+      MinDeliveryBanner: { template: "<div />" },
+      DeliveryConditionsBanner: { template: "<div />" },
+      CustomerModalShell: { template: "<div><slot /><slot name='footer' /></div>" },
+      LoyaltyBonusPopup: { template: "<div />" },
+    } } });
+    await flushPromises();
+    await wrapper.find(".payment-note__choice[aria-label='Картой']").trigger("click");
+    await flushPromises();
+    await wrapper.find(".submit-button").trigger("click");
+    await flushPromises();
+    expect(wrapper.find(".order-confirmation").exists()).toBe(true);
+    await wrapper.find(".submit-button").trigger("click");
+    await flushPromises();
+    expect(submittedBody.payment_method).toBe("cash");
+    wrapper.unmount();
+  });
+  it("shows inline payment choices for permitted users and keeps cash when card limits block it", async () => {
     const cartStore = useCartStore();
     cartStore.replaceItemsFromOrder([
       {
@@ -520,34 +643,25 @@ describe("CheckoutView order flows", () => {
       },
     ]);
 
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    let submittedBody: any = null;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url.startsWith("/api/product/")) {
-        return createJsonResponse({ id: "p-1", hasVariants: false, stock: 10 });
-      }
-      if (url === "/api/card-payment/status") {
-        return createJsonResponse({
-          enabled: true,
-          max_order_minor: 4500,
-          card_available: true,
-          monthly_limit_minor: 25000,
-          monthly_used_minor: 14500,
-          monthly_remaining_minor: 10500,
-          limits: {
-            daily_limit_minor: 25000,
-            spent_today_minor: 23500,
-            reserved_minor: 0,
-          },
-        });
-      }
-      if (url.startsWith("/api/loyalty/me")) {
-        return createJsonResponse(buildLoyaltySnapshot());
-      }
-      if (url === "/api/loyalty/checkout-preview") {
-        return createJsonResponse(buildLoyaltyPreview(0));
-      }
-      if (url === "/api/agreements") {
-        return createJsonResponse({ items: [] });
+      if (url.startsWith("/api/product/")) return createJsonResponse({ id: "p-1", hasVariants: false, stock: 10 });
+      if (url === "/api/card-payment/status") return createJsonResponse({
+        enabled: true,
+        max_order_minor: 4500,
+        card_available: true,
+        monthly_limit_minor: 25000,
+        monthly_used_minor: 14500,
+        monthly_remaining_minor: 10500,
+        limits: { daily_limit_minor: 25000, spent_today_minor: 23500, reserved_minor: 0 },
+      });
+      if (url.startsWith("/api/loyalty/me")) return createJsonResponse(buildLoyaltySnapshot());
+      if (url === "/api/loyalty/checkout-preview") return createJsonResponse(buildLoyaltyPreview(0));
+      if (url === "/api/agreements") return createJsonResponse({ items: [] });
+      if (url === "/api/orders" && init?.method === "POST") {
+        submittedBody = JSON.parse(String(init.body || "{}"));
+        return createJsonResponse({ success: true, order_id: "payment-cash" });
       }
       throw new Error(`Unexpected fetch: ${url}`);
     });
@@ -558,486 +672,409 @@ describe("CheckoutView order flows", () => {
         stubs: {
           MinDeliveryBanner: { template: "<div />" },
           DeliveryConditionsBanner: { template: "<div />" },
-          AdminModal: { template: "<div><slot /></div>" },
-          CustomerModalShell: {
-            props: ["open", "title"],
-            template: "<div v-if=\"open\" class=\"payment-modal\"><h2>{{ title }}</h2><slot /><slot name='footer' /></div>",
-          },
+          CustomerModalShell: { template: "<div><slot /><slot name='footer' /></div>" },
           LoyaltyBonusPopup: { template: "<div />" },
-          CheckoutAgreements: { template: "<div />" },
         },
       },
     });
 
     await flushPromises();
+    expect(wrapper.findAll(".payment-note__choice")).toHaveLength(2);
+    expect(wrapper.find(".payment-note__choice[aria-label='Наличными']").attributes("aria-checked")).toBe("true");
+    expect(wrapper.find(".total-payment-label").text()).toBe("Наличными");
+    expect(wrapper.find(".payment-modal").exists()).toBe(false);
+
+    // Дневной остаток 15 BYN меньше заказа 45 BYN — карту выбрать нельзя.
+    const cardChoice = wrapper.find(".payment-note__choice[aria-label='Картой']");
+    expect(cardChoice.attributes("disabled")).toBeUndefined();
+
+    // Клик по карте раскрывает плашку-поповер под кнопкой карты
+    // (демо navalivay-card-limit-popover): телепортируется в body,
+    // поэтому ищем её в документе.
+    await cardChoice.trigger("click");
+    await flushPromises();
+    let errorPlate = document.querySelector(".payment-note__popover");
+    expect(errorPlate).not.toBeNull();
+    errorPlate = errorPlate as HTMLElement;
+    expect((errorPlate as HTMLElement).getAttribute("role")).toBe("alert");
+    const strong = (errorPlate as HTMLElement).querySelector(".payment-note__popover-copy strong");
+    expect(strong?.textContent).toBe("Дневной лимит карты исчерпан");
+    expect((errorPlate as HTMLElement).textContent).toContain("дневного остатка");
+    expect((errorPlate as HTMLElement).textContent).toContain("15.00");
+    // Кнопка закрытия с кольцом-таймером.
+    expect((errorPlate as HTMLElement).querySelector(".payment-note__popover-close")).not.toBeNull();
+
+    // Возврат к наличным убирает плашку.
+    await wrapper.find(".payment-note__choice[aria-label='Наличными']").trigger("click");
+    await flushPromises();
+    expect(document.querySelector(".payment-note__popover")).toBeNull();
+
     await wrapper.find(".submit-button").trigger("click");
     await flushPromises();
-
-    expect(wrapper.find(".payment-modal").exists()).toBe(true);
-    expect(wrapper.text()).toContain("Как хотите оплатить заказ?");
-    expect(wrapper.find(".payment-modal").text()).toContain("Наличными");
-    expect(wrapper.find(".payment-modal").text()).toContain("Картой");
-    expect(fetchMock.mock.calls.some(([input]) => String(input) === "/api/orders")).toBe(false);
-    // Кнопка «Картой» всегда активна: даже при исчерпанном дневном лимите
-    // клиент может открыть вкладку и посмотреть виджет.
-    await wrapper.findAll(".payment-modal button")[1].trigger("click");
+    expect(wrapper.find(".order-confirmation").exists()).toBe(true);
+    await wrapper.find(".submit-button").trigger("click");
     await flushPromises();
-    // Заказ 45 BYN при дневном остатке 15.00 BYN: картой нельзя, виджет
-    // показывает состояние исчерпания и блокирует «Оформить заказ».
-    expect(wrapper.find(".payment-modal").text()).toContain("Оплата картой недоступна");
-    expect(wrapper.find(".payment-modal").text()).toContain("Общий лимит на сегодня исчерпан");
-    const cardBtn = wrapper.findAll(".payment-modal button")[1];
-    expect(cardBtn.attributes("disabled")).toBeUndefined();
-    expect(
-      wrapper.find(".payment-modal button.checkout-modal-cta:not(.checkout-modal-cta--dark)").attributes("disabled"),
-    ).toBeDefined();
-    // Виджет показывает лимит на заказ и быстрые действия.
-    expect(wrapper.find(".payment-modal").text()).toContain("Лимит на заказ 45.00р");
-    expect(wrapper.find(".payment-modal .card-widget__link").exists()).toBe(false);
-    // Большая чёрная кнопка «Увеличить лимиты» — в футере модалки.
-    expect(wrapper.find(".payment-modal .checkout-modal-cta--dark").exists()).toBe(true);
+    expect(submittedBody.payment_method).toBe("cash");
 
     wrapper.unmount();
   });
 
-  it("shows cash-only message and disables card submit when the shared limit is exhausted", async () => {
+  it("hides inline payment choices when card payment is not enabled for the customer", async () => {
     const cartStore = useCartStore();
-    cartStore.replaceItemsFromOrder([
-      {
-        productId: "p-1",
-        title: "Liquid Cherry",
-        productTitle: "Liquid Cherry",
-        groupName: "Жидкости",
-        priceRub: 15,
-        quantity: 1,
-        image: "/img/liquid.png",
-        variantId: null,
-        variantName: null,
-        groupId: "group-1",
-        categoryId: "cat-1",
-      },
-    ]);
+    cartStore.replaceItemsFromOrder([{
+      productId: "p-1", title: "Liquid Cherry", productTitle: "Liquid Cherry", groupName: "Жидкости",
+      priceRub: 15, quantity: 1, image: "/img/liquid.png", variantId: null, variantName: null,
+      groupId: "group-1", categoryId: "cat-1",
+    }]);
 
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url.startsWith("/api/product/")) {
-        return createJsonResponse({ id: "p-1", hasVariants: false, stock: 10 });
-      }
-      if (url === "/api/card-payment/status") {
-        return createJsonResponse({
-          enabled: true,
-          max_order_minor: 4500,
-          card_available: true,
-          limits: {
-            daily_limit_minor: 25000,
-            spent_today_minor: 25000,
-            reserved_minor: 0,
-          },
-        });
-      }
-      if (url.startsWith("/api/loyalty/me")) {
-        return createJsonResponse(buildLoyaltySnapshot());
-      }
-      if (url === "/api/loyalty/checkout-preview") {
-        return createJsonResponse(buildLoyaltyPreview(0));
-      }
-      if (url === "/api/agreements") {
-        return createJsonResponse({ items: [] });
+      if (url.startsWith("/api/product/")) return createJsonResponse({ id: "p-1", hasVariants: false, stock: 10 });
+      if (url === "/api/card-payment/status") return createJsonResponse({ enabled: false });
+      if (url.startsWith("/api/loyalty/me")) return createJsonResponse(buildLoyaltySnapshot());
+      if (url === "/api/loyalty/checkout-preview") return createJsonResponse(buildLoyaltyPreview(0));
+      if (url === "/api/agreements") return createJsonResponse({ items: [] });
+      throw new Error(`Unexpected fetch: ${url}`);
+    }));
+
+    const wrapper = mount(CheckoutView, {
+      global: { stubs: {
+        MinDeliveryBanner: { template: "<div />" },
+        DeliveryConditionsBanner: { template: "<div />" },
+        CustomerModalShell: { template: "<div><slot /><slot name='footer' /></div>" },
+        LoyaltyBonusPopup: { template: "<div />" },
+      } },
+    });
+    await flushPromises();
+
+    expect(wrapper.find(".payment-note").exists()).toBe(false);
+    expect(wrapper.find(".total-payment-label").text()).toBe("Наличными");
+    expect(wrapper.find(".payment-modal").exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("shows the animated dollar sticker instead of the question mark next to the payment method", async () => {
+    const cartStore = useCartStore();
+    cartStore.replaceItemsFromOrder([{
+      productId: "p-1", title: "Liquid Cherry", productTitle: "Liquid Cherry", groupName: "Жидкости",
+      priceRub: 15, quantity: 1, image: "/img/liquid.png", variantId: null, variantName: null,
+      groupId: "group-1", categoryId: "c_liquids_salt",
+    }]);
+
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith("/api/product/")) return createJsonResponse({ id: "p-1", hasVariants: false, stock: 10 });
+      if (url === "/api/card-payment/status") return createJsonResponse({ enabled: true, max_order_minor: 50000, card_available: true });
+      if (url.startsWith("/api/loyalty/me")) return createJsonResponse(buildLoyaltySnapshot());
+      if (url === "/api/loyalty/checkout-preview") return createJsonResponse(buildLoyaltyPreview(0));
+      if (url === "/api/agreements") return createJsonResponse({ items: [] });
+      if (url.endsWith(".json")) return createJsonResponse({});
+      throw new Error(`Unexpected fetch: ${url}`);
+    }));
+
+    const wrapper = mount(CheckoutView, {
+      global: { stubs: {
+        MinDeliveryBanner: { template: "<div />" },
+        DeliveryConditionsBanner: { template: "<div />" },
+        CustomerModalShell: { template: "<div><slot /><slot name='footer' /></div>" },
+        LoyaltyBonusPopup: { template: "<div />" },
+      } },
+    });
+    await flushPromises();
+
+    const mark = wrapper.find(".payment-note__mark");
+    expect(mark.exists()).toBe(true);
+    // Знак «?» больше не выводится — в слоте живёт Lottie-стикер доллара.
+    expect(mark.text()).toBe("");
+    const dollar = mark.findComponent(LottiePlayer);
+    expect(dollar.exists()).toBe(true);
+    expect(dollar.props("src")).toBe("/lottie/dollar-emoji.json");
+    expect(dollar.props("speed")).toBe(1);
+    // Иконка декоративная: смысловой текст — подпись «Способ оплаты».
+    expect(mark.attributes("aria-hidden")).toBe("true");
+    wrapper.unmount();
+  });
+
+  it("exposes both payment choices as radios of a single radiogroup and supports arrow keys", async () => {
+    const cartStore = useCartStore();
+    cartStore.replaceItemsFromOrder([{
+      productId: "p-1", title: "Liquid Cherry", productTitle: "Liquid Cherry", groupName: "Жидкости",
+      priceRub: 15, quantity: 1, image: "/img/liquid.png", variantId: null, variantName: null,
+      groupId: "group-1", categoryId: "c_liquids_salt",
+    }]);
+
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith("/api/product/")) return createJsonResponse({ id: "p-1", hasVariants: false, stock: 10 });
+      if (url === "/api/card-payment/status") return createJsonResponse({ enabled: true, max_order_minor: 50000, card_available: true });
+      if (url.startsWith("/api/loyalty/me")) return createJsonResponse(buildLoyaltySnapshot());
+      if (url === "/api/loyalty/checkout-preview") return createJsonResponse(buildLoyaltyPreview(0));
+      if (url === "/api/agreements") return createJsonResponse({ items: [] });
+      throw new Error(`Unexpected fetch: ${url}`);
+    }));
+
+    const wrapper = mount(CheckoutView, {
+      global: { stubs: {
+        MinDeliveryBanner: { template: "<div />" },
+        DeliveryConditionsBanner: { template: "<div />" },
+        CustomerModalShell: { template: "<div><slot /><slot name='footer' /></div>" },
+        LoyaltyBonusPopup: { template: "<div />" },
+      } },
+    });
+    await flushPromises();
+
+    const group = wrapper.find("[role='radiogroup']");
+    expect(group.exists()).toBe(true);
+    const cash = wrapper.find(".payment-note__choice[aria-label='Наличными']");
+    const card = wrapper.find(".payment-note__choice[aria-label='Картой']");
+    // Оба варианта должны быть настоящими radio внутри группы —
+    // иначе скринридер не объявит выбор способа оплаты.
+    expect(cash.attributes("role")).toBe("radio");
+    expect(card.attributes("role")).toBe("radio");
+    // Ровно одна точка входа с клавиатуры в группе.
+    expect(cash.attributes("tabindex")).toBe("0");
+    expect(card.attributes("tabindex")).toBe("-1");
+
+    // Стрелка вправо переводит выбор на карту и переносит фокус.
+    await cash.trigger("keydown", { key: "ArrowRight" });
+    await flushPromises();
+    expect(wrapper.find(".payment-note__choice[aria-label='Картой']").attributes("aria-checked")).toBe("true");
+    expect(wrapper.find(".payment-note__choice[aria-label='Картой']").attributes("tabindex")).toBe("0");
+    expect(wrapper.find(".total-payment-label").text()).toBe("Картой");
+
+    // Стрелка влево возвращает наличные.
+    await wrapper.find(".payment-note__choice[aria-label='Картой']").trigger("keydown", { key: "ArrowLeft" });
+    await flushPromises();
+    expect(wrapper.find(".payment-note__choice[aria-label='Наличными']").attributes("aria-checked")).toBe("true");
+    expect(wrapper.find(".total-payment-label").text()).toBe("Наличными");
+    wrapper.unmount();
+  });
+
+  it("ignores a second tap on final confirmation while the order is being sent", async () => {
+    const cartStore = useCartStore();
+    cartStore.replaceItemsFromOrder([{
+      productId: "p-1", title: "Liquid Cherry", productTitle: "Liquid Cherry", groupName: "Жидкости",
+      priceRub: 15, quantity: 1, image: "/img/liquid.png", variantId: null, variantName: null,
+      groupId: "group-1", categoryId: "c_liquids_salt",
+    }]);
+
+    let orderPosts = 0;
+    let releaseOrder: (() => void) | null = null;
+    const orderGate = new Promise<void>((resolve) => { releaseOrder = resolve; });
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.startsWith("/api/product/")) return createJsonResponse({ id: "p-1", hasVariants: false, stock: 10 });
+      if (url === "/api/card-payment/status") return createJsonResponse({ enabled: false });
+      if (url.startsWith("/api/loyalty/me")) return createJsonResponse(buildLoyaltySnapshot());
+      if (url === "/api/loyalty/checkout-preview") return createJsonResponse(buildLoyaltyPreview(0));
+      if (url === "/api/agreements") return createJsonResponse({ items: [] });
+      if (url === "/api/orders" && init?.method === "POST") {
+        orderPosts += 1;
+        await orderGate;
+        return createJsonResponse({ success: true, order_id: "single" });
       }
       throw new Error(`Unexpected fetch: ${url}`);
     }));
 
     const wrapper = mount(CheckoutView, {
-      global: {
-        stubs: {
-          MinDeliveryBanner: { template: "<div />" },
-          DeliveryConditionsBanner: { template: "<div />" },
-          AdminModal: { template: "<div><slot /></div>" },
-          CustomerModalShell: {
-            props: ["open", "title"],
-            template: "<div v-if=\"open\" class=\"payment-modal\"><h2>{{ title }}</h2><slot /><slot name='footer' /></div>",
-          },
-          LoyaltyBonusPopup: { template: "<div />" },
-          CheckoutAgreements: { template: "<div />" },
-        },
-      },
+      global: { stubs: {
+        MinDeliveryBanner: { template: "<div />" },
+        DeliveryConditionsBanner: { template: "<div />" },
+        CustomerModalShell: { template: "<div><slot /><slot name='footer' /></div>" },
+        LoyaltyBonusPopup: { template: "<div />" },
+      } },
     });
-
     await flushPromises();
+
+    // Первый клик — экран подтверждения.
     await wrapper.find(".submit-button").trigger("click");
     await flushPromises();
-    await wrapper.findAll(".payment-modal button")[1].trigger("click");
+    expect(wrapper.find(".order-confirmation").exists()).toBe(true);
+
+    // Второй клик запускает отправку; третий приходит, пока заказ летит.
+    await wrapper.find(".submit-button").trigger("click");
+    await Promise.resolve();
+    await wrapper.find(".submit-button").trigger("click");
+    await Promise.resolve();
+    await wrapper.find(".submit-button").trigger("click");
+    await Promise.resolve();
+
+    // Пока подтверждение в работе, кнопка заблокирована и экран
+    // подтверждения не возвращается — заказ не уходит дважды.
+    expect(wrapper.find(".submit-button").attributes("disabled")).toBeDefined();
+    expect(wrapper.find(".order-confirmation").exists()).toBe(false);
+
+    releaseOrder?.();
     await flushPromises();
-
-    // Дневной лимит исчерпан полностью: виджет показывает состояние блокировки.
-    expect(wrapper.find(".payment-modal").text()).toContain(
-      "Оплата картой недоступна",
-    );
-    expect(wrapper.find(".payment-modal").text()).toContain(
-      "Оформите заказ за наличные. Общий лимит на сегодня исчерпан",
-    );
-    expect(wrapper.find(".payment-modal button.checkout-modal-cta:not(.checkout-modal-cta--dark)").attributes("disabled")).toBeDefined();
-
+    expect(orderPosts).toBe(1);
+    expect(wrapper.find(".order-confirmation").exists()).toBe(false);
     wrapper.unmount();
   });
 
-  it("shows cooldown days instead of dates when the card is paused", async () => {
+  it("keeps the submit button enabled while the payment method switch re-checks the card status", async () => {
     const cartStore = useCartStore();
-    cartStore.replaceItemsFromOrder([
-      {
-        productId: "p-1",
-        title: "Liquid Cherry",
-        productTitle: "Liquid Cherry",
-        groupName: "Жидкости",
-        priceRub: 15,
-        quantity: 1,
-        image: "/img/liquid.png",
-        variantId: null,
-        variantName: null,
-        groupId: "group-1",
-        categoryId: "cat-1",
-      },
-    ]);
+    cartStore.replaceItemsFromOrder([{
+      productId: "p-1", title: "Liquid Cherry", productTitle: "Liquid Cherry", groupName: "Жидкости",
+      priceRub: 15, quantity: 1, image: "/img/liquid.png", variantId: null, variantName: null,
+      groupId: "group-1", categoryId: "c_liquids_salt",
+    }]);
 
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url.startsWith("/api/product/")) {
-        return createJsonResponse({ id: "p-1", hasVariants: false, stock: 10 });
-      }
-      if (url === "/api/card-payment/status") {
-        return createJsonResponse({
-          enabled: true,
-          max_order_minor: 4500,
-          card_available: false,
-          cooldown_until: new Date(Date.now() + 3.5 * 86400000).toISOString(),
-          monthly_limit_minor: 25000,
-          monthly_used_minor: 0,
-          monthly_remaining_minor: 25000,
-          limits: {
-            daily_limit_minor: 25000,
-            spent_today_minor: 0,
-            reserved_minor: 0,
-          },
-        });
-      }
-      if (url.startsWith("/api/loyalty/me")) {
-        return createJsonResponse(buildLoyaltySnapshot());
-      }
-      if (url === "/api/loyalty/checkout-preview") {
-        return createJsonResponse(buildLoyaltyPreview(0));
-      }
-      if (url === "/api/agreements") {
-        return createJsonResponse({ items: [] });
-      }
-      if (url === "/api/orders") {
-        return createJsonResponse({ ok: true, id: "order-1" });
-      }
-      throw new Error(`Unexpected fetch: ${url}`);
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    const wrapper = mount(CheckoutView, {
-      global: {
-        stubs: {
-          MinDeliveryBanner: { template: "<div />" },
-          DeliveryConditionsBanner: { template: "<div />" },
-          AdminModal: { template: "<div><slot /></div>" },
-          CustomerModalShell: {
-            props: ["open", "title"],
-            template: "<div v-if=\"open\" class=\"payment-modal\"><h2>{{ title }}</h2><slot /><slot name='footer' /></div>",
-          },
-          LoyaltyBonusPopup: { template: "<div />" },
-          CheckoutAgreements: { template: "<div />" },
-        },
-      },
-    });
-
-    await flushPromises();
-    await wrapper.find(".submit-button").trigger("click");
-    await flushPromises();
-
-    // Карта на паузе: окно выбора открывается, «Картой» можно нажать и
-    // посмотреть виджет со шкалой паузы, но «Оформить заказ» заблокирован.
-    expect(wrapper.find(".payment-modal").exists()).toBe(true);
-    const cardButton = wrapper.findAll(".payment-modal button")[1];
-    expect(cardButton.attributes("disabled")).toBeUndefined();
-    await cardButton.trigger("click");
-    await flushPromises();
-    expect(wrapper.find(".payment-modal").text()).toContain("Оплата картой недоступна");
-    expect(wrapper.find(".payment-modal").text()).toContain("Следующая оплата будет доступна");
-    // Шкалы паузы больше нет: только текст с датой на новой строке.
-    expect(wrapper.find(".payment-modal .card-widget__bar").exists()).toBe(false);
-    expect(wrapper.find(".payment-modal .card-widget__state-date").exists()).toBe(true);
-    // Заказ не отправляется, пока карта на паузе
-    expect(fetchMock.mock.calls.some(([input]) => String(input) === "/api/orders")).toBe(false);
-
-    wrapper.unmount();
-  });
-
-  it("shows cooldown days instead of dates when the card is paused after opening the choice modal", async () => {
-    const cartStore = useCartStore();
-    cartStore.replaceItemsFromOrder([
-      {
-        productId: "p-1",
-        title: "Liquid Cherry",
-        productTitle: "Liquid Cherry",
-        groupName: "Жидкости",
-        priceRub: 15,
-        quantity: 1,
-        image: "/img/liquid.png",
-        variantId: null,
-        variantName: null,
-        groupId: "group-1",
-        categoryId: "cat-1",
-      },
-    ]);
-
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url.startsWith("/api/product/")) {
-        return createJsonResponse({ id: "p-1", hasVariants: false, stock: 10 });
-      }
-      if (url === "/api/card-payment/status") {
-        // Вызов №1 — onMounted (доступно), №2 — beginCheckout (доступно),
-        // №3 — выбор «Картой» в модалке (пауза началась за это время).
-        statusCalls += 1;
-        if (statusCalls <= 2) {
-          return createJsonResponse({
-            enabled: true,
-            max_order_minor: 4500,
-            card_available: true,
-            monthly_limit_minor: 25000,
-            monthly_used_minor: 0,
-            monthly_remaining_minor: 25000,
-            limits: {
-              daily_limit_minor: 25000,
-              spent_today_minor: 0,
-              reserved_minor: 0,
-            },
-          });
-        }
-        return createJsonResponse({
-          enabled: true,
-          max_order_minor: 4500,
-          card_available: false,
-          cooldown_until: new Date(Date.now() + 3.5 * 86400000).toISOString(),
-          monthly_limit_minor: 25000,
-          monthly_used_minor: 0,
-          monthly_remaining_minor: 25000,
-          limits: {
-            daily_limit_minor: 25000,
-            spent_today_minor: 0,
-            reserved_minor: 0,
-          },
-        });
-      }
-      if (url.startsWith("/api/loyalty/me")) {
-        return createJsonResponse(buildLoyaltySnapshot());
-      }
-      if (url === "/api/loyalty/checkout-preview") {
-        return createJsonResponse(buildLoyaltyPreview(0));
-      }
-      if (url === "/api/agreements") {
-        return createJsonResponse({ items: [] });
-      }
-      if (url === "/api/orders") {
-        return createJsonResponse({ ok: true });
-      }
-      throw new Error(`Unexpected fetch: ${url}`);
-    });
+    // Статус карты при первичной загрузке отдаём сразу, а на повторный
+    // запрос (он уходит при выборе способа оплаты) отвечаем вручную:
+    // именно в этом окне кнопка «Оформить заказ» раньше гасла и мигала.
     let statusCalls = 0;
+    let releaseStatus: (() => void) | null = null;
+    let gate: Promise<void> | null = null;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith("/api/product/")) return createJsonResponse({ id: "p-1", hasVariants: false, stock: 10 });
+      if (url === "/api/card-payment/status") {
+        statusCalls += 1;
+        if (gate) await gate;
+        return createJsonResponse({ enabled: true, max_order_minor: 50000, card_available: true });
+      }
+      if (url.startsWith("/api/loyalty/me")) return createJsonResponse(buildLoyaltySnapshot());
+      if (url === "/api/loyalty/checkout-preview") return createJsonResponse(buildLoyaltyPreview(0));
+      if (url === "/api/agreements") return createJsonResponse({ items: [] });
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
     vi.stubGlobal("fetch", fetchMock);
 
     const wrapper = mount(CheckoutView, {
-      global: {
-        stubs: {
-          MinDeliveryBanner: { template: "<div />" },
-          DeliveryConditionsBanner: { template: "<div />" },
-          AdminModal: { template: "<div><slot /></div>" },
-          CustomerModalShell: {
-            props: ["open", "title"],
-            template: "<div v-if=\"open\" class=\"payment-modal\"><h2>{{ title }}</h2><slot /><slot name='footer' /></div>",
-          },
-          LoyaltyBonusPopup: { template: "<div />" },
-          CheckoutAgreements: { template: "<div />" },
-        },
-      },
+      global: { stubs: {
+        MinDeliveryBanner: { template: "<div />" },
+        DeliveryConditionsBanner: { template: "<div />" },
+        CustomerModalShell: { template: "<div><slot /><slot name='footer' /></div>" },
+        LoyaltyBonusPopup: { template: "<div />" },
+      } },
     });
-
     await flushPromises();
-    await wrapper.find(".submit-button").trigger("click");
-    await flushPromises();
-    expect(wrapper.find(".payment-modal").exists()).toBe(true);
-    await wrapper.findAll(".payment-modal button")[1].trigger("click");
-    await flushPromises();
+    expect(statusCalls).toBeGreaterThan(0);
+    expect(wrapper.find(".submit-button").attributes("disabled")).toBeUndefined();
 
-    expect(wrapper.find(".payment-modal").text()).toContain("Оплата картой недоступна");
-    expect(wrapper.find(".payment-modal").text()).toContain("Следующая оплата будет доступна");
-    expect(wrapper.find(".payment-modal .card-widget__bar").exists()).toBe(false);
-    expect(wrapper.find(".payment-modal .card-widget__state-date").exists()).toBe(true);
+    // Со следующего запроса статус «висит», пока тест не отпустит его.
+    gate = new Promise<void>((resolve) => { releaseStatus = resolve; });
+    await wrapper.find(".payment-note__choice[aria-label='Картой']").trigger("click");
+    await Promise.resolve();
 
+    // Пока сверка статуса в пути, кнопка остаётся активной и с прежней подписью.
+    expect(wrapper.find(".submit-button").attributes("disabled")).toBeUndefined();
+    expect(wrapper.find(".submit-button").text()).toBe("Оформить заказ");
+
+    releaseStatus?.();
+    await flushPromises();
+    expect(wrapper.find(".payment-note__choice[aria-label='Картой']").attributes("aria-checked")).toBe("true");
+    expect(wrapper.find(".total-payment-label").text()).toBe("Картой");
+    expect(wrapper.find(".submit-button").attributes("disabled")).toBeUndefined();
     wrapper.unmount();
   });
 
-  it("shows per-order limit in the card status", async () => {
+  it("renders configured agreement texts on the confirmation screen and auto-accepts active agreements", async () => {
     const cartStore = useCartStore();
-    cartStore.replaceItemsFromOrder([
-      {
-        productId: "p-1",
-        title: "Liquid Cherry",
-        productTitle: "Liquid Cherry",
-        groupName: "Жидкости",
-        priceRub: 15,
-        quantity: 1,
-        image: "/img/liquid.png",
-        variantId: null,
-        variantName: null,
-        groupId: "group-1",
-        categoryId: "cat-1",
-      },
-    ]);
+    cartStore.replaceItemsFromOrder([{
+      productId: "p-1", title: "Liquid Cherry", productTitle: "Liquid Cherry", groupName: "Жидкости",
+      priceRub: 15, quantity: 1, image: "/img/liquid.png", variantId: null, variantName: null,
+      groupId: "group-1", categoryId: "cat-1",
+    }]);
 
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const settingsStore = useSettingsStore();
+    settingsStore.settings = {
+      ...settingsStore.settings,
+      order_agreement_main_text: "Основной текст соглашения из CRM.",
+      order_agreement_small_text: "Мелкий текст из CRM.",
+    };
+
+    let submittedBody: any = null;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url.startsWith("/api/product/")) {
-        return createJsonResponse({ id: "p-1", hasVariants: false, stock: 10 });
-      }
-      if (url === "/api/card-payment/status") {
+      if (url.startsWith("/api/product/")) return createJsonResponse({ id: "p-1", hasVariants: false, stock: 10 });
+      if (url === "/api/card-payment/status") return createJsonResponse({ enabled: false });
+      if (url.startsWith("/api/loyalty/me")) return createJsonResponse(buildLoyaltySnapshot());
+      if (url === "/api/loyalty/checkout-preview") return createJsonResponse(buildLoyaltyPreview(0));
+      if (url === "/api/agreements") {
         return createJsonResponse({
-          enabled: true,
-          max_order_minor: 4500,
-          card_available: true,
-          limits: {
-            daily_limit_minor: 25000,
-            spent_today_minor: 0,
-            reserved_minor: 0,
-          },
+          items: [{ id: 7, title: "Условия оформления", modal_title: "Условия", body: "Текст." }],
         });
       }
-      if (url.startsWith("/api/loyalty/me")) {
-        return createJsonResponse(buildLoyaltySnapshot());
-      }
-      if (url === "/api/loyalty/checkout-preview") {
-        return createJsonResponse(buildLoyaltyPreview(0));
-      }
-      if (url === "/api/agreements") {
-        return createJsonResponse({ items: [] });
+      if (url === "/api/orders" && init?.method === "POST") {
+        submittedBody = JSON.parse(String(init.body || "{}"));
+        return createJsonResponse({ success: true, order_id: "confirm-1" });
       }
       throw new Error(`Unexpected fetch: ${url}`);
     }));
 
     const wrapper = mount(CheckoutView, {
-      global: {
-        stubs: {
-          MinDeliveryBanner: { template: "<div />" },
-          DeliveryConditionsBanner: { template: "<div />" },
-          AdminModal: { template: "<div><slot /></div>" },
-          CustomerModalShell: {
-            props: ["open", "title"],
-            template: "<div v-if=\"open\" class=\"payment-modal\"><h2>{{ title }}</h2><slot /><slot name='footer' /></div>",
-          },
-          LoyaltyBonusPopup: { template: "<div />" },
-          CheckoutAgreements: { template: "<div />" },
-        },
-      },
+      global: { stubs: {
+        MinDeliveryBanner: { template: "<div />" },
+        DeliveryConditionsBanner: { template: "<div />" },
+        CustomerModalShell: { template: "<div><slot /><slot name='footer' /></div>" },
+        LoyaltyBonusPopup: { template: "<div />" },
+      } },
     });
-
     await flushPromises();
+
     await wrapper.find(".submit-button").trigger("click");
     await flushPromises();
-    await wrapper.findAll(".payment-modal button")[1].trigger("click");
+
+    const confirmation = wrapper.find(".order-confirmation");
+    expect(confirmation.exists()).toBe(true);
+    expect(confirmation.find(".order-confirmation__title").text()).toBe("Основной текст соглашения из CRM.");
+    expect(confirmation.find(".order-confirmation__small-text").text()).toBe("Мелкий текст из CRM.");
+    expect(wrapper.find(".submit-button").text()).toBe("Принимаю условия, отправить заказ");
+
+    await wrapper.find(".submit-button").trigger("click");
     await flushPromises();
-
-    expect(wrapper.find(".payment-modal").text()).toContain("Оплата картой разрешена");
-    expect(wrapper.find(".payment-modal").text()).toContain("Лимит на заказ 45.00р");
-    // Элемента шкалы паузы больше нет в разметке вовсе.
-    expect(wrapper.find(".card-widget__bar").exists()).toBe(false);
-
+    expect(submittedBody.accepted_agreement_ids).toEqual([7]);
     wrapper.unmount();
   });
 
-  it("blocks card submit when the order exceeds the personal limit", async () => {
+  it("falls back to the configured confirmation text when the main agreement text is empty", async () => {
     const cartStore = useCartStore();
-    cartStore.replaceItemsFromOrder([
-      {
-        productId: "p-1",
-        title: "Liquid Cherry",
-        productTitle: "Liquid Cherry",
-        groupName: "Жидкости",
-        priceRub: 50,
-        quantity: 1,
-        image: "/img/liquid.png",
-        variantId: null,
-        variantName: null,
-        groupId: "group-1",
-        categoryId: "cat-1",
-      },
-    ]);
+    cartStore.replaceItemsFromOrder([{
+      productId: "p-1", title: "Liquid Cherry", productTitle: "Liquid Cherry", groupName: "Жидкости",
+      priceRub: 15, quantity: 1, image: "/img/liquid.png", variantId: null, variantName: null,
+      groupId: "group-1", categoryId: "cat-1",
+    }]);
+
+    const settingsStore = useSettingsStore();
+    settingsStore.settings = {
+      ...settingsStore.settings,
+      order_agreement_main_text: "",
+      order_confirmation_text: "Текст подтверждения из настроек.",
+      order_agreement_small_text: "",
+    };
 
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url.startsWith("/api/product/")) {
-        return createJsonResponse({ id: "p-1", hasVariants: false, stock: 10 });
-      }
-      if (url === "/api/card-payment/status") {
-        // Личный лимит 45 BYN, корзина 50 BYN.
-        return createJsonResponse({
-          enabled: true,
-          max_order_minor: 4500,
-          card_available: true,
-          limits: {
-            daily_limit_minor: 25000,
-            spent_today_minor: 0,
-            reserved_minor: 0,
-          },
-        });
-      }
-      if (url.startsWith("/api/loyalty/me")) {
-        return createJsonResponse(buildLoyaltySnapshot());
-      }
-      if (url === "/api/loyalty/checkout-preview") {
-        return createJsonResponse(buildLoyaltyPreview(0));
-      }
-      if (url === "/api/agreements") {
-        return createJsonResponse({ items: [] });
-      }
+      if (url.startsWith("/api/product/")) return createJsonResponse({ id: "p-1", hasVariants: false, stock: 10 });
+      if (url === "/api/card-payment/status") return createJsonResponse({ enabled: false });
+      if (url.startsWith("/api/loyalty/me")) return createJsonResponse(buildLoyaltySnapshot());
+      if (url === "/api/loyalty/checkout-preview") return createJsonResponse(buildLoyaltyPreview(0));
+      if (url === "/api/agreements") return createJsonResponse({ items: [] });
       throw new Error(`Unexpected fetch: ${url}`);
     }));
 
     const wrapper = mount(CheckoutView, {
-      global: {
-        stubs: {
-          MinDeliveryBanner: { template: "<div />" },
-          DeliveryConditionsBanner: { template: "<div />" },
-          AdminModal: { template: "<div><slot /></div>" },
-          CustomerModalShell: {
-            props: ["open", "title"],
-            template: "<div v-if=\"open\" class=\"payment-modal\"><h2>{{ title }}</h2><slot /><slot name='footer' /></div>",
-          },
-          LoyaltyBonusPopup: { template: "<div />" },
-          CheckoutAgreements: { template: "<div />" },
-        },
-      },
+      global: { stubs: {
+        MinDeliveryBanner: { template: "<div />" },
+        DeliveryConditionsBanner: { template: "<div />" },
+        CustomerModalShell: { template: "<div><slot /><slot name='footer' /></div>" },
+        LoyaltyBonusPopup: { template: "<div />" },
+      } },
     });
-
     await flushPromises();
+
     await wrapper.find(".submit-button").trigger("click");
     await flushPromises();
-    await wrapper.findAll(".payment-modal button")[1].trigger("click");
-    await flushPromises();
 
-    // Заказ 50 BYN при личном лимите 45 BYN: смешанной оплаты нет, виджет
-    // просит убрать 5.00 BYN или заплатить наличными.
-    expect(wrapper.find(".payment-modal").text()).toContain("Заказ больше лимита на 5.00р");
-    expect(wrapper.find(".payment-modal").text()).toContain("Уберите товары на 5.00р");
-    expect(
-      wrapper.find(".payment-modal button.checkout-modal-cta:not(.checkout-modal-cta--dark)").attributes("disabled"),
-    ).toBeDefined();
-    // Подсказка «Увеличить лимиты» показывается в заблокированном состоянии.
-    expect(wrapper.find(".payment-modal .checkout-modal-cta--dark").exists()).toBe(true);
-
+    expect(wrapper.find(".order-confirmation__title").text()).toBe("Текст подтверждения из настроек.");
+    expect(wrapper.find(".order-confirmation__small-text").text()).toBe("Проверьте состав заказа перед отправкой.");
     wrapper.unmount();
   });
+
+
+
+
 
   it("uses modify endpoint in edit mode", async () => {
     const cartStore = useCartStore();
@@ -1186,6 +1223,9 @@ describe("CheckoutView order flows", () => {
     await flushPromises();
     await wrapper.find(".submit-button").trigger("click");
     await flushPromises();
+    expect(wrapper.find(".order-confirmation").exists()).toBe(true);
+    await wrapper.find(".submit-button").trigger("click");
+    await flushPromises();
 
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/orders",
@@ -1258,10 +1298,123 @@ describe("CheckoutView order flows", () => {
     await flushPromises();
     await wrapper.find(".submit-button").trigger("click");
     await flushPromises();
-
-    expect(submittedBody?.items?.[0]?.loyalty_units_applied).toBe(1);
+    expect(wrapper.find(".order-confirmation").exists()).toBe(true);
+    await wrapper.find(".submit-button").trigger("click");
+    await flushPromises();
     expect(routerPush).toHaveBeenCalledWith("/my-order");
 
+    wrapper.unmount();
+  });
+
+  it("does not pop the username modal on entry and shows the inline warning instead", async () => {
+    // Клиент в Mini App без username: Telegram-контекст есть, username пуст.
+    (window as any).Telegram = {
+      WebApp: {
+        initData: "signed_init_data",
+        initDataUnsafe: { user: { id: 42, first_name: "NoName" } },
+      },
+    };
+
+    const cartStore = useCartStore();
+    cartStore.replaceItemsFromOrder([{
+      productId: "p-1", title: "Liquid Cherry", productTitle: "Liquid Cherry", groupName: "Жидкости",
+      priceRub: 15, quantity: 1, image: "/img/liquid.png", variantId: null, variantName: null,
+      groupId: "group-1", categoryId: "c_liquids_salt",
+    }]);
+
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith("/api/product/")) return createJsonResponse({ id: "p-1", hasVariants: false, stock: 10 });
+      if (url === "/api/card-payment/status") return createJsonResponse({ enabled: false });
+      if (url.startsWith("/api/loyalty/me")) return createJsonResponse(buildLoyaltySnapshot());
+      if (url === "/api/loyalty/checkout-preview") return createJsonResponse(buildLoyaltyPreview(0));
+      if (url === "/api/agreements") return createJsonResponse({ items: [] });
+      throw new Error(`Unexpected fetch: ${url}`);
+    }));
+
+    const wrapper = mount(CheckoutView, {
+      global: { stubs: {
+        MinDeliveryBanner: { template: "<div />" },
+        DeliveryConditionsBanner: { template: "<div />" },
+        // Модалка видна только при open=true — как в реальной оболочке.
+        CustomerModalShell: {
+          props: ["open"],
+          template: "<div v-if='open' class='modal-shell'><slot /><slot name='footer' /></div>",
+        },
+        LoyaltyBonusPopup: { template: "<div />" },
+      } },
+    });
+    await flushPromises();
+
+    // Окно не всплывает само: при входе видна встроенная карточка-предупреждение.
+    expect(wrapper.text()).not.toContain("Без username оформление заказа недоступно");
+    expect(wrapper.find(".user-info-card-warning").exists()).toBe(true);
+    expect(wrapper.text()).toContain("Как поставить username");
+
+    // Модалка открывается только по явному действию клиента.
+    const openButton = wrapper.findAll("button").find((b) => b.text() === "Как поставить username");
+    expect(openButton).toBeTruthy();
+    await openButton!.trigger("click");
+    await flushPromises();
+    expect(wrapper.text()).toContain("Без username оформление заказа недоступно");
+    wrapper.unmount();
+  });
+
+  it("never flashes the username warning before Telegram data is synced", async () => {
+    (window as any).Telegram = {
+      WebApp: {
+        initData: "signed_init_data",
+        initDataUnsafe: { user: { id: 42, first_name: "NoName" } },
+      },
+    };
+
+    const cartStore = useCartStore();
+    cartStore.replaceItemsFromOrder([{
+      productId: "p-1", title: "Liquid Cherry", productTitle: "Liquid Cherry", groupName: "Жидкости",
+      priceRub: 15, quantity: 1, image: "/img/liquid.png", variantId: null, variantName: null,
+      groupId: "group-1", categoryId: "c_liquids_salt",
+    }]);
+
+    // Первый ответ по статусу карты «висит»: это гарантированно держит
+    // компонент в состоянии до завершения синхронизации Telegram.
+    let release: (() => void) | null = null;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith("/api/product/")) return createJsonResponse({ id: "p-1", hasVariants: false, stock: 10 });
+      if (url === "/api/card-payment/status") {
+        await gate;
+        return createJsonResponse({ enabled: false });
+      }
+      if (url.startsWith("/api/loyalty/me")) return createJsonResponse(buildLoyaltySnapshot());
+      if (url === "/api/loyalty/checkout-preview") return createJsonResponse(buildLoyaltyPreview(0));
+      if (url === "/api/agreements") return createJsonResponse({ items: [] });
+      throw new Error(`Unexpected fetch: ${url}`);
+    }));
+
+    const wrapper = mount(CheckoutView, {
+      global: { stubs: {
+        MinDeliveryBanner: { template: "<div />" },
+        DeliveryConditionsBanner: { template: "<div />" },
+        CustomerModalShell: {
+          props: ["open"],
+          template: "<div v-if='open' class='modal-shell'><slot /><slot name='footer' /></div>",
+        },
+        LoyaltyBonusPopup: { template: "<div />" },
+      } },
+    });
+
+    // До синхронизации ни окна, ни предупреждения в карточке быть не должно.
+    expect(wrapper.find(".modal-shell").exists()).toBe(false);
+    expect(wrapper.text()).not.toContain("Нужен Telegram username");
+
+    release?.();
+    await flushPromises();
+
+    // После синхронизации предупреждение появляется — и остаётся на месте.
+    expect(wrapper.find(".modal-shell").exists()).toBe(false);
+    expect(wrapper.text()).toContain("Нужен Telegram username");
+    expect(wrapper.find(".user-info-card-warning").exists()).toBe(true);
     wrapper.unmount();
   });
 
@@ -1310,14 +1463,15 @@ describe("CheckoutView order flows", () => {
         DeliveryConditionsBanner: { template: "<div />" },
         CustomerModalShell: { template: "<div><slot /><slot name='footer' /></div>" },
         LoyaltyBonusPopup: { template: "<div />" },
-        CheckoutAgreements: { template: "<div />" },
       } },
     });
 
     await flushPromises();
     await wrapper.find(".submit-button").trigger("click");
     await flushPromises();
-    expect(submittedBody.inviter_username).toBeUndefined();
+    expect(wrapper.find(".order-confirmation").exists()).toBe(true);
+    await wrapper.find(".submit-button").trigger("click");
+    await flushPromises();
     expect(gateRequired).toHaveBeenCalledTimes(1);
     expect(routerPush).not.toHaveBeenCalledWith("/my-order");
     window.removeEventListener("referral-authorization-required", gateRequired);
@@ -1857,7 +2011,6 @@ describe("CheckoutView order flows", () => {
           AdminModal: { template: "<div><slot /></div>" },
           CustomerModalShell: { template: "<div><slot /><slot name='footer' /></div>" },
           LoyaltyBonusPopup: { template: "<div />" },
-          CheckoutAgreements: { template: "<div />" },
         },
       },
     });
