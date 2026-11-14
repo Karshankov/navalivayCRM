@@ -25,7 +25,7 @@ vi.mock('@/utils/favoritesApi', () => ({
   FavoritesAuthError: class extends Error {},
 }))
 
-describe('HomeView shortcuts (Избранное / Часто покупают)', () => {
+describe('HomeView shortcuts (Избранное / Баланс кэшбэка)', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
@@ -51,11 +51,11 @@ describe('HomeView shortcuts (Избранное / Часто покупают)'
 
     await flushPromises()
 
-    // Две плитки: рабочая «Избранное» и заглушка «Часто покупают».
+    // Две плитки: рабочая «Избранное» и декоративный «Баланс кэшбэка».
     const items = wrapper.findAll('.home-shortcuts__item')
     expect(items.length).toBe(2)
     expect(wrapper.find('.home-shortcuts__label').text()).toBe('Избранное')
-    expect(wrapper.text()).toContain('Часто покупают')
+    expect(wrapper.text()).toContain('Баланс кэшбэка')
 
     // Старая длинная кнопка избранного больше не рендерится.
     expect(wrapper.find('.favorites').exists()).toBe(false)
@@ -82,7 +82,7 @@ describe('HomeView shortcuts (Избранное / Часто покупают)'
     wrapper.unmount()
   })
 
-  it('Часто покупают: заглушка без функционала — клик никуда не ведёт', async () => {
+  it('Баланс кэшбэка: декоративный баланс без функционала — клик никуда не ведёт', async () => {
     const wrapper = mount(HomeView, {
       global: {
         stubs: {
@@ -95,10 +95,16 @@ describe('HomeView shortcuts (Избранное / Часто покупают)'
 
     await flushPromises()
 
-    const placeholder = wrapper.find('.home-shortcuts__item--placeholder')
-    expect(placeholder.exists()).toBe(true)
-    // Это не кнопка: ни обработчика, ни навигации.
-    expect(placeholder.element.tagName).not.toBe('BUTTON')
+    const cashback = wrapper.find('.home-shortcuts__item--cashback')
+    expect(cashback.exists()).toBe(true)
+    expect(cashback.text()).toContain('15')
+    expect(cashback.text()).toContain('BYN')
+    expect(cashback.text()).toContain('Баланс кэшбэка')
+    expect(cashback.element.tagName).not.toBe('BUTTON')
+    expect(cashback.find('img').attributes('src')).toBe('/shortcuts/cashback-wallet.webp')
+
+    await cashback.trigger('click')
+    expect(routerPush).not.toHaveBeenCalled()
 
     wrapper.unmount()
   })

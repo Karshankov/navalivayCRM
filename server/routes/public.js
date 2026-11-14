@@ -2324,6 +2324,18 @@ publicRouter.get("/api/settings", (req, res) => {
         "",
       ),
       // Р РµРґРёСЂРµРєС‚ РІ Telegram РїРѕСЃР»Рµ Р·Р°РєР°Р·Р°
+      order_confirmation_text: getSettingValue(
+        "order_confirmation_text",
+        "Пожалуйста, проверьте заказ и подтвердите, что согласны с условиями оформления и заберёте заказ в выбранный срок.",
+      ),
+      order_agreement_main_text: getSettingValue(
+        "order_agreement_main_text",
+        "Нажав кнопку «Оформить заказ», вы автоматически соглашаетесь с условиями оформления заказа.",
+      ),
+      order_agreement_small_text: getSettingValue(
+        "order_agreement_small_text",
+        "Проверьте состав заказа перед отправкой.",
+      ),
       order_redirect_telegram: getSettingValue("order_redirect_telegram", ""),
       order_redirect_text_template: getSettingValue(
         "order_redirect_text_template",
@@ -2342,6 +2354,9 @@ publicRouter.get("/api/settings", (req, res) => {
       min_delivery_banner_button_text: "Понятно",
       min_delivery_banner_button_color: "#FFD700",
       delivery_conditions_image: "",
+      order_confirmation_text: "",
+      order_agreement_main_text: "Нажав кнопку «Оформить заказ», вы автоматически соглашаетесь с условиями оформления заказа.",
+      order_agreement_small_text: "Проверьте состав заказа перед отправкой.",
       order_redirect_telegram: "",
       order_redirect_text_template: "Здравствуйте, хочу уточнить по покупке",
     });

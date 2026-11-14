@@ -1,6 +1,6 @@
 <template>
   <CustomerModalShell
-    :open="phase !== 'hidden'"
+    :open="modalOpen"
     :title="modalTitle"
     :closable="false"
     :close-disabled="true"
@@ -121,6 +121,17 @@ class NetworkUnavailableError extends Error {
   }
 }
 
+const props = withDefaults(
+  defineProps<{
+    /** Задержка перед показом окна для переходных состояний (мс).
+     *  Мимолётные «Проверяем доступ…» и промежуточные ошибки username
+     *  при входе в Mini App не должны вспыхивать на экране: окно ждёт,
+     *  пока состояние продержится. 0 — показывать сразу. */
+    revealDelayMs?: number;
+  }>(),
+  { revealDelayMs: 0 },
+);
+
 const USERNAME_RETRY_DELAYS_MS = [0, 1200, 2400, 4000] as const;
 const USERNAME_RETRY_TIMEOUT_MS = 16000;
 const STATUS_CHECK_TIMEOUT_MS = 14000;
@@ -166,6 +177,16 @@ const emit = defineEmits<{
 }>();
 const { applyBlockFromResponse } = useCustomerBlock();
 const phase = ref<GatePhase>("checking");
+/**
+ * Разрешено ли показывать окно. Проверка на быстром соединении укладывается
+ * в десятки миллисекунд, а первый заход в Mini App вообще может успеть
+ * получить промежуточный ответ — тогда модалка («Проверяем доступ» или
+ * ошибка про username) вспыхивает и тут же исчезает. Поэтому окно
+ * открывается только для состояний, которые продержались чуть дольше:
+ * мимолётные переходные состояния клиент не видит.
+ */
+const modalRevealed = ref(false);
+let revealTimer: number | null = null;
 const inviterUsername = ref("");
 const errorMessage = ref("");
 const attemptsRemaining = ref(3);
@@ -183,6 +204,34 @@ const modalTitle = computed(() => {
   if (phase.value === "error") return "Не удалось проверить доступ";
   return "Кто порекомендовал нас?";
 });
+
+/** Окно открыто только когда проверка реально «зависла» в состоянии,
+ *  требующем внимания клиента, либо когда гейт требует авторизацию. */
+const modalOpen = computed(() => phase.value !== "hidden" && modalRevealed.value);
+
+function clearRevealTimer() {
+  if (revealTimer !== null) {
+    window.clearTimeout(revealTimer);
+    revealTimer = null;
+  }
+}
+
+/** Взводит показ окна. При быстром ответе сервера таймер не успевает
+ *  сработать — окно не появляется вовсе и страница не мигает.
+ *  immediate — для явных действий пользователя (кнопка «Повторить»,
+ *  возврат в приложение): там ожидание должно быть видно сразу. */
+function scheduleModalReveal(options: { immediate?: boolean } = {}) {
+  clearRevealTimer();
+  if (options.immediate || props.revealDelayMs <= 0) {
+    modalRevealed.value = true;
+    return;
+  }
+  modalRevealed.value = false;
+  revealTimer = window.setTimeout(() => {
+    revealTimer = null;
+    if (phase.value !== "hidden") modalRevealed.value = true;
+  }, props.revealDelayMs);
+}
 
 const canCloseMiniApp = computed(() => typeof window.Telegram?.WebApp?.close === "function");
 
@@ -258,7 +307,7 @@ async function checkLiveUsername(runId: number, retryUntilUpdated: boolean, sign
   return false;
 }
 
-async function refreshStatus(options: { retryUsername?: boolean } = {}) {
+async function refreshStatus(options: { retryUsername?: boolean; immediate?: boolean } = {}) {
   const runId = ++refreshRunId;
   activeRefreshController?.abort();
   const controller = new AbortController();
@@ -273,10 +322,12 @@ async function refreshStatus(options: { retryUsername?: boolean } = {}) {
     if (activeRefreshController === controller) activeRefreshController = null;
     errorMessage.value = "Откройте приложение через Telegram, чтобы пройти авторизацию.";
     phase.value = "error";
+    scheduleModalReveal({ immediate: options.immediate === true });
     return;
   }
   phase.value = "checking";
   errorMessage.value = "";
+  scheduleModalReveal({ immediate: options.immediate === true });
   try {
     if (!identity.telegramUsername) {
       const hasLiveUsername = await checkLiveUsername(
@@ -341,7 +392,7 @@ async function refreshStatus(options: { retryUsername?: boolean } = {}) {
 
 function handleRetry() {
   window.Telegram?.WebApp?.HapticFeedback?.impactOccurred("light");
-  void refreshStatus({ retryUsername: true });
+  void refreshStatus({ retryUsername: true, immediate: true });
 }
 
 function handleTelegramActivated() {
@@ -350,7 +401,7 @@ function handleTelegramActivated() {
     return;
   }
   if (phase.value === "error" && !getTelegramIdentity().telegramUsername) {
-    void refreshStatus({ retryUsername: true });
+    void refreshStatus({ retryUsername: true, immediate: true });
   }
 }
 
@@ -359,12 +410,21 @@ function closeMiniApp() {
 }
 
 function handleAuthorizationRequired() {
-  void refreshStatus();
+  void refreshStatus({ immediate: true });
 }
 
 watch(
   phase,
   async (nextPhase) => {
+    if (nextPhase === "hidden") {
+      // Проверка прошла — окно не должно оставаться на экране.
+      clearRevealTimer();
+      modalRevealed.value = false;
+    } else if (nextPhase === "required") {
+      // Требование авторизации — устойчивое состояние, показываем сразу.
+      clearRevealTimer();
+      modalRevealed.value = true;
+    }
     if (nextPhase !== "required") {
       clipboardRunId += 1;
       clipboardBusy.value = false;
@@ -372,7 +432,7 @@ watch(
     emit("gate-active", nextPhase !== "hidden");
     await nextTick();
     if (nextPhase === "required") inputRef.value?.focus();
-    if (nextPhase === "error") retryButtonRef.value?.focus();
+    if (nextPhase === "error" && modalRevealed.value) retryButtonRef.value?.focus();
   },
   { immediate: true },
 );
@@ -565,6 +625,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   refreshRunId += 1;
   clipboardRunId += 1;
+  clearRevealTimer();
   activeRefreshController?.abort();
   activeRefreshController = null;
   window.removeEventListener("referral-authorization-required", handleAuthorizationRequired);

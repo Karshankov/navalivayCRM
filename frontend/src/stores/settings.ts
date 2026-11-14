@@ -15,6 +15,10 @@ export interface PublicSettings {
   min_delivery_banner_button_color: string
   // Баннер условий доставки (fullscreen)
   delivery_conditions_image: string
+  // Текст перед финальным подтверждением заказа
+  order_confirmation_text: string
+  order_agreement_main_text: string
+  order_agreement_small_text: string
   // Редирект в Telegram после заказа
   order_redirect_telegram: string
   order_redirect_text_template: string
@@ -31,6 +35,9 @@ export const useSettingsStore = defineStore('settings', () => {
     min_delivery_banner_button_text: 'Понятно',
     min_delivery_banner_button_color: '#FFD700',
     delivery_conditions_image: '',
+    order_confirmation_text: 'Пожалуйста, проверьте заказ и подтвердите, что согласны с условиями оформления и заберёте заказ в выбранный срок.',
+    order_agreement_main_text: 'Нажав кнопку «Оформить заказ», вы автоматически соглашаетесь с условиями оформления заказа.',
+    order_agreement_small_text: 'Проверьте состав заказа перед отправкой.',
     order_redirect_telegram: '',
     order_redirect_text_template: 'Здравствуйте, хочу уточнить по покупке'
   })

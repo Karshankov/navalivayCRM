@@ -18,24 +18,25 @@
       <span class="home-shortcuts__label">Избранное</span>
     </button>
 
-    <!-- Декоративная кнопка: раздел «Часто покупают» в разработке,
-         функционала пока нет — визуально полноценная плитка. -->
-    <span
-      class="home-shortcuts__item home-shortcuts__item--placeholder"
+    <!-- Декоративная плитка «Баланс кэшбэка»: визуал из отдельного
+         HTML-прототипа. Пока не интерактивная — логику подключим позже. -->
+    <div
+      class="home-shortcuts__item home-shortcuts__item--cashback"
       role="img"
-      aria-label="Часто покупают — скоро будет доступно"
+      aria-label="Баланс кэшбэка, 15 BYN"
     >
-      <span class="home-shortcuts__tile">
+      <span class="home-shortcuts__cashback-panel">
+        <span class="home-shortcuts__cashback-amount"><b>15</b><small>BYN</small></span>
         <img
-          class="home-shortcuts__art"
-          src="/shortcuts/bag.png"
+          class="home-shortcuts__cashback-wallet"
+          src="/shortcuts/cashback-wallet.webp"
           alt=""
           loading="lazy"
           decoding="async"
         />
       </span>
-      <span class="home-shortcuts__label">Часто покупают</span>
-    </span>
+      <span class="home-shortcuts__label">Баланс кэшбэка</span>
+    </div>
   </div>
 </template>
 
@@ -45,9 +46,8 @@ import { useRouter } from 'vue-router'
 /**
  * Пара компактных плиток над сеткой категорий на главной
  * (по демо-образцу navalivay-home-shortcuts.html):
- * «Избранное» — рабочий переход, «Часто покупают» — заглушка
- * без функционала. Шрифты и размеры — из дизайн-системы проекта
- * (Montserrat для подписей, как у кнопки избранного), а не из демо.
+ * «Избранное» — рабочий переход, «Баланс кэшбэка» — декоративный
+ * баланс из прототипа без обработчика, пока не готова логика.
  */
 const router = useRouter()
 
@@ -86,6 +86,95 @@ function openFavorites() {
   cursor: default;
 }
 
+.home-shortcuts__item--cashback {
+  cursor: default;
+}
+
+.home-shortcuts__cashback-panel {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 58px;
+  padding: 0 10px;
+  overflow: hidden;
+  isolation: isolate;
+  border-radius: 18px;
+  background: radial-gradient(ellipse at 85% 95%, #eeeef1, transparent 62%), #ffffff;
+}
+
+.home-shortcuts__cashback-amount {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  white-space: nowrap;
+  color: #383a40;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+.home-shortcuts__cashback-amount b {
+  position: relative;
+  z-index: 1;
+  font-size: 40px;
+  font-weight: 900;
+  line-height: 0.9;
+  letter-spacing: -2.7px;
+}
+
+.home-shortcuts__cashback-amount b::before {
+  content: "15";
+  position: absolute;
+  z-index: -1;
+  left: 65%;
+  top: 50%;
+  color: #dfe1e5;
+  font-size: 72px;
+  font-weight: 900;
+  line-height: 0.9;
+  letter-spacing: -4px;
+  opacity: 0.45;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  white-space: nowrap;
+}
+
+.home-shortcuts__cashback-amount small {
+  position: relative;
+  z-index: 2;
+  align-self: flex-end;
+  margin-bottom: 2px;
+  color: #666b75;
+  font-size: 8px;
+  font-weight: 650;
+  line-height: 1;
+}
+
+.home-shortcuts__cashback-wallet {
+  position: absolute;
+  right: -10px;
+  bottom: -4px;
+  width: 54%;
+  height: 62px;
+  object-fit: contain;
+  object-position: right bottom;
+  filter: drop-shadow(0 4px 8px #1b1d2330);
+  transform-origin: 85% 94%;
+  animation: cashback-wallet-gesture 6s ease-in-out infinite;
+}
+
+@keyframes cashback-wallet-gesture {
+  0%, 9%, 100% { transform: none; }
+  19% { transform: translate(-2px, -4px) rotate(-3deg); }
+  29% { transform: translate(-1px, -1px) rotate(-1deg); }
+  36%, 44% { transform: none; }
+  55% { transform: translate(-3px, -1px) rotate(-5deg); }
+  64% { transform: translate(-1px, 0) rotate(1deg); }
+  71%, 78% { transform: none; }
+  85% { transform: translate(-1px, -2px) rotate(2deg); }
+  94% { transform: none; }
+}
+
 .home-shortcuts__tile {
   display: flex;
   align-items: center;
@@ -120,6 +209,12 @@ function openFavorites() {
   letter-spacing: 0.008em;
   text-align: center;
   color: #000000;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-shortcuts__cashback-wallet {
+    animation: none;
+  }
 }
 
 @media (max-width: 393px) {

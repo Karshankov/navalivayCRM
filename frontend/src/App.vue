@@ -168,6 +168,7 @@ onMounted(() => {
     </div>
     <ReferralAuthorizationGate
       v-if="showReferralGate"
+      :reveal-delay-ms="420"
       @gate-active="handleReferralGateActive"
       @network-error="handleGateNetworkError"
     />

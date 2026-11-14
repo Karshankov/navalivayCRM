@@ -684,167 +684,45 @@
                 </form>
               </section>
 
-              <!-- Настройки доставки (раздел свёрнут — почти не используется) -->
               <section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm col-span-full">
-                <details class="group">
-                  <summary class="flex cursor-pointer list-none items-start justify-between gap-3 rounded-lg p-1 -m-1 hover:bg-gray-50">
-                    <div class="space-y-1">
-                      <h3 class="text-lg font-semibold text-gray-900">Настройки доставки</h3>
-                      <p class="text-sm text-gray-500">Минимальная сумма заказа, баннеры и редирект в Telegram. Раздел старый, оставлен на случай если понадобится.</p>
-                    </div>
-                    <span
-                      class="mt-1 inline-flex h-6 w-6 flex-shrink-0 items-center justify-center text-gray-400 transition-transform group-open:rotate-180"
-                      aria-hidden="true"
-                    >
-                      <svg class="h-4 w-4" viewBox="0 0 12 12" fill="none">
-                        <path d="M2 4l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
-                      </svg>
-                    </span>
-                  </summary>
-
-                <form @submit.prevent="handleDeliverySettingsUpdate" class="mt-6 space-y-6">
-                  <!-- Минимальная сумма для доставки -->
-                  <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div class="space-y-2">
-                      <label class="text-sm font-medium text-gray-700">
-                        Минимальная сумма для доставки (BYN)
-                        <span class="mt-1 block text-xs font-normal text-gray-500">Если сумма заказа меньше - доставка недоступна</span>
-                      </label>
-                      <input
-                        v-model="deliverySettingsForm.min_delivery_amount"
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-900 transition focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
-                        placeholder="45"
-                      />
-                    </div>
-
-                    <div class="space-y-2">
-                      <label class="text-sm font-medium text-gray-700">
-                        Telegram для редиректа после заказа (без @)
-                        <span class="mt-1 block text-xs font-normal text-gray-500">Покупатель будет перенаправлен сюда после оформления</span>
-                      </label>
-                      <input
-                        v-model="deliverySettingsForm.order_redirect_telegram"
-                        type="text"
-                        class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-900 transition focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
-                        placeholder="Rez0nsky"
-                      />
-                    </div>
-                  </div>
-
-                  <!-- Шаблон текста для редиректа -->
+                <div class="space-y-1">
+                  <h3 class="text-lg font-semibold text-gray-900">Соглашение перед оформлением заказа</h3>
+                  <p class="text-sm text-gray-500">Эти тексты показываются клиенту перед финальной отправкой заказа.</p>
+                </div>
+                <form @submit.prevent="handleOrderAgreementSettingsUpdate" class="mt-6 space-y-5">
                   <div class="space-y-2">
-                    <label class="text-sm font-medium text-gray-700">
-                      Шаблон текста сообщения
-                      <span class="mt-1 block text-xs font-normal text-gray-500">Используйте {order_number} для подстановки номера заказа</span>
-                    </label>
-                    <input
-                      v-model="deliverySettingsForm.order_redirect_text_template"
-                      type="text"
-                      class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-900 transition focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
-                      placeholder="Здравствуйте, хочу уточнить по покупке"
-                    />
+                    <label class="text-sm font-medium text-gray-700" for="order-agreement-main-text">Основной текст</label>
+                    <textarea
+                      id="order-agreement-main-text"
+                      v-model="orderAgreementForm.mainText"
+                      rows="5"
+                      maxlength="4000"
+                      required
+                      class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                      placeholder="Основной текст соглашения"
+                    ></textarea>
                   </div>
-
-                  <!-- Баннер минимальной суммы -->
-                  <div class="border-t border-gray-200 pt-6">
-                    <h4 class="text-sm font-semibold text-gray-900 mb-4">Баннер минимальной суммы</h4>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div class="space-y-2">
-                        <label class="text-sm font-medium text-gray-700">
-                          Картинка баннера
-                          <span class="mt-1 block text-xs font-normal text-gray-500">Рекомендуемый размер: 640×400 px (соотношение 16:10)</span>
-                        </label>
-                        <div class="flex items-center gap-3">
-                          <div v-if="deliverySettingsForm.min_delivery_banner_image" class="relative w-20 h-20 rounded-lg overflow-hidden border border-gray-200">
-                            <img :src="deliverySettingsForm.min_delivery_banner_image" class="w-full h-full object-cover" />
-                            <button
-                              type="button"
-                              @click="deliverySettingsForm.min_delivery_banner_image = ''"
-                              class="absolute top-1 right-1 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center text-xs hover:bg-red-600"
-                            >
-                              &times;
-                            </button>
-                          </div>
-                          <label class="cursor-pointer inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition">
-                            <input type="file" accept="image/*" class="hidden" @change="uploadDeliveryBannerImage" />
-                            {{ deliverySettingsForm.min_delivery_banner_image ? 'Заменить' : 'Загрузить' }}
-                          </label>
-                        </div>
-                      </div>
-
-                      <div class="space-y-4">
-                        <div class="space-y-2">
-                          <label class="text-sm font-medium text-gray-700">Текст кнопки</label>
-                          <input
-                            v-model="deliverySettingsForm.min_delivery_banner_button_text"
-                            type="text"
-                            class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-900 transition focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
-                            placeholder="Понятно"
-                          />
-                        </div>
-                        <div class="space-y-2">
-                          <label class="text-sm font-medium text-gray-700">Цвет кнопки</label>
-                          <div class="flex items-center gap-2">
-                            <input
-                              v-model="deliverySettingsForm.min_delivery_banner_button_color"
-                              type="color"
-                              class="w-10 h-10 rounded-lg border border-gray-300 cursor-pointer"
-                            />
-                            <input
-                              v-model="deliverySettingsForm.min_delivery_banner_button_color"
-                              type="text"
-                              class="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-900 transition focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
-                              placeholder="#FFD700"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
+                  <div class="space-y-2">
+                    <label class="text-sm font-medium text-gray-700" for="order-agreement-small-text">Мелкий текст</label>
+                    <textarea
+                      id="order-agreement-small-text"
+                      v-model="orderAgreementForm.smallText"
+                      rows="3"
+                      maxlength="2000"
+                      class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                      placeholder="Дополнительный мелкий текст"
+                    ></textarea>
                   </div>
-
-                  <!-- Баннер условий доставки (fullscreen) -->
-                  <div class="border-t border-gray-200 pt-6">
-                    <h4 class="text-sm font-semibold text-gray-900 mb-4">Баннер условий доставки (полноэкранный)</h4>
-                    <div class="space-y-2">
-                      <label class="text-sm font-medium text-gray-700">
-                        Картинка условий доставки
-                        <span class="mt-1 block text-xs font-normal text-gray-500">Показывается после выбора доставки (если сумма достаточна)</span>
-                        <span class="mt-1 block text-xs font-normal text-gray-500">Рекомендуемый размер: 720×1280 px (соотношение 9:16, вертикальный для Telegram)</span>
-                      </label>
-                      <div class="flex items-center gap-3">
-                        <div v-if="deliverySettingsForm.delivery_conditions_image" class="relative w-32 h-20 rounded-lg overflow-hidden border border-gray-200">
-                          <img :src="deliverySettingsForm.delivery_conditions_image" class="w-full h-full object-cover" />
-                          <button
-                            type="button"
-                            @click="deliverySettingsForm.delivery_conditions_image = ''"
-                            class="absolute top-1 right-1 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center text-xs hover:bg-red-600"
-                          >
-                            &times;
-                          </button>
-                        </div>
-                        <label class="cursor-pointer inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition">
-                          <input type="file" accept="image/*" class="hidden" @change="uploadDeliveryConditionsImage" />
-                          {{ deliverySettingsForm.delivery_conditions_image ? 'Заменить' : 'Загрузить' }}
-                        </label>
-                      </div>
-                    </div>
-                  </div>
-
                   <button
                     type="submit"
-                    :disabled="deliverySettingsSaving"
-                    class="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-slate-900 via-slate-800 to-slate-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:from-slate-800 hover:via-slate-700 hover:to-slate-600 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2 focus:ring-offset-white disabled:cursor-not-allowed disabled:opacity-60"
+                    :disabled="orderAgreementSaving"
+                    class="inline-flex w-full items-center justify-center rounded-lg bg-gradient-to-r from-slate-900 via-slate-800 to-slate-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    {{ deliverySettingsSaving ? 'Сохранение...' : 'Сохранить настройки доставки' }}
+                    {{ orderAgreementSaving ? 'Сохранение...' : 'Сохранить соглашение' }}
                   </button>
                 </form>
-                </details>
               </section>
 
-              <AdminAgreementsSection />
               <AdminSignificanceMarksSection />
               <AdminBotSection />
             </div>
@@ -1278,7 +1156,6 @@ import AdminCategoryGroupOrderModal from '@/components/admin/AdminCategoryGroupO
 import ProductDiscountModal from '@/components/admin/ProductDiscountModal.vue'
 import AdminWholesaleLinksPanel from '@/components/admin/AdminWholesaleLinksPanel.vue'
 import IncompleteGroupsPanel from '@/components/admin/IncompleteGroupsPanel.vue'
-import AdminAgreementsSection from '@/components/admin/AdminAgreementsSection.vue'
 import AdminBotSection from '@/components/admin/AdminBotSection.vue'
 import AdminSignificanceMarksSection from '@/components/admin/AdminSignificanceMarksSection.vue'
 import CashierLockScreen from '@/components/admin/CashierLockScreen.vue'
@@ -1809,16 +1686,13 @@ watch(isCrmRoute, (crm) => {
 
 const passwordForm = ref({ currentPassword: '', newPassword: '', confirmPassword: '' })
 const managerForm = ref({ telegram: '' })
-const deliverySettingsForm = ref({
-  min_delivery_amount: '0',
-  min_delivery_banner_image: '',
-  min_delivery_banner_button_text: 'Понятно',
-  min_delivery_banner_button_color: '#FFD700',
-  delivery_conditions_image: '',
-  order_redirect_telegram: '',
-  order_redirect_text_template: 'Здравствуйте, хочу уточнить по покупке'
+// Соглашение перед оформлением заказа: два текста, которые клиент
+// видит на экране подтверждения в чекауте.
+const orderAgreementForm = ref({
+  mainText: 'Нажав кнопку «Оформить заказ», вы автоматически соглашаетесь с условиями оформления заказа.',
+  smallText: 'Проверьте состав заказа перед отправкой.',
 })
-const deliverySettingsSaving = ref(false)
+const orderAgreementSaving = ref(false)
 const profitPasswordForm = ref<{ current: string; next: string; confirm: string }>({
   current: '',
   next: '',
@@ -3239,61 +3113,7 @@ async function handleManagerSettingsUpdate() {
   }
 }
 
-// Delivery settings handlers
-async function handleDeliverySettingsUpdate() {
-  deliverySettingsSaving.value = true
-  try {
-    await adminStore.updateSettings({
-      min_delivery_amount: deliverySettingsForm.value.min_delivery_amount,
-      min_delivery_banner_image: deliverySettingsForm.value.min_delivery_banner_image,
-      min_delivery_banner_button_text: deliverySettingsForm.value.min_delivery_banner_button_text,
-      min_delivery_banner_button_color: deliverySettingsForm.value.min_delivery_banner_button_color,
-      delivery_conditions_image: deliverySettingsForm.value.delivery_conditions_image,
-      order_redirect_telegram: deliverySettingsForm.value.order_redirect_telegram,
-      order_redirect_text_template: deliverySettingsForm.value.order_redirect_text_template
-    })
-    showToast('Настройки доставки успешно сохранены!', 'success')
-  } catch (error) {
-    console.error('Failed to update delivery settings:', error)
-    showToast('Ошибка при сохранении настроек доставки', 'error')
-  } finally {
-    deliverySettingsSaving.value = false
-  }
-}
 
-async function uploadDeliveryBannerImage(event: Event) {
-  const input = event.target as HTMLInputElement
-  if (!input.files?.length) return
-  
-  try {
-    const urls = await adminStore.uploadFiles(input.files, 'settings')
-    if (urls && urls.length > 0) {
-      deliverySettingsForm.value.min_delivery_banner_image = urls[0]
-      showToast('Изображение загружено', 'success')
-    }
-  } catch (error) {
-    console.error('Failed to upload banner image:', error)
-    showToast('Ошибка при загрузке изображения', 'error')
-  }
-  input.value = ''
-}
-
-async function uploadDeliveryConditionsImage(event: Event) {
-  const input = event.target as HTMLInputElement
-  if (!input.files?.length) return
-  
-  try {
-    const urls = await adminStore.uploadFiles(input.files, 'settings')
-    if (urls && urls.length > 0) {
-      deliverySettingsForm.value.delivery_conditions_image = urls[0]
-      showToast('Изображение загружено', 'success')
-    }
-  } catch (error) {
-    console.error('Failed to upload conditions image:', error)
-    showToast('Ошибка при загрузке изображения', 'error')
-  }
-  input.value = ''
-}
 
 async function handlePasswordChange() {
   if (!passwordForm.value.currentPassword || !passwordForm.value.newPassword || !passwordForm.value.confirmPassword) {
@@ -3407,7 +3227,7 @@ watch(() => adminStore.settings.manager_telegram, () => {
 })
 
 watch(() => adminStore.settings, () => {
-  updateDeliverySettingsForm()
+  updateOrderAgreementForm()
 }, { deep: true })
 
 function updateManagerForm() {
@@ -3415,15 +3235,26 @@ function updateManagerForm() {
   managerForm.value.telegram = currentValue
 }
 
-function updateDeliverySettingsForm() {
+function updateOrderAgreementForm() {
   const s = adminStore.settings
-  deliverySettingsForm.value.min_delivery_amount = s.min_delivery_amount || '0'
-  deliverySettingsForm.value.min_delivery_banner_image = s.min_delivery_banner_image || ''
-  deliverySettingsForm.value.min_delivery_banner_button_text = s.min_delivery_banner_button_text || 'Понятно'
-  deliverySettingsForm.value.min_delivery_banner_button_color = s.min_delivery_banner_button_color || '#FFD700'
-  deliverySettingsForm.value.delivery_conditions_image = s.delivery_conditions_image || ''
-  deliverySettingsForm.value.order_redirect_telegram = s.order_redirect_telegram || ''
-  deliverySettingsForm.value.order_redirect_text_template = s.order_redirect_text_template || 'Здравствуйте, хочу уточнить по покупке'
+  orderAgreementForm.value.mainText = s.order_agreement_main_text || 'Нажав кнопку «Оформить заказ», вы автоматически соглашаетесь с условиями оформления заказа.'
+  orderAgreementForm.value.smallText = s.order_agreement_small_text || 'Проверьте состав заказа перед отправкой.'
+}
+
+async function handleOrderAgreementSettingsUpdate() {
+  orderAgreementSaving.value = true
+  try {
+    await adminStore.updateSettings({
+      order_agreement_main_text: orderAgreementForm.value.mainText.trim(),
+      order_agreement_small_text: orderAgreementForm.value.smallText.trim(),
+    })
+    showToast('Соглашение перед оформлением заказа сохранено!', 'success')
+  } catch (error) {
+    console.error('Failed to update order agreement settings:', error)
+    showToast('Ошибка при сохранении соглашения', 'error')
+  } finally {
+    orderAgreementSaving.value = false
+  }
 }
 
 function closeCrossSellModal() {
@@ -3437,7 +3268,6 @@ function closeCrossSellModal() {
 function handleManageCrossSell(category: Category) {
   void openCrossSellModal(category)
 }
-
 async function openCrossSellModal(category: Category) {
   activeCrossSellCategory.value = category
   crossSellSearch.value = ''

@@ -554,18 +554,15 @@ describe("CheckoutView order flows", () => {
 
     await flushPromises();
     const totalBefore = wrapper.find(".total-amount").text();
-    expect(wrapper.find(".payment-note__choice[aria-label='Наличными']").attributes("aria-checked")).toBe("true");
-    // Способ оплаты — текущее состояние, а не результат клика: подпись
-    // «Наличными» стоит рядом с суммой сразу при входе в корзину.
+    const paymentSwitch = wrapper.find(".payment-switch input[role='switch']");
+    expect(paymentSwitch.attributes("aria-checked")).toBe("false");
     expect(wrapper.find(".total-payment-label").text()).toBe("Наличными");
-    // Регрессия: раньше подпись сворачивалась в grid 0fr и проявлялась
-    // только после клика — этих обёрток быть не должно.
     expect(wrapper.find(".total-payment-slot").exists()).toBe(false);
     expect(wrapper.find(".total-value-with-payment").classes()).not.toContain("total-value-with-payment--selected");
 
-    await wrapper.find(".payment-note__choice[aria-label='Картой']").trigger("click");
+    await paymentSwitch.setValue(true);
     await flushPromises();
-    expect(wrapper.find(".payment-note__choice[aria-label='Картой']").attributes("aria-checked")).toBe("true");
+    expect(paymentSwitch.attributes("aria-checked")).toBe("true");
     expect(wrapper.find(".total-payment-label").text()).toBe("Картой");
     expect(wrapper.find(".total-amount").text()).toBe(totalBefore);
 
@@ -615,7 +612,8 @@ describe("CheckoutView order flows", () => {
       LoyaltyBonusPopup: { template: "<div />" },
     } } });
     await flushPromises();
-    await wrapper.find(".payment-note__choice[aria-label='Картой']").trigger("click");
+    const paymentSwitch = wrapper.find(".payment-switch input[role='switch']");
+    await paymentSwitch.setValue(true);
     await flushPromises();
     await wrapper.find(".submit-button").trigger("click");
     await flushPromises();
@@ -679,19 +677,19 @@ describe("CheckoutView order flows", () => {
     });
 
     await flushPromises();
-    expect(wrapper.findAll(".payment-note__choice")).toHaveLength(2);
-    expect(wrapper.find(".payment-note__choice[aria-label='Наличными']").attributes("aria-checked")).toBe("true");
+    const paymentSwitch = wrapper.find(".payment-switch input[role='switch']");
+    expect(paymentSwitch.exists()).toBe(true);
+    expect(paymentSwitch.attributes("aria-checked")).toBe("false");
+    expect(wrapper.find(".payment-note__label").text()).toBe("Оплатить заказ картой");
+    expect(wrapper.find(".payment-note__finance").exists()).toBe(true);
     expect(wrapper.find(".total-payment-label").text()).toBe("Наличными");
     expect(wrapper.find(".payment-modal").exists()).toBe(false);
 
-    // Дневной остаток 15 BYN меньше заказа 45 BYN — карту выбрать нельзя.
-    const cardChoice = wrapper.find(".payment-note__choice[aria-label='Картой']");
-    expect(cardChoice.attributes("disabled")).toBeUndefined();
+    // Дневной остаток 15 BYN меньше заказа 45 BYN — карта выбрать нельзя.
+    expect(paymentSwitch.attributes("disabled")).toBeUndefined();
 
-    // Клик по карте раскрывает плашку-поповер под кнопкой карты
-    // (демо navalivay-card-limit-popover): телепортируется в body,
-    // поэтому ищем её в документе.
-    await cardChoice.trigger("click");
+    // Включение тумблера раскрывает плашку-поповер рядом с ним.
+    await paymentSwitch.setValue(true);
     await flushPromises();
     let errorPlate = document.querySelector(".payment-note__popover");
     expect(errorPlate).not.toBeNull();
@@ -701,11 +699,10 @@ describe("CheckoutView order flows", () => {
     expect(strong?.textContent).toBe("Дневной лимит карты исчерпан");
     expect((errorPlate as HTMLElement).textContent).toContain("дневного остатка");
     expect((errorPlate as HTMLElement).textContent).toContain("15.00");
-    // Кнопка закрытия с кольцом-таймером.
     expect((errorPlate as HTMLElement).querySelector(".payment-note__popover-close")).not.toBeNull();
 
-    // Возврат к наличным убирает плашку.
-    await wrapper.find(".payment-note__choice[aria-label='Наличными']").trigger("click");
+    // Выключение тумблера возвращает наличные и убирает плашку.
+    await paymentSwitch.setValue(false);
     await flushPromises();
     expect(document.querySelector(".payment-note__popover")).toBeNull();
 
@@ -786,16 +783,16 @@ describe("CheckoutView order flows", () => {
     expect(mark.exists()).toBe(true);
     // Знак «?» больше не выводится — в слоте живёт Lottie-стикер доллара.
     expect(mark.text()).toBe("");
-    const dollar = mark.findComponent(LottiePlayer);
-    expect(dollar.exists()).toBe(true);
-    expect(dollar.props("src")).toBe("/lottie/dollar-emoji.json");
-    expect(dollar.props("speed")).toBe(1);
-    // Иконка декоративная: смысловой текст — подпись «Способ оплаты».
+    const finance = mark.findComponent(LottiePlayer);
+    expect(finance.exists()).toBe(true);
+    expect(finance.props("src")).toBe("/lottie/finance-emoji-15.json");
+    expect(finance.props("speed")).toBe(1);
     expect(mark.attributes("aria-hidden")).toBe("true");
+    expect(wrapper.find(".payment-note__label").text()).toBe("Оплатить заказ картой");
     wrapper.unmount();
   });
 
-  it("exposes both payment choices as radios of a single radiogroup and supports arrow keys", async () => {
+  it("exposes card payment as an accessible switch and toggles between cash and card", async () => {
     const cartStore = useCartStore();
     cartStore.replaceItemsFromOrder([{
       productId: "p-1", title: "Liquid Cherry", productTitle: "Liquid Cherry", groupName: "Жидкости",
@@ -823,29 +820,20 @@ describe("CheckoutView order flows", () => {
     });
     await flushPromises();
 
-    const group = wrapper.find("[role='radiogroup']");
-    expect(group.exists()).toBe(true);
-    const cash = wrapper.find(".payment-note__choice[aria-label='Наличными']");
-    const card = wrapper.find(".payment-note__choice[aria-label='Картой']");
-    // Оба варианта должны быть настоящими radio внутри группы —
-    // иначе скринридер не объявит выбор способа оплаты.
-    expect(cash.attributes("role")).toBe("radio");
-    expect(card.attributes("role")).toBe("radio");
-    // Ровно одна точка входа с клавиатуры в группе.
-    expect(cash.attributes("tabindex")).toBe("0");
-    expect(card.attributes("tabindex")).toBe("-1");
+    const paymentSwitch = wrapper.find(".payment-switch input[role='switch']");
+    expect(paymentSwitch.exists()).toBe(true);
+    expect(paymentSwitch.attributes("aria-checked")).toBe("false");
+    expect(paymentSwitch.attributes("aria-label")).toBe("Оплата картой");
+    expect(paymentSwitch.attributes("tabindex")).not.toBe("-1");
 
-    // Стрелка вправо переводит выбор на карту и переносит фокус.
-    await cash.trigger("keydown", { key: "ArrowRight" });
+    await paymentSwitch.setValue(true);
     await flushPromises();
-    expect(wrapper.find(".payment-note__choice[aria-label='Картой']").attributes("aria-checked")).toBe("true");
-    expect(wrapper.find(".payment-note__choice[aria-label='Картой']").attributes("tabindex")).toBe("0");
+    expect(paymentSwitch.attributes("aria-checked")).toBe("true");
     expect(wrapper.find(".total-payment-label").text()).toBe("Картой");
 
-    // Стрелка влево возвращает наличные.
-    await wrapper.find(".payment-note__choice[aria-label='Картой']").trigger("keydown", { key: "ArrowLeft" });
+    await paymentSwitch.setValue(false);
     await flushPromises();
-    expect(wrapper.find(".payment-note__choice[aria-label='Наличными']").attributes("aria-checked")).toBe("true");
+    expect(paymentSwitch.attributes("aria-checked")).toBe("false");
     expect(wrapper.find(".total-payment-label").text()).toBe("Наличными");
     wrapper.unmount();
   });
@@ -954,7 +942,8 @@ describe("CheckoutView order flows", () => {
 
     // Со следующего запроса статус «висит», пока тест не отпустит его.
     gate = new Promise<void>((resolve) => { releaseStatus = resolve; });
-    await wrapper.find(".payment-note__choice[aria-label='Картой']").trigger("click");
+    const paymentSwitch = wrapper.find(".payment-switch input[role='switch']");
+    await paymentSwitch.setValue(true);
     await Promise.resolve();
 
     // Пока сверка статуса в пути, кнопка остаётся активной и с прежней подписью.
@@ -963,7 +952,7 @@ describe("CheckoutView order flows", () => {
 
     releaseStatus?.();
     await flushPromises();
-    expect(wrapper.find(".payment-note__choice[aria-label='Картой']").attributes("aria-checked")).toBe("true");
+    expect(paymentSwitch.attributes("aria-checked")).toBe("true");
     expect(wrapper.find(".total-payment-label").text()).toBe("Картой");
     expect(wrapper.find(".submit-button").attributes("disabled")).toBeUndefined();
     wrapper.unmount();

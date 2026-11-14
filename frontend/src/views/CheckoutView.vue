@@ -233,83 +233,64 @@
             </div>
           </section>
 
-          <!-- Незабранный заказ: анимированный восклицательный знак
-               в треугольнике (Telegram Lottie, NewsEmoji red warning)
-               + текст-подчерк и сумма — как строка итого. Разделения
-               строк нет: дата и «подробнее» в одну строку;
-               «подробнее» открывает модалку-согласие. -->
-          <div v-if="unclaimedOrder" class="unclaimed-block">
-            <LottiePlayer
-              src="/lottie/red-warning.json"
-              :size="28"
-              :speed="1"
-            />
-            <span class="unclaimed-copy">
-              <span class="unclaimed-title">Заказ который не забрали</span>
-              <span class="unclaimed-date">
-                {{ unclaimedOrder.date }}
-                <button
-                  type="button"
-                  class="unclaimed-details"
-                  @click="openUnclaimedAgreement"
-                >подробнее</button>
-              </span>
-            </span>
-            <span class="unclaimed-amount">{{ unclaimedOrder.amount }} BYN</span>
-          </div>
-
           <div v-if="canChooseCheckoutPayment" class="payment-note">
-            <!-- Нативная анимация Telegram-стикера «Heavy Dollar Sign»
-                 (TGS → Lottie JSON) вместо статичного знака «?». -->
             <span class="payment-note__mark" aria-hidden="true">
               <LottiePlayer
-                class="payment-note__dollar"
-                src="/lottie/dollar-emoji.json"
-                :size="26"
+                class="payment-note__finance"
+                src="/lottie/finance-emoji-15.json"
+                :size="34"
                 :speed="1"
               />
             </span>
-            <span class="payment-note__label">Способ оплаты</span>
-            <div class="payment-note__choices" role="radiogroup" aria-label="Способ оплаты">
-              <span
-                class="payment-note__selection"
-                :class="selectedPaymentMethod === 'card' ? 'payment-note__selection--card' : 'payment-note__selection--cash'"
-                aria-hidden="true"
-              ></span>
-              <button
-                type="button"
-                class="payment-note__choice"
-                role="radio"
-                :class="{ 'payment-note__choice--selected': selectedPaymentMethod === 'cash' }"
-                :aria-checked="selectedPaymentMethod === 'cash'"
-                :tabindex="selectedPaymentMethod === 'cash' ? 0 : -1"
-                aria-label="Наличными"
-                @click="selectCheckoutPayment('cash')"
-                @keydown="handlePaymentChoiceKeydown($event, 'cash')"
-              >
-                <img src="/checkout/cash-wallet.webp" alt="" />
-              </button>
-              <span class="payment-note__card" ref="cardChoiceWrapRef">
-                <button
-                  type="button"
-                  role="radio"
-                  :aria-checked="selectedPaymentMethod === 'card'"
-                  :aria-disabled="isCardBlockedForOrder ? 'true' : 'false'"
-                  :tabindex="selectedPaymentMethod === 'card' ? 0 : -1"
-                  aria-label="Картой"
-                  :class="[
-                    'payment-note__choice',
-                    'payment-note__choice--card',
-                    { 'payment-note__choice--selected': selectedPaymentMethod === 'card', 'payment-note__choice--blocked': isCardBlockedForOrder },
-                  ]"
-                  :disabled="isCheckingCardPaymentStatus"
-                  @click="selectCheckoutPayment('card')"
-                  @keydown="handlePaymentChoiceKeydown($event, 'card')"
-                >
-                  <img src="/checkout/card-terminal.webp" alt="" />
-                </button>
+            <span class="payment-note__label">Оплатить заказ картой</span>
+            <label class="payment-switch" ref="cardChoiceWrapRef">
+              <input
+                type="checkbox"
+                role="switch"
+                name="pay_by_card"
+                aria-label="Оплата картой"
+                :checked="selectedPaymentMethod === 'card'"
+                :aria-checked="selectedPaymentMethod === 'card'"
+                :aria-disabled="isCheckingCardPaymentStatus ? 'true' : 'false'"
+                :disabled="isCheckingCardPaymentStatus"
+                @change="selectCheckoutPayment(($event.target as HTMLInputElement).checked ? 'card' : 'cash')"
+              />
+              <span class="payment-switch-track" aria-hidden="true">
+                <span class="payment-switch-knob"></span>
               </span>
-            </div>
+            </label>
+          </div>
+
+          <!-- Списание кэшбэка. Макет: числа пока не приходят с сервера
+               (в API кэшбэка нет), баланс — константа, начисление считаем
+               из суммы заказа, чтобы макет не расходился с корзиной. -->
+          <div v-if="canChooseCheckoutPayment" class="payment-note payment-note--cashback">
+            <span class="payment-note__mark" aria-hidden="true">
+              <LottiePlayer
+                class="payment-note__finance"
+                src="/lottie/cashback-wallet.json"
+                :size="34"
+                :speed="1"
+              />
+            </span>
+            <span class="payment-note__copy">
+              <span class="payment-note__label">Списать кэшбек</span>
+              <span class="payment-note__sub">на счете {{ formatCashback(cashbackBalance) }} BYN</span>
+            </span>
+            <label class="payment-switch">
+              <input
+                type="checkbox"
+                role="switch"
+                name="spend_cashback"
+                aria-label="Списать кэшбек"
+                :checked="isCashbackApplied"
+                :aria-checked="isCashbackApplied"
+                @change="toggleCashback(($event.target as HTMLInputElement).checked)"
+              />
+              <span class="payment-switch-track" aria-hidden="true">
+                <span class="payment-switch-knob"></span>
+              </span>
+            </label>
           </div>
 
           <!-- Плашка по демо-образцу navalivay-card-limit-popover.
@@ -1130,6 +1111,18 @@ function writeCachedCardStatus(status: any) {
 
 const cardPaymentStatus = ref<any>(readCachedCardStatus());
 const isCheckingCardPaymentStatus = ref(false);
+
+/* --- Кэшбэк (макет) ------------------------------------------------
+   Сервер кэшбэк пока не отдаёт: в API есть только бонусы лояльности
+   (stores/loyalty.ts), это другой механизм. Баланс зафиксирован
+   константой, пока не появится источник данных. */
+const cashbackBalance = ref(5.41);
+const isCashbackApplied = ref(false);
+
+function toggleCashback(next: boolean) {
+  isCashbackApplied.value = next;
+}
+
 const canChooseCheckoutPayment = computed(
   () => !isEditingOrder.value && cardPaymentStatus.value?.enabled === true,
 );
@@ -1461,35 +1454,17 @@ const shouldShowManualUsernameInput = computed(() => {
   return !wholesaleStore.isWholesale && !hasTelegramUserAuth.value;
 });
 
-/** Компактный список (демо): первая строка всегда видна,
- *  остальные — под сворачивающимся «Ещё N товаров».
- *  collapsedItems НЕ зависит от isItemsExpanded: хвост всегда
- *  есть в DOM (кнопка сворачивания не должна исчезать),
- *  видимость управляется классом cart-more--open. */
-/** Незабранный прошлый заказ: показывается над итого строкой
- *  «Заказ который не забрали {дата} … {сумма}». Пока каркас:
- *  источник данных подключим к API истории заказов. */
-const unclaimedOrder = computed<{ date: string; amount: string } | null>(() => {
-  // TODO(backend): получать из fetchMyActiveOrder/history статус
-  // не забранного заказа. Демо-значение для визуальной проверки:
-  return { date: "04.11.2026", amount: "5" };
-});
-
-/** Открывает текст соглашения «заберу сегодня» в собственной
- * штатной модалке checkout, используя тот же ответ /api/agreements. */
+/** Текст соглашения checkout в штатной модалке (ответ /api/agreements). */
 const activeAgreement = ref<{ title: string; modal_title?: string; body: string } | null>(null);
 const agreementModalParagraphs = computed(() =>
   (activeAgreement.value?.body || "").trim().split(/\n{2,}/).map((part) => part.trim()).filter(Boolean),
 );
 
-async function openUnclaimedAgreement() {
-  if (!loadedAgreements.value.length) await fetchCheckoutAgreements();
-  const needle = "заберу сегодня";
-  activeAgreement.value = loadedAgreements.value.find((item) =>
-    `${item.title} ${item.modal_title || ""} ${item.body}`.toLocaleLowerCase("ru-RU").includes(needle),
-  ) || null;
-  if (!activeAgreement.value) showToast("Соглашение «заберу сегодня» не найдено", "error");
-}
+/** Компактный список (демо): первая строка всегда видна,
+ *  остальные — под сворачивающимся «Ещё N товаров».
+ *  collapsedItems НЕ зависит от isItemsExpanded: хвост всегда
+ *  есть в DOM (кнопка сворачивания не должна исчезать),
+ *  видимость управляется классом cart-more--open. */
 const visibleItems = computed(() => {
   return cartStore.items.slice(0, 1);
 });
@@ -2195,6 +2170,15 @@ function canIncrement(item: (typeof cartStore.items)[0]): boolean {
 
 function formatPrice(price: number): string {
   return price.toFixed(0);
+}
+
+/**
+ * Кэшбэк показываем с копейками: formatPrice округляет до целого,
+ * а 5.41 BYN баланса и 1.05 BYN начисления при этом превратились бы
+ * в «5» и «1».
+ */
+function formatCashback(amount: number): string {
+  return amount.toFixed(2);
 }
 
 function handleBack() {
@@ -2968,6 +2952,7 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
 
 .cart-item-info {
   min-width: 0;
+  align-self: center;
 }
 
 /* Линейка — бренд: цвет кнопки «посмотреть отзывы» (#0273f5). */
@@ -2983,11 +2968,16 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
 .cart-item-title {
   font-family: "Montserrat", sans-serif;
   font-weight: 700;
-  font-size: 13px;
-  line-height: 1.25;
+  font-size: 12px;
+  line-height: 15px;
   color: #18191b;
   margin: 2px 0;
-  overflow-wrap: anywhere;
+  /* Название всегда в одну строку: длинные («Испарители для Aegis
+     boost/hero») раньше переносились на две и ломали ритм списка.
+     Обрезаем многоточием — полное имя видно в карточке товара. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .cart-item-meta {
@@ -3743,97 +3733,13 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   color: #aab2bd;
 }
 
-/* Незабранный заказ: строка над итого — Lottie-восклицание слева,
-   заголовок; дата и «подробнее» В ОДНУ строку (без разделения),
-   сумма справа (как итого). */
-.unclaimed-block {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 12px 0;
-}
-
-.unclaimed-copy {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.unclaimed-title {
-  font-family: -apple-system, "SF Pro Display", sans-serif;
-  font-weight: 600;
-  font-size: 13px;
-  line-height: 16px;
-  color: #18191b;
-}
-
-/* Дата и «подробнее» одной строкой. */
-.unclaimed-date {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  font-family: -apple-system, "SF Pro Display", sans-serif;
-  font-weight: 400;
-  font-size: 12px;
-  line-height: 14px;
-  color: #8a93a0;
-}
-
-/* «подробнее» — цвет и шрифт «посмотреть отзывы» (#0273f5). */
-.unclaimed-details {
-  margin: 0;
-  padding: 0;
-  border: none;
-  background: none;
-  font-family: -apple-system, "SF Pro Display", sans-serif;
-  font-weight: 400;
-  font-size: 12px;
-  line-height: 14px;
-  color: #0273f5;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: opacity 0.2s ease;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.unclaimed-details:active {
-  opacity: 0.72;
-}
-
-.unclaimed-amount {
-  font-family: "Montserrat", sans-serif;
-  font-weight: 700;
-  font-size: 15px;
-  line-height: 18px;
-  color: #18191b;
-  white-space: nowrap;
-}
-
-/* Модалка незабранного заказа. */
-.unclaimed-modal-text {
-  margin: 0 0 10px;
-  font-family: -apple-system, "SF Pro Display", sans-serif;
-  font-size: 14px;
-  line-height: 20px;
-  color: #18191b;
-}
-
-.unclaimed-modal-hint {
-  margin: 0;
-  font-family: -apple-system, "SF Pro Display", sans-serif;
-  font-size: 13px;
-  line-height: 18px;
-  color: #656b75;
-}
-
-/* Способ оплаты по референсу: две компактные 3D-иконки перед итогом. */
+/* Строка оплаты: анимированное финансовое эмодзи, подпись и тумблер. */
 .payment-note {
   display: grid;
-  grid-template-columns: 26px minmax(0, 1fr) auto;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 10px;
+  gap: 9px;
+  min-height: 44px;
   margin: 4px 12px 0;
   padding-block: 4px;
 }
@@ -3841,41 +3747,117 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
 .payment-note__mark {
   display: grid;
   place-items: center;
-  width: 26px;
-  height: 26px;
+  width: 34px;
+  height: 34px;
 }
 
-/* Стикер «Heavy Dollar Sign» в слоте 26×26: строка «Способ оплаты»
-   держит постоянную высоту, пока Lottie проигрывает анимацию. */
-.payment-note__dollar {
-  width: 26px;
-  height: 26px;
+.payment-note__finance {
+  width: 34px;
+  height: 34px;
 }
 
 .payment-note__label {
-  align-self: center;
-  margin-left: -2px;
+  min-width: 0;
   color: #25262a;
-  font-size: 13px;
-  font-weight: 700;
-  line-height: 1.23;
+  font-family: -apple-system, "SF Pro Display", sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.25;
 }
 
-/* Кнопка «Картой» в своей ячейке группы выбора. */
-.payment-note__card {
-  position: relative;
+/* Кэшбэк: подпись в две строки — заголовок и баланс мелким шрифтом. */
+.payment-note__copy {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  gap: 1px;
   min-width: 0;
 }
 
+.payment-note__sub {
+  color: #8b929c;
+  font-family: -apple-system, "SF Pro Display", sans-serif;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.2;
+}
+
+.payment-note--cashback {
+  margin-top: 0;
+}
+
+/* Тумблер из navalivay-payment-switch.html.
+   Уменьшен относительно образца (58×34): рядом текст 14px и эмодзи 34px,
+   и крупный переключатель перетягивал внимание на себя. */
+.payment-switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-height: 44px;
+  padding-left: 8px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.payment-switch input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.payment-switch-track {
+  position: relative;
+  display: block;
+  flex: none;
+  width: 46px;
+  height: 28px;
+  border-radius: 30px;
+  background: #e3e6eb;
+  transition: background 0.22s, box-shadow 0.22s;
+}
+
+.payment-switch-knob {
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px #20253026;
+  transition: transform 0.24s cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+
+.payment-switch input:checked + .payment-switch-track {
+  background: linear-gradient(110deg, #f00, #a40c12);
+}
+
+.payment-switch input:checked + .payment-switch-track .payment-switch-knob {
+  transform: translateX(18px);
+}
+
+.payment-switch input:focus-visible + .payment-switch-track {
+  outline: 2px solid #286bf0;
+  outline-offset: 3px;
+}
+
+.payment-switch input:disabled + .payment-switch-track {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .payment-switch-track,
+  .payment-switch-knob {
+    transition: none;
+  }
+}
+
 /* Плашка ошибки карты по демо-образцу navalivay-card-limit-popover:
-   тёмная капсула #5d5c65 с хвостиком-стрелкой к кнопке «Картой»,
+   тёмная капсула #5d5c65 с хвостиком-стрелкой к тумблеру,
    заголовок + пояснение, справа кнопка закрытия с кольцом-таймером.
-   Плашка отрендерена через Teleport в body (карточка заказа режет
-   контент overflow:hidden), позиция задаётся inline: fixed-координаты
-   пересчитываются от кнопки при показе, скролле и ресайзе. */
+   Плашка отрендерена через Teleport в body, чтобы её не обрезала карточка. */
 .payment-note__popover {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 44px;
@@ -3884,12 +3866,11 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   padding: 11px 10px 11px 13px;
   border-radius: 16px;
   background: #5d5c65;
-  color: #ffffff;
+  color: #fff;
   box-shadow: 0 10px 26px #1d1e2936;
   z-index: 9000;
 }
 
-/* Хвостик-стрелка, указывающий на кнопку «Картой» сверху. */
 .payment-note__popover::before {
   content: "";
   position: absolute;
@@ -3917,7 +3898,6 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   margin: 4px 0 0;
   font-family: -apple-system, "SF Pro Display", sans-serif;
   font-size: 12px;
-  font-weight: 400;
   line-height: 1.4;
 }
 
@@ -3927,19 +3907,15 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   width: 44px;
   height: 44px;
   border: 0;
-  background: none;
-  color: #ffffff;
-  cursor: pointer;
   border-radius: 50%;
+  background: none;
+  color: #fff;
+  cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
 
-.payment-note__popover-close:active {
-  opacity: 0.7;
-}
-
 .payment-note__popover-close:focus-visible {
-  outline: 2px solid #ffffff;
+  outline: 2px solid #fff;
   outline-offset: 2px;
 }
 
@@ -3952,7 +3928,6 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   stroke-linecap: round;
 }
 
-/* Кольцо-таймер: дотает за время жизни плашки (r=17 → длина 106.814). */
 .payment-note__popover-track {
   opacity: 0.23;
 }
@@ -3963,13 +3938,9 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
 }
 
 @keyframes payment-note-countdown {
-  to {
-    stroke-dashoffset: 106.814;
-  }
+  to { stroke-dashoffset: 106.814; }
 }
 
-/* Появление/исчезание плашки: выезжает снизу вверх,
-   закрывается мягко — тем же движением вниз и медленным fade. */
 .payment-note-pop-enter-active {
   transition: opacity 0.16s ease, transform 0.22s ease;
 }
@@ -3988,113 +3959,15 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   transform: translateY(8px) scale(0.98);
 }
 
-/* Появление и закрытие — только через Vue Transition (keyframes больше
-   не нужны): появление снизу вверх, закрытие — мягкий уход вниз с fade. */
-
 @media (prefers-reduced-motion: reduce) {
   .payment-note__popover-ring {
     animation-duration: 0.01ms;
   }
 
-  .payment-note__popover,
   .payment-note-pop-enter-active,
   .payment-note-pop-leave-active {
-    animation: none;
     transition: none;
   }
-}
-
-.payment-note__choices {
-  position: relative;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  align-items: center;
-  gap: 0;
-  padding: 2px;
-  border-radius: 12px;
-  background: #f6f7f8;
-  isolation: isolate;
-}
-
-.payment-note__selection {
-  position: absolute;
-  z-index: -1;
-  top: 2px;
-  bottom: 2px;
-  left: 2px;
-  width: calc(50% - 2px);
-  border-radius: 9px;
-  background: linear-gradient(105deg, #f80008, #ad1010);
-  box-shadow: 0 2px 8px #c715152b;
-  transition: transform 0.22s ease, opacity 0.16s ease;
-}
-
-.payment-note__selection--cash {
-  transform: translateX(0);
-}
-
-.payment-note__selection--card {
-  transform: translateX(100%);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .payment-note__selection {
-    transition: none;
-  }
-}
-
-.payment-note__choice {
-  display: grid;
-  place-items: center;
-  width: 68px;
-  min-width: 68px;
-  min-height: 56px;
-  padding: 3px;
-  border: 2px solid transparent;
-  border-radius: 11px;
-  background: transparent;
-  color: #23242a;
-  cursor: pointer;
-  transition: box-shadow 0.18s ease, background 0.18s ease;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.payment-note__choice img {
-  display: block;
-  width: 50px;
-  height: 42px;
-  object-fit: contain;
-  transition: filter 0.18s ease, transform 0.18s ease;
-}
-
-.payment-note__choice--card img {
-  width: 59px;
-  height: 46px;
-  transform: rotate(-8deg) scale(1.16);
-}
-
-.payment-note__choice--selected {
-  background: transparent;
-  box-shadow: none;
-}
-
-.payment-note__choice--selected img {
-  filter: grayscale(1) brightness(2.6) contrast(0.72) brightness(1.12)
-    drop-shadow(0 0 2px #ffffffba) drop-shadow(0 0 4px #ffffff70);
-}
-
-.payment-note__choice--blocked {
-  opacity: 0.52;
-  filter: grayscale(0.35);
-}
-
-.payment-note__choice--blocked:hover {
-  opacity: 0.62;
-}
-
-.payment-note__choice:focus-visible {
-  outline: 2px solid #286bf0;
-  outline-offset: 2px;
 }
 
 .total-value-with-payment {
@@ -4143,48 +4016,37 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
 
 @media (max-width: 320px) {
   .payment-note {
-    grid-template-columns: 24px minmax(0, 1fr) auto;
-    gap: 3px;
+    grid-template-columns: 30px minmax(0, 1fr) auto;
+    gap: 5px;
     margin-inline: 4px;
   }
 
-  .payment-note__choice {
+  .payment-note__mark,
+  .payment-note__finance {
+    width: 30px;
+    height: 30px;
+  }
+
+  .payment-note__label {
+    font-size: 13px;
+  }
+
+  .payment-switch-track {
     width: 54px;
-    min-width: 54px;
-    min-height: 52px;
+    height: 32px;
   }
 
-  .payment-note__choice img {
-    width: 42px;
-    height: 38px;
+  .payment-switch-knob {
+    width: 26px;
+    height: 26px;
   }
 
-  .payment-note__choice--card img {
-    width: 48px;
-    height: 40px;
-  }
-}
-
-@media (max-width: 360px) {
-
-
-  .payment-note__choice {
-    width: 58px;
-    min-width: 58px;
-  }
-
-  .payment-note__choice img {
-    width: 46px;
-  }
-
-  .payment-note__choice--card img {
-    width: 52px;
+  .payment-switch input:checked + .payment-switch-track .payment-switch-knob {
+    transform: translateX(22px);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .payment-note__choice,
-  .payment-note__choice img,
   .total-payment-swap-enter-active,
   .total-payment-swap-leave-active {
     transition: none;
