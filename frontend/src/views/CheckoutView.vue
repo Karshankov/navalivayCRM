@@ -2887,10 +2887,12 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   overflow: hidden;
 }
 
-/* Компактная строка из демо: сетка 49px / 1fr / 91px. */
+/* Компактная строка из демо: сетка 49px / 1fr / 80px.
+   Третья колонка уменьшена с 91px вместе со степпером (30/20/30) —
+   эти 11px отданы названию товара. */
 .cart-item {
   display: grid;
-  grid-template-columns: 49px minmax(0, 1fr) 91px;
+  grid-template-columns: 49px minmax(0, 1fr) 80px;
   gap: 10px;
   align-items: center;
   padding: 9px 10px;
@@ -3007,9 +3009,13 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
 }
 
 /* Ступенька количества: горизонтальная (демо .stepper). */
+/* Ступенька количества: горизонтальная (демо .stepper).
+   Сужена с 34/23/34 (91px) до 30/20/30 (80px): освободившиеся 11px
+   уходят названию товара, чтобы «Испарители для Aegis boost/hero»
+   помещалось в строку. 30px остаётся выше минимума удобной цели (24px). */
 .cart-item-controls {
   display: grid;
-  grid-template-columns: 34px 23px 34px;
+  grid-template-columns: 30px 20px 30px;
   align-items: center;
   justify-content: end;
   text-align: right;
