@@ -52,7 +52,6 @@ describe("App shell visibility", () => {
         stubs: {
           VapeSmoke: true,
           ReviewPromptModal: true,
-          WheelHomeWidget: true,
           BlockedScreen: true,
           ReferralAuthorizationGate: unlockCustomerContent
             ? {
@@ -75,29 +74,28 @@ describe("App shell visibility", () => {
     expect(wrapper.find(".referral-gate-stub").exists()).toBe(true);
     expect(wrapper.find(".router-view-stub").exists()).toBe(false);
     expect(wrapper.find("bottom-tab-bar-stub").exists()).toBe(false);
-    expect(wrapper.find("wheel-home-widget-stub").exists()).toBe(false);
 
     wrapper.unmount();
   });
 
-  it("shows review prompt modal host and wheel widget on home", async () => {
+  it("shows review prompt modal host on home", async () => {
     const wrapper = mountApp();
     await flushPromises();
 
     expect(wrapper.find("review-prompt-modal-stub").exists()).toBe(true);
-    expect(wrapper.find("wheel-home-widget-stub").exists()).toBe(true);
 
     wrapper.unmount();
   });
 
-  it("hides wheel widget on order history routes", async () => {
-    routePath.value = "/profile/orders";
-    const wrapper = mountApp();
-    await flushPromises();
+  it("не рендерит плавающий виджет рулетки ни на одном экране", async () => {
+    for (const path of ["/", "/catalog", "/profile", "/profile/orders"]) {
+      routePath.value = path;
+      const wrapper = mountApp();
+      await flushPromises();
 
-    expect(wrapper.find("wheel-home-widget-stub").exists()).toBe(false);
-
-    wrapper.unmount();
+      expect(wrapper.find(".wheel-home-widget").exists()).toBe(false);
+      wrapper.unmount();
+    }
   });
 
   it("нижний футер удалён: не рендерится ни на одном экране", async () => {

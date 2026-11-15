@@ -325,19 +325,19 @@
             </Transition>
           </Teleport>
 
-          <div class="total-block">
+          <!-- Кэшбэк за этот заказ: строка над «Итого», сумма справа
+               тем же начертанием и кеглем, что итоговая. -->
+          <div v-if="cashbackForOrder > 0" class="total-block total-block--cashback">
+            <span class="total-label">Кэшбек за этот заказ</span>
+            <strong class="total-amount total-amount--cashback">
+              +{{ formatCashback(cashbackForOrder) }} BYN
+            </strong>
+          </div>
+
+          <div class="total-block total-block--total">
             <span class="total-label">Итого</span>
             <div class="total-value-with-payment">
               <strong class="total-amount">{{ formatPrice(finalTotal) }} BYN</strong>
-              <!-- Способ оплаты — текущее состояние, а не результат клика:
-                   «Наличными» видно сразу, до первого выбора. -->
-              <span class="total-payment-label" aria-live="polite">
-                <Transition name="total-payment-swap" mode="out-in">
-                  <span :key="effectivePaymentMethod" class="total-payment-label__text">
-                    {{ effectivePaymentMethod === 'card' ? 'Картой' : 'Наличными' }}
-                  </span>
-                </Transition>
-              </span>
             </div>
           </div>
         </div>
@@ -560,30 +560,31 @@
     <div class="checkout-footer" v-if="cartStore.items.length">
       <div v-if="submitError" class="submit-error">{{ submitError }}</div>
 
-      <template v-if="!isOrderConfirmation">
-        <!-- Кнопка промокода — сразу над «Оформить заказ». -->
+      <!-- Кнопки в один ряд: промокод слева, оформление справа.
+           Ошибка отправки остаётся во всю ширину над ними. -->
+      <div class="checkout-actions">
         <button
-          v-if="!discountBlocked"
+          v-if="!isOrderConfirmation && !discountBlocked"
           type="button"
           class="promo-open-btn"
           data-test="promo-open-btn"
           @click="openPromoModal"
         >
           <span class="promo-open-btn__label">{{
-            promoResult ? 'Промокод применён' : 'У меня есть промокод'
+            promoResult ? 'Промокод применён' : 'Ввести промокод'
           }}</span>
         </button>
-      </template>
 
-      <button
-        @click="beginCheckout"
-        :disabled="isSubmitting || isConfirmingOrder || isCheckingCardPaymentStatus || checkoutCalculationPending || isWholesaleSubmitBlocked || shouldShowOpenInTelegramForWholesale"
-        class="submit-button"
-        type="button"
-        style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
-      >
-        {{ submitButtonLabel }}
-      </button>
+        <button
+          @click="beginCheckout"
+          :disabled="isSubmitting || isConfirmingOrder || isCheckingCardPaymentStatus || checkoutCalculationPending || isWholesaleSubmitBlocked || shouldShowOpenInTelegramForWholesale"
+          class="submit-button"
+          type="button"
+          style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
+        >
+          {{ submitButtonLabel }}
+        </button>
+      </div>
     </div>
 
     <MinDeliveryBanner
@@ -1118,6 +1119,16 @@ const isCheckingCardPaymentStatus = ref(false);
    константой, пока не появится источник данных. */
 const cashbackBalance = ref(5.41);
 const isCashbackApplied = ref(false);
+
+/** Начисление за заказ (макет). Ставка-заглушка: сервер кэшбэк не
+ *  считает, поэтому берём процент от итоговой суммы, чтобы строка не
+ *  расходилась с корзиной. Когда появится источник данных — заменить
+ *  на значение из ответа API. */
+const CASHBACK_ACCRUAL_RATE = 0.05;
+
+const cashbackForOrder = computed(() =>
+  Math.round(finalTotal.value * CASHBACK_ACCRUAL_RATE * 100) / 100,
+);
 
 function toggleCashback(next: boolean) {
   isCashbackApplied.value = next;
@@ -2176,9 +2187,13 @@ function formatPrice(price: number): string {
  * Кэшбэк показываем с копейками: formatPrice округляет до целого,
  * а 5.41 BYN баланса и 1.05 BYN начисления при этом превратились бы
  * в «5» и «1».
+ *
+ * Десятичный разделитель — запятая (5,41 / 3,99): так принято в
+ * белорусском интерфейсе, и значение читается как сумма в BYN, а не
+ * как техническое число.
  */
 function formatCashback(amount: number): string {
-  return amount.toFixed(2);
+  return amount.toFixed(2).replace(".", ",");
 }
 
 function handleBack() {
@@ -2741,6 +2756,29 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   background: #f2f3f6;
 }
 
+/* Ряд кнопок внизу: промокод слева, оформление справа.
+   Обе по половине ширины. */
+.checkout-actions {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.checkout-actions .promo-open-btn,
+.checkout-actions .submit-button {
+  flex: 1 1 0;
+  width: auto;
+  min-width: 0;
+  padding-inline: 12px;
+}
+
+/* Подпись переносится, а не обрезается: на узких экранах кнопка
+   становится чуть выше ростом, но текст читается целиком. */
+.checkout-actions .promo-open-btn__label {
+  white-space: normal;
+  text-align: center;
+}
+
 .checkout-footer .submit-error {
   margin: 0 0 -4px;
 }
@@ -3221,8 +3259,8 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   color: #ffffff;
   font-family: "Montserrat", sans-serif;
   font-weight: 500;
-  font-size: 16px;
-  line-height: 20px;
+  font-size: 14px;
+  line-height: 18px;
   cursor: pointer;
   box-sizing: border-box;
   touch-action: manipulation;
@@ -3985,41 +4023,6 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   white-space: nowrap;
 }
 
-.total-payment-label {
-  display: block;
-  width: max-content;
-  padding-left: 0.28em;
-  /* Как у суммы: подпись способа оплаты — часть той же строки итога,
-     поэтому начертание и кегль совпадают с .total-amount. */
-  color: inherit;
-  font-family: "Montserrat", sans-serif;
-  font-weight: 700;
-  font-size: 19px;
-  line-height: 23px;
-  opacity: 1;
-}
-
-.total-payment-label__text {
-  display: inline-block;
-}
-
-/* Смена способа оплаты: старая подпись уезжает вверх и гаснет,
-   новая поднимается снизу — без дёрганья суммы слева. */
-.total-payment-swap-enter-active,
-.total-payment-swap-leave-active {
-  transition: opacity 0.16s ease, transform 0.16s ease;
-}
-
-.total-payment-swap-enter-from {
-  opacity: 0;
-  transform: translateY(5px);
-}
-
-.total-payment-swap-leave-to {
-  opacity: 0;
-  transform: translateY(-5px);
-}
-
 @media (max-width: 320px) {
   .payment-note {
     grid-template-columns: 30px minmax(0, 1fr) auto;
@@ -4078,12 +4081,36 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   color: #656b75;
 }
 
+/* Кэшбэк и «Итого» — одна смысловая группа, поэтому расстояние
+   между строками меньше стандартного отступа блока. Нижний отступ
+   строки кэшбэка убираем совсем: зазор задаёт верхний отступ
+   «Итого» (см. .total-block--total). */
+.total-block--cashback {
+  padding-top: 12px;
+  padding-bottom: 0;
+}
+
+/* «Итого» прижимается к строке кэшбэка: 16px базового отступа давали
+   20px зазора в паре, что читалось как разрыв. 8px — заметно плотнее,
+   но строки не слипаются. */
+.total-block--total {
+  padding-top: 8px;
+}
+
 .total-amount {
   font-family: "Montserrat", sans-serif;
   font-weight: 700;
   font-size: 19px;
   line-height: 23px;
   color: #18191b;
+}
+
+/* Сумма кэшбэка — тем же начертанием и кеглем, что итоговая
+   (наследует .total-amount), но зелёным: это начисление, а не
+   списание. */
+.total-amount--cashback {
+  color: #1f9d55;
+  margin-left: auto;
 }
 
 .submit-button {
@@ -4097,8 +4124,8 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   border-radius: 999px;
   font-family: "Montserrat", sans-serif;
   font-weight: 500;
-  font-size: 16px;
-  line-height: 20px;
+  font-size: 14px;
+  line-height: 18px;
   color: #ffffff;
   cursor: pointer;
   position: relative;

@@ -4,7 +4,6 @@ import { computed, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import VapeSmoke from "@/components/VapeSmoke.vue";
 import BlockedScreen from "@/components/BlockedScreen.vue";
-import WheelHomeWidget from "@/components/wheel/WheelHomeWidget.vue";
 import ReviewPromptModal from "@/components/reviews/ReviewPromptModal.vue";
 import ReferralAuthorizationGate from "@/components/ReferralAuthorizationGate.vue";
 import TopCartBar from "@/components/TopCartBar.vue";
@@ -105,21 +104,6 @@ function handleGateNetworkError(failed: boolean) {
   gateNetworkError.value = failed;
 }
 
-// Глобальный плавающий виджет рулетки. Показываем на всех customer-
-// экранах, кроме самой рулетки, чекаута, оформленного заказа,
-// админки и лендинга опт-ссылки (/opt/...).
-const showWheelWidget = computed(() => {
-  const path = route.path;
-  if (path.startsWith("/admin")) return false;
-  if (path === "/wheel" || path.startsWith("/wheel/")) return false;
-  if (path === "/checkout") return false;
-  if (path === "/my-order") return false;
-  if (path === "/favorites") return false;
-  if (path.startsWith("/profile/orders")) return false;
-  if (path.startsWith("/opt")) return false;
-  return true;
-});
-
 onMounted(() => {
   if (typeof window !== "undefined" && window.Telegram?.WebApp) {
     window.Telegram.WebApp.ready();
@@ -164,7 +148,6 @@ onMounted(() => {
       </div>
       <VapeSmoke />
       <ReviewPromptModal v-if="showReviewPrompt" />
-      <WheelHomeWidget v-if="showWheelWidget" />
     </div>
     <ReferralAuthorizationGate
       v-if="showReferralGate"

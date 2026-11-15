@@ -213,10 +213,12 @@ describe("ProfileView review preferences", () => {
     expect(wrapper.text()).toContain("Мои заказы");
     expect(wrapper.text()).toContain("Напоминания об отзывах");
     expect(wrapper.text()).toContain("Анонимные отзывы");
+    expect(wrapper.text()).not.toContain("Лента рулетки");
 
     const switches = wrapper.findAll("button.wheel-feed-toggle");
-    expect(switches[1].attributes("aria-checked")).toBe("true");
-    expect(switches[2].attributes("aria-checked")).toBe("false");
+    expect(switches).toHaveLength(2);
+    expect(switches[0].attributes("aria-checked")).toBe("true");
+    expect(switches[1].attributes("aria-checked")).toBe("false");
 
     wrapper.unmount();
   });
@@ -235,11 +237,11 @@ describe("ProfileView review preferences", () => {
     await flushPromises();
 
     const switches = wrapper.findAll("button.wheel-feed-toggle");
-    await switches[1].trigger("click");
+    await switches[0].trigger("click");
     await flushPromises();
 
     expect(patchHandler).toHaveBeenCalledWith({ reviews_opt_out: true });
-    expect(switches[1].attributes("aria-checked")).toBe("false");
+    expect(switches[0].attributes("aria-checked")).toBe("false");
 
     wrapper.unmount();
   });
@@ -293,7 +295,7 @@ describe("ProfileView review preferences", () => {
     await flushPromises();
 
     const switches = wrapper.findAll("button.wheel-feed-toggle");
-    expect(switches[2].attributes("aria-checked")).toBe("true");
+    expect(switches[1].attributes("aria-checked")).toBe("true");
 
     wrapper.unmount();
   });
@@ -312,11 +314,11 @@ describe("ProfileView review preferences", () => {
     await flushPromises();
 
     const switches = wrapper.findAll("button.wheel-feed-toggle");
-    await switches[2].trigger("click");
+    await switches[1].trigger("click");
     await flushPromises();
 
     expect(patchHandler).toHaveBeenCalledWith({ reviews_prefer_anonymous: true });
-    expect(switches[2].attributes("aria-checked")).toBe("true");
+    expect(switches[1].attributes("aria-checked")).toBe("true");
 
     wrapper.unmount();
   });

@@ -1,14 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { reactive } from "vue";
 import { createPinia, setActivePinia } from "pinia";
 import { flushPromises, mount } from "@vue/test-utils";
 import CategoryQuickNav from "@/components/CategoryQuickNav.vue";
 import { useCatalogStore } from "@/stores/catalog";
 
 const routerReplace = vi.fn();
-const routeParams = { value: { slug: "zhidkosti" } };
+/** Реактивные params: компонент держит объект route в замыкании,
+ *  поэтому подмена ссылки на новый объект до него не доходит —
+ *  как и в настоящем vue-router, params должны быть реактивными. */
+const routeState = reactive<{ params: { slug: string } }>({
+  params: { slug: "zhidkosti" },
+});
 
 vi.mock("vue-router", () => ({
-  useRoute: () => ({ params: routeParams.value }),
+  useRoute: () => routeState,
   useRouter: () => ({ replace: routerReplace }),
 }));
 
@@ -17,7 +23,7 @@ describe("CategoryQuickNav", () => {
     setActivePinia(createPinia());
     localStorage.clear();
     routerReplace.mockClear();
-    routeParams.value = { slug: "zhidkosti" };
+    routeState.params = { slug: "zhidkosti" };
   });
 
   it("рендерит 6 категорий с реальными slug каталога", () => {
@@ -37,7 +43,7 @@ describe("CategoryQuickNav", () => {
   });
 
   it("активная категория подсвечена красным градиентом", () => {
-    routeParams.value = { slug: "zhidkosti" };
+    routeState.params = { slug: "zhidkosti" };
     const wrapper = mount(CategoryQuickNav);
 
     const active = wrapper.find(".qnav__category--active");
@@ -47,30 +53,52 @@ describe("CategoryQuickNav", () => {
     wrapper.unmount();
   });
 
-  it("взрыв частиц: fixed-слой в body поверх панели по клику", async () => {
-    routeParams.value = { slug: "zhidkosti" };
+  it("заливка активной категории живёт в подложке, а не в background кнопки", () => {
+    routeState.params = { slug: "zhidkosti" };
     const wrapper = mount(CategoryQuickNav);
 
-    // До клика частиц нет.
+    // У каждой кнопки есть подложка заливки — её и анимируем.
+    expect(wrapper.findAll(".qnav__fill").length).toBe(6);
+    const active = wrapper.find(".qnav__category--active");
+    expect(active.find(".qnav__fill").exists()).toBe(true);
+
+    wrapper.unmount();
+  });
+
+  it("заливка переключается сразу при клике, без летящей капсулы", async () => {
+    routeState.params = { slug: "zhidkosti" };
+    const wrapper = mount(CategoryQuickNav);
+    const buttons = wrapper.findAll(".qnav__category");
+    const find = (text: string) => buttons.find((b) => b.text().includes(text))!;
+
+    // До клика активна «Жидкости».
+    expect(find("Жидкости").classes()).toContain("qnav__category--active");
+    expect(find("Расходники").classes()).not.toContain("qnav__category--active");
+
+    await find("Расходники").trigger("click");
+    // Мок роутера не обновляет params сам (в приложении это делает
+    // vue-router) — доводим состояние до того, что видит компонент
+    // сразу после навигации.
+    routeState.params = { slug: "rashodniki" };
+    await wrapper.vm.$nextTick();
+
+    // Заливка уже на новой категории, старая погашена. Никаких
+    // промежуточных классов и летящих слоёв — переключение мгновенное.
+    expect(find("Расходники").classes()).toContain("qnav__category--active");
+    expect(find("Жидкости").classes()).not.toContain("qnav__category--active");
+    expect(wrapper.find(".qnav-sweep").exists()).toBe(false);
+    expect(document.querySelector(".qnav-sweep")).toBeNull();
+    // От прежней анимации не осталось ни частиц, ни служебных классов.
     expect(document.querySelector(".qnav-piece")).toBeNull();
-
-    const rashodniki = wrapper
-      .findAll(".qnav__category")
-      .find((b) => b.text().includes("Расходники"));
-    await rashodniki!.trigger("click");
-
-    // 12 частиц появились в body (Teleport), поверх всех блоков.
-    const pieces = document.querySelectorAll(".qnav-piece");
-    expect(pieces.length).toBe(12);
-
-    // Чистим DOM после теста.
-    pieces.forEach((n) => n.remove());
+    expect(wrapper.find(".qnav__category--arming").exists()).toBe(false);
+    expect(wrapper.find(".qnav__category--fading").exists()).toBe(false);
+    expect(wrapper.find(".qnav__category--grow").exists()).toBe(false);
 
     wrapper.unmount();
   });
 
   it("клик по другой категории меняет маршрут на её реальный slug", async () => {
-    routeParams.value = { slug: "zhidkosti" };
+    routeState.params = { slug: "zhidkosti" };
     const wrapper = mount(CategoryQuickNav);
 
     const snus = wrapper
@@ -88,7 +116,7 @@ describe("CategoryQuickNav", () => {
   });
 
   it("повторный клик по активной категории не меняет маршрут", async () => {
-    routeParams.value = { slug: "zhidkosti" };
+    routeState.params = { slug: "zhidkosti" };
     const wrapper = mount(CategoryQuickNav);
 
     const liquids = wrapper
@@ -122,7 +150,7 @@ describe("CategoryQuickNav", () => {
   });
 
   it("активная категория на второй странице раскрывает её", async () => {
-    routeParams.value = { slug: "ustrojstva" };
+    routeState.params = { slug: "ustrojstva" };
     const wrapper = mount(CategoryQuickNav);
 
     // Активная категория устройства — панель листается на вторую страницу.
@@ -135,7 +163,7 @@ describe("CategoryQuickNav", () => {
   });
 
   it("подсказка «есть ещё» показывается до первого свайпа", () => {
-    routeParams.value = { slug: "zhidkosti" };
+    routeState.params = { slug: "zhidkosti" };
     const wrapper = mount(CategoryQuickNav);
 
     expect(wrapper.find(".qnav__hint").exists()).toBe(true);
@@ -143,3 +171,5 @@ describe("CategoryQuickNav", () => {
     wrapper.unmount();
   });
 });
+
+

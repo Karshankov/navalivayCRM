@@ -189,26 +189,6 @@
 
         <article class="wheel-feed-card">
           <div class="wheel-feed-card__text">
-            <h3 class="wheel-feed-card__title">Лента рулетки</h3>
-            <p class="wheel-feed-card__copy">
-              Показывать моё имя и фото в ленте, если выиграю приз.
-            </p>
-          </div>
-          <button
-            type="button"
-            class="wheel-feed-toggle"
-            role="switch"
-            :aria-checked="wheelStore.feedConsent"
-            :disabled="wheelStore.isUpdatingConsent"
-            :class="{ 'wheel-feed-toggle--on': wheelStore.feedConsent }"
-            @click="onToggleFeedConsent"
-          >
-            <span class="wheel-feed-toggle__knob"></span>
-          </button>
-        </article>
-
-        <article class="wheel-feed-card">
-          <div class="wheel-feed-card__text">
             <h3 class="wheel-feed-card__title">Напоминания об отзывах</h3>
             <p class="wheel-feed-card__copy">
               Показывать подсказку оставить отзыв после покупки.
@@ -313,7 +293,6 @@ import router from "@/router";
 import { useUserStore } from "@/stores/user";
 import { useLoyaltyStore, type LoyaltySnapshotCategory } from "@/stores/loyalty";
 import { useWholesaleStore } from "@/stores/wholesale";
-import { useWheelStore } from "@/stores/wheel";
 import { getTelegramIdentity } from "@/utils/customerOrders";
 import LoyaltyBonusPopup from "@/components/LoyaltyBonusPopup.vue";
 import {
@@ -325,7 +304,6 @@ import { useCustomerOrders } from "@/composables/useCustomerOrders";
 const userStore = useUserStore();
 const loyaltyStore = useLoyaltyStore();
 const wholesaleStore = useWholesaleStore();
-const wheelStore = useWheelStore();
 const avatarError = ref(false);
 
 watch(
@@ -448,15 +426,6 @@ onMounted(async () => {
     userStore.fetchProfile(),
     loyaltyStore.fetchSnapshot(identity),
     fetchReviewPrompt().catch(() => undefined),
-    // Q6: load the consent flag so the toggle reflects the server
-    // state. Round 4 fix: previously this was skipped for wholesale
-    // customers, but the toggle is rendered for everyone (wholesale
-    // can win wheel prizes too via is_wholesale flag) — without the
-    // fetch the toggle shows "off" even if the server has consent=1,
-    // and a tap silently revokes it. Always load. Errors are
-    // swallowed because the toggle keeps the previous value (default
-    // "off") if the wheel API is briefly unavailable.
-    wheelStore.fetchState().catch(() => undefined),
   ]);
 });
 
@@ -485,22 +454,6 @@ async function onToggleAnonymousReviews() {
     console.warn("[profile] review anonymous preference update failed", error);
   } finally {
     isUpdatingReviewPrefs.value = false;
-  }
-}
-
-async function onToggleFeedConsent() {
-  // Round 4 best-practice: optimistic UI with rollback. Flip the
-  // local view first for snappy UX; if the request fails revert and
-  // surface the error in console — there is no toast surface on this
-  // page; the next refresh will reconcile.
-  const previous = wheelStore.feedConsent;
-  const next = !previous;
-  wheelStore.feedConsent = next;
-  try {
-    await wheelStore.setFeedConsent(next);
-  } catch (error) {
-    wheelStore.feedConsent = previous;
-    console.warn("[profile] feed-consent update failed", error);
   }
 }
 

@@ -4,11 +4,15 @@
       ref="cartBarRef"
       type="button"
       class="nav-top-cart"
-      :class="{ 'nav-top-cart--expanded': expandedVisual, 'nav-top-cart--bump': bumping }"
+      :class="{
+        'nav-top-cart--expanded': expandedVisual,
+        'nav-top-cart--bump': bumping,
+        'nav-top-cart--disabled': isCartEmpty,
+      }"
       data-navalivay-cart-bar
-      :aria-label="
-        expandedVisual ? 'Открыть корзину и оформить заказ' : 'Открыть корзину'
-      "
+      :disabled="isCartEmpty"
+      :aria-disabled="isCartEmpty"
+      :aria-label="cartAriaLabel"
       @click="goToCheckout"
     >
       <svg
@@ -108,10 +112,22 @@ const cartIconRef = ref<HTMLElement | null>(null);
 const {
   expandedVisual,
   arrivalTick,
+  totalItems,
   totalAmount,
   registerCartFlyTarget,
   syncExpandedVisualOnMount,
 } = useCartFlight();
+
+/** Пустая корзина: кнопка неактивна — оформлять нечего, и переход
+ *  на /checkout только показывал бы пустой экран. Считаем по
+ *  totalItems, а не по сумме: позиция с нулевой ценой — всё ещё
+ *  товар в корзине. */
+const isCartEmpty = computed(() => totalItems.value === 0);
+
+const cartAriaLabel = computed(() => {
+  if (isCartEmpty.value) return "Корзина пуста";
+  return expandedVisual.value ? "Открыть корзину и оформить заказ" : "Открыть корзину";
+});
 
 /** Сумма из настоящего состояния корзины. Копеек нет: 25.00 → «25»,
  *  целая часть выводится как есть (20 → «20», 20.5 → «20.5»). */
@@ -128,6 +144,10 @@ const isAdmin = computed(() => route.path.startsWith("/admin"));
 const isHomeRoute = computed(() => route.path === "/");
 
 function goToCheckout() {
+  // Двойная защита: disabled уже гасит клик, но кнопку можно
+  // активировать клавиатурой или программно — в пустой корзине не
+  // ведём на /checkout ни при каких условиях.
+  if (isCartEmpty.value) return;
   routerRef?.push("/checkout");
 }
 
@@ -223,6 +243,26 @@ onBeforeUnmount(() => {
 
 .nav-top-cart--expanded {
   min-width: 178px;
+}
+
+/* Пустая корзина: кнопка неактивна. Иконка приглушена, курсор и
+   отклики на наведение убраны — видно, что нажимать некуда.
+   Геометрия не меняется, панель не дёргается. */
+.nav-top-cart--disabled {
+  cursor: default;
+}
+
+.nav-top-cart--disabled .nav-top-cart__icon {
+  color: #080808;
+  opacity: 0.4;
+}
+
+.nav-top-cart--disabled::before {
+  opacity: 0;
+}
+
+.nav-top-cart--disabled::after {
+  animation: none;
 }
 
 .nav-top-cart__icon {

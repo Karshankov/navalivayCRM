@@ -556,14 +556,11 @@ describe("CheckoutView order flows", () => {
     const totalBefore = wrapper.find(".total-amount").text();
     const paymentSwitch = wrapper.find(".payment-switch input[role='switch']");
     expect(paymentSwitch.attributes("aria-checked")).toBe("false");
-    expect(wrapper.find(".total-payment-label").text()).toBe("Наличными");
-    expect(wrapper.find(".total-payment-slot").exists()).toBe(false);
-    expect(wrapper.find(".total-value-with-payment").classes()).not.toContain("total-value-with-payment--selected");
 
     await paymentSwitch.setValue(true);
     await flushPromises();
     expect(paymentSwitch.attributes("aria-checked")).toBe("true");
-    expect(wrapper.find(".total-payment-label").text()).toBe("Картой");
+    // Сумма итога не меняется при смене способа оплаты.
     expect(wrapper.find(".total-amount").text()).toBe(totalBefore);
 
     await wrapper.find(".submit-button").trigger("click");
@@ -571,6 +568,62 @@ describe("CheckoutView order flows", () => {
     await wrapper.find(".submit-button").trigger("click");
     await flushPromises();
     expect(submittedBody.payment_method).toBe("card");
+    wrapper.unmount();
+  });
+
+  it("показывает кэшбэк за заказ строкой над итогом", async () => {
+    const cartStore = useCartStore();
+    cartStore.replaceItemsFromOrder([{
+      productId: "p-cashback", title: "Cashback item", productTitle: "Cashback item",
+      groupName: "Liquids", priceRub: 79.8, quantity: 1, image: "/img/item.png",
+      variantId: null, variantName: null, groupId: "group-1", categoryId: "c_liquids_salt",
+    }]);
+
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith("/api/card-payment/status")) {
+        return createJsonResponse({ enabled: false });
+      }
+      if (url.startsWith("/api/loyalty/me")) {
+        return createJsonResponse({ found: false, categories: [] });
+      }
+      if (url.startsWith("/api/reviews/prompt")) {
+        return createJsonResponse({ show: false, reason: "nothing_to_review" });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    }));
+
+    const wrapper = mount(CheckoutView, {
+      global: {
+        stubs: {
+          MinDeliveryBanner: { template: "<div />" },
+          DeliveryConditionsBanner: { template: "<div />" },
+          CustomerModalShell: { template: "<div><slot /><slot name='footer' /></div>" },
+          LoyaltyBonusPopup: { template: "<div />" },
+        },
+      },
+    });
+
+    await flushPromises();
+
+    // Строка кэшбэка стоит выше «Итого».
+    const blocks = wrapper.findAll(".total-block");
+    const cashbackRow = blocks.find((b) => b.text().includes("Кэшбек за этот заказ"));
+    expect(cashbackRow).toBeDefined();
+    expect(blocks.indexOf(cashbackRow!)).toBeLessThan(
+      blocks.findIndex((b) => b.text().includes("Итого")),
+    );
+
+    // Сумма кэшбэка: идёт со знаком «+», с копейками и тем же
+    // классом, что итоговая сумма (та же жирность и кегль).
+    const amount = cashbackRow!.find(".total-amount--cashback");
+    expect(amount.exists()).toBe(true);
+    expect(amount.classes()).toContain("total-amount");
+    expect(amount.text()).toMatch(/^\+\d+,\d{2} BYN$|^\+\d+\.\d{2} BYN$/);
+    // Итог выводится без подписи способа оплаты.
+    expect(wrapper.text()).not.toContain("Наличными");
+    expect(wrapper.text()).not.toContain("Картой");
+
     wrapper.unmount();
   });
 
@@ -682,7 +735,6 @@ describe("CheckoutView order flows", () => {
     expect(paymentSwitch.attributes("aria-checked")).toBe("false");
     expect(wrapper.find(".payment-note__label").text()).toBe("Оплатить заказ картой");
     expect(wrapper.find(".payment-note__finance").exists()).toBe(true);
-    expect(wrapper.find(".total-payment-label").text()).toBe("Наличными");
     expect(wrapper.find(".payment-modal").exists()).toBe(false);
 
     // Дневной остаток 15 BYN меньше заказа 45 BYN — карта выбрать нельзя.
@@ -745,7 +797,6 @@ describe("CheckoutView order flows", () => {
     await flushPromises();
 
     expect(wrapper.find(".payment-note").exists()).toBe(false);
-    expect(wrapper.find(".total-payment-label").text()).toBe("Наличными");
     expect(wrapper.find(".payment-modal").exists()).toBe(false);
     wrapper.unmount();
   });
@@ -829,12 +880,10 @@ describe("CheckoutView order flows", () => {
     await paymentSwitch.setValue(true);
     await flushPromises();
     expect(paymentSwitch.attributes("aria-checked")).toBe("true");
-    expect(wrapper.find(".total-payment-label").text()).toBe("Картой");
 
     await paymentSwitch.setValue(false);
     await flushPromises();
     expect(paymentSwitch.attributes("aria-checked")).toBe("false");
-    expect(wrapper.find(".total-payment-label").text()).toBe("Наличными");
     wrapper.unmount();
   });
 
@@ -953,7 +1002,6 @@ describe("CheckoutView order flows", () => {
     releaseStatus?.();
     await flushPromises();
     expect(paymentSwitch.attributes("aria-checked")).toBe("true");
-    expect(wrapper.find(".total-payment-label").text()).toBe("Картой");
     expect(wrapper.find(".submit-button").attributes("disabled")).toBeUndefined();
     wrapper.unmount();
   });
@@ -2007,8 +2055,7 @@ describe("CheckoutView order flows", () => {
     await flushPromises();
     // Кнопка вместо блока «Есть промокод?»: ввод через модалку.
     expect(wrapper.find(".promo-open-btn").exists()).toBe(true);
-    await wrapper.find(".promo-open-btn").trigger("click");
-    await wrapper.find(".promo-input").setValue("WHOLESALEGIFT");
+    await wrapper.find(".promo-open-btn").trigger("click");    await wrapper.find(".promo-input").setValue("WHOLESALEGIFT");
     await wrapper.find(".promo-apply-btn").trigger("click");
     await flushPromises();
 
@@ -2023,8 +2070,8 @@ describe("CheckoutView order flows", () => {
     await wrapper.find(".promo-open-btn").trigger("click");
     await wrapper.find('[data-test="promo-modal-remove"]').trigger("click");
     await flushPromises();
-    // Код снят — кнопка снова «У меня есть промокод».
-    expect(wrapper.find(".promo-open-btn").text()).toContain("У меня есть промокод");
+    // Код снят — кнопка снова «Ввести промокод».
+    expect(wrapper.find(".promo-open-btn").text()).toContain("Ввести промокод");
     await wrapper.find(".promo-open-btn").trigger("click");
     await wrapper.find(".promo-input").setValue("REGULAR10");
     await wrapper.find(".promo-apply-btn").trigger("click");
@@ -2122,4 +2169,54 @@ describe("CheckoutView order flows", () => {
 
     wrapper.unmount();
   });
+
+  it("кнопки внизу стоят в один ряд: промокод слева, оформление справа", async () => {
+    const cartStore = useCartStore();
+    cartStore.replaceItemsFromOrder([{
+      productId: "p-row", title: "Row item", productTitle: "Row item",
+      groupName: "Liquids", priceRub: 30, quantity: 1, image: "/img/item.png",
+      variantId: null, variantName: null, groupId: "group-1", categoryId: "c_liquids_salt",
+    }]);
+
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith("/api/card-payment/status")) {
+        return createJsonResponse({ enabled: false });
+      }
+      if (url.startsWith("/api/loyalty/me")) {
+        return createJsonResponse({ found: false, categories: [] });
+      }
+      if (url.startsWith("/api/reviews/prompt")) {
+        return createJsonResponse({ show: false, reason: "nothing_to_review" });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    }));
+
+    const wrapper = mount(CheckoutView, {
+      global: {
+        stubs: {
+          MinDeliveryBanner: { template: "<div />" },
+          DeliveryConditionsBanner: { template: "<div />" },
+          CustomerModalShell: { template: "<div><slot /><slot name='footer' /></div>" },
+          LoyaltyBonusPopup: { template: "<div />" },
+        },
+      },
+    });
+
+    await flushPromises();
+
+    // Обе кнопки лежат в общем ряду .checkout-actions.
+    const actions = wrapper.find(".checkout-actions");
+    expect(actions.exists()).toBe(true);
+    const buttons = actions.findAll("button");
+    expect(buttons.length).toBe(2);
+    // Порядок в ряду: промокод первым (слева), оформление вторым.
+    expect(buttons[0].classes()).toContain("promo-open-btn");
+    expect(buttons[1].classes()).toContain("submit-button");
+    // Подпись промокода — короткая, влезает в половину ряда.
+    expect(buttons[0].text()).toContain("Ввести промокод");
+
+    wrapper.unmount();
+  });
 });
+

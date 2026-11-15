@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <nav
     ref="navRef"
     class="qnav"
@@ -10,7 +10,7 @@
     @pointercancel="onPointerUp"
   >
     <!-- Дорожка-карусель: viewport прячет горизонтальный скролл
-         страниц, но частицы взрыва летят свободно вверх. -->
+         страниц, чтобы страница карусели не выезжала за панель. -->
     <div class="qnav__viewport">
       <div
         class="qnav__track"
@@ -29,39 +29,19 @@
             class="qnav__category"
             :class="{ 'qnav__category--active': isActive(cat.slug) }"
             :data-wide="cat.wideIcon ? 'true' : undefined"
-            :style="{ '--particle': `url(${cat.particle})` }"
             :aria-label="cat.name"
-            @click="select(cat, $event)"
+            @click="select(cat)"
           >
             <span class="qnav__icon-pair" aria-hidden="true">
               <img class="qnav__icon-3d" :src="cat.icon" alt="" loading="lazy" decoding="async" />
             </span>
             <span class="qnav__label">{{ cat.name }}</span>
+            <!-- Красная заливка активной категории. -->
+            <span class="qnav__fill" aria-hidden="true"></span>
           </button>
         </div>
       </div>
     </div>
-
-    <!-- Взрыв частиц при активации: fixed-слой телепортируется в
-         body — панель и её dock имеют transform, который создаёт
-         containing block для fixed-потомков и уносит частицы за
-         экран. В body они позиционируются честно от viewport и
-         рендерятся поверх всех блоков. -->
-    <Teleport to="body">
-      <template v-if="burstActive">
-        <span
-          v-for="p in 12"
-          :key="`burst-${burstKey}-${p}`"
-          :class="`qnav-piece qnav-piece-${p - 1}`"
-          :style="{
-            left: `${burstOrigin.x - 6}px`,
-            top: `${burstOrigin.y - 9}px`,
-            '--particle': `url(${burstParticle})`,
-          }"
-          aria-hidden="true"
-        ></span>
-      </template>
-    </Teleport>
 
     <!-- Подсказка «есть ещё»: справа мерцающий градиент. -->
     <span
@@ -96,14 +76,14 @@ import { useRoute, useRouter } from "vue-router";
  * Подсказка справа — мерцающий градиент со стрелкой и лёгкий
  * «подёргивающийся» сдвиг дорожки; после первого свайпа исчезает.
  * Активная категория — красный градиент, иконка «загорается»,
- * взрыв частиц; свайп — следующий экран категорий.
+ * заливка перетекает от покинутой категории к выбранной; свайп —
+ * следующий экран категорий.
  */
 
 interface QuickNavItem {
   slug: string;
   name: string;
   icon: string;
-  particle: string;
   /** Широкая иконка (снюс) занимает больше колонки кнопки. */
   wideIcon?: boolean;
 }
@@ -112,12 +92,12 @@ interface QuickNavItem {
  *  Порядок: снюс на первой странице (третья кнопка), устройства
  *  открываются свайпом на второй. */
 const items: QuickNavItem[] = [
-  { slug: "zhidkosti", name: "Жидкости", icon: "/quicknav/liquids-icon.png", particle: "/quicknav/liquids-particle.png" },
-  { slug: "rashodniki", name: "Расходники", icon: "/quicknav/rashodniki-icon.png", particle: "/quicknav/rashodniki-particle.png" },
-  { slug: "snyus-i-plastiny", name: "Снюс", icon: "/quicknav/snus-icon.png", particle: "/quicknav/snus-particle.png", wideIcon: true },
-  { slug: "odnorazki", name: "Одноразки", icon: "/quicknav/disposable-icon.png", particle: "/quicknav/disposable-particle.png" },
-  { slug: "ustrojstva", name: "Устройства", icon: "/quicknav/ustrojstva-icon.png", particle: "/quicknav/ustrojstva-particle.png" },
-  { slug: "kalyanka", name: "Кальянка", icon: "/quicknav/hookah-icon.png", particle: "/quicknav/hookah-particle.png" },
+  { slug: "zhidkosti", name: "Жидкости", icon: "/quicknav/liquids-icon.png" },
+  { slug: "rashodniki", name: "Расходники", icon: "/quicknav/rashodniki-icon.png" },
+  { slug: "snyus-i-plastiny", name: "Снюс", icon: "/quicknav/snus-icon.png", wideIcon: true },
+  { slug: "odnorazki", name: "Одноразки", icon: "/quicknav/disposable-icon.png" },
+  { slug: "ustrojstva", name: "Устройства", icon: "/quicknav/ustrojstva-icon.png" },
+  { slug: "kalyanka", name: "Кальянка", icon: "/quicknav/hookah-icon.png" },
 ];
 
 const PER_PAGE = 3;
@@ -137,10 +117,6 @@ const emit = defineEmits<{
 
 const route = useRoute();
 const router = useRouter();
-
-/** Переключение той же кнопки — новый взрыв частиц. */
-const burstKey = ref(0);
-const lastActiveSlug = ref<string | null>(null);
 
 /** Текущая страница карусели (0 — первая тройка, 1 — вторая). */
 const page = ref(0);
@@ -233,55 +209,21 @@ function isActive(slug: string): boolean {
   return route.params.slug === slug;
 }
 
-/* ===== Взрыв частиц: fixed-слой поверх всего =====
-   Координаты старта снимаем с фактической позиции иконки
-   нажатой кнопки; частицы живут вне панели (её карусель
-   обрезает контент) и рендерятся поверх всех блоков. */
-const burstActive = ref(false);
-const burstOrigin = ref({ x: 0, y: 0 });
-const burstParticle = ref("");
-let burstTimer: ReturnType<typeof setTimeout> | null = null;
-const BURST_MS = 900;
-
-function launchBurst(cat: QuickNavItem, button: HTMLElement) {
-  if (prefersReducedMotion()) return;
-  let x = 19;
-  let y = 30;
-  try {
-    const rect = button.getBoundingClientRect();
-    if (rect.width > 0 || rect.height > 0) {
-      x = rect.left + 19;
-      y = rect.top + 30;
-    }
-  } catch {
-    /* измерить не удалось — стартуем из левого верхнего угла панели */
-  }
-  burstOrigin.value = { x, y };
-  burstParticle.value = cat.particle;
-  burstKey.value++;
-  burstActive.value = true;
-  if (burstTimer) clearTimeout(burstTimer);
-  burstTimer = setTimeout(() => {
-    burstActive.value = false;
-    burstTimer = null;
-  }, BURST_MS);
-}
-
-function select(cat: QuickNavItem, event?: MouseEvent) {
+/** Выбор категории: переключаем маршрут, заливка активной категории
+ *  включается сразу — без перетекания и летящей капсулы. */
+function select(cat: QuickNavItem) {
   haptic();
   // Любое взаимодействие с панелью гасит подсказку: tease-анимация
   // перебивает transform дорожки и ломает переход свайпа.
   teasing.value = false;
   teasingAnimating.value = false;
-  // Взрыв — от нажатой кнопки, всегда поверх.
-  if (event?.currentTarget instanceof HTMLElement) {
-    launchBurst(cat, event.currentTarget);
-  }
-  // Повторная активация той же категории — только эффект, без
+
+  // Повторная активация той же категории — только хаптика, без
   // перезагрузки контента.
   if (isActive(cat.slug)) {
     return;
   }
+
   emit("select", cat.slug);
   router.replace({ name: "category", params: { slug: cat.slug } });
 }
@@ -324,18 +266,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   timeoutHandles.forEach(clearTimeout);
-  if (burstTimer) clearTimeout(burstTimer);
 });
-
-// Отслеживаем смену активной категории (не через панель): взрыв
-// запускаем от иконки активной кнопки, если она на видимой странице.
-watch(
-  () => route.params.slug,
-  (slug) => {
-    lastActiveSlug.value = (slug as string) ?? null;
-  },
-  { immediate: true },
-);
 </script>
 
 <style scoped>
@@ -362,7 +293,7 @@ watch(
 }
 
 /* Обёртка дорожки: маскирует горизонтальный скролл страниц,
-   но прозрачна по вертикали для частиц. */
+   Плюс внешний вид панели (тень, скругление). */
 .qnav__viewport {
   overflow: hidden;
   position: relative;
@@ -445,19 +376,41 @@ watch(
   width: 100%;
   height: 100%;
   object-fit: contain;
-  transition:
-    filter 0.25s ease,
-    transform 0.25s cubic-bezier(0.2, 0.65, 0.3, 1);
+  transition: filter 0.25s ease, transform 0.25s ease;
 }
 
+/* ===== Активная категория: заливка =====
+   Красный градиент в подложке .qnav__fill: она лежит под иконкой и
+   подписью, поэтому цвет текста меняется независимо от заливки. */
 .qnav__category--active {
   color: #fff;
-  background: linear-gradient(110deg, #ff0505, #d40000 54%, #9b0000);
 }
 
+.qnav__fill {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  border-radius: 13px;
+  background: linear-gradient(110deg, #ff0505, #d40000 54%, #9b0000);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.qnav__category--active .qnav__fill {
+  opacity: 1;
+}
+
+/* Текст и иконка — над заливкой. */
+.qnav__icon-pair,
+.qnav__label {
+  position: relative;
+  z-index: 1;
+}
+
+/* Активная категория: красная заливка и подсвеченная иконка
+   включаются сразу при переключении, без анимации перетекания. */
 .qnav__category--active .qnav__icon-3d {
   filter: grayscale(1) brightness(2.6) contrast(0.65) drop-shadow(0 0 2px rgba(255, 255, 255, 0.7));
-  transform: scale(1.04);
 }
 
 /* Световой ореол вокруг активной иконки — мягкая пульсация. */
@@ -586,7 +539,7 @@ watch(
   background: #ff0505;
 }
 
-/* ===== Позиции кнопок (дальше — глобальные стили частиц) ===== */
+/* ===== Компактная раскладка на узких экранах ===== */
 @media (max-width: 360px) {
   .qnav {
     padding: 10px 5px 14px;
@@ -632,6 +585,11 @@ watch(
     transition: none;
   }
 
+  /* Заливка появляется сразу — движения у неё нет. */
+  .qnav__category--active .qnav__fill {
+    transition: none;
+  }
+
   .qnav__category--active .qnav__icon-pair::after {
     animation: none;
   }
@@ -647,52 +605,4 @@ watch(
 }
 </style>
 
-<style>
-/* ===== Глобальные стили взрыва частиц =====
-   Частицы телепортируются в body (Teleport) — вне scoped-стилей.
-   Fixed от viewport, поверх всех блоков (z-index 1000, как в демо). */
-.qnav-piece {
-  display: block;
-  position: fixed;
-  width: 12px;
-  height: 18px;
-  background: var(--particle) center/contain no-repeat;
-  opacity: 0;
-  pointer-events: none;
-  transform-origin: center;
-  z-index: 1000;
-  animation: qnav-burst-fall 0.85s linear both;
-}
 
-/* Траектории 12 частиц — дословно из демо. */
-.qnav-piece-0 { --launch: -190px; --x3: -66.0px; --y1: -60.6px; --y2: -18.2px; --y3: 91.0px;  --r: -58.5deg; }
-.qnav-piece-1 { --launch: -208px; --x3: -54.0px; --y1: -43.9px; --y2: -13.2px; --y3: 119.5px; --r: 45.9deg; }
-.qnav-piece-2 { --launch: -226px; --x3: -42.0px; --y1: -70.7px; --y2: -21.2px; --y3: 93.5px;  --r: -20.3deg; }
-.qnav-piece-3 { --launch: -244px; --x3: -30.0px; --y1: -36.2px; --y2: -10.9px; --y3: 98.7px;  --r: 1.4deg; }
-.qnav-piece-4 { --launch: -190px; --x3: -18.0px; --y1: -36.1px; --y2: -10.8px; --y3: 98.0px;  --r: 39.0deg; }
-.qnav-piece-5 { --launch: -208px; --x3: -6.0px;  --y1: -56.8px; --y2: -17.0px; --y3: 98.8px;  --r: 23.2deg; }
-.qnav-piece-6 { --launch: -226px; --x3: 6.0px;  --y1: -67.4px; --y2: -20.2px; --y3: 90.3px;  --r: 79.5deg; }
-.qnav-piece-7 { --launch: -244px; --x3: 18.0px; --y1: -62.9px; --y2: -18.9px; --y3: 103.6px; --r: -89.6deg; }
-.qnav-piece-8 { --launch: -190px; --x3: 30.0px; --y1: -73.3px; --y2: -22.0px; --y3: 103.5px; --r: -105.9deg; }
-.qnav-piece-9 { --launch: -208px; --x3: 42.0px; --y1: -38.9px; --y2: -11.7px; --y3: 123.9px; --r: 27.0deg; }
-.qnav-piece-10 { --launch: -226px; --x3: 54.0px; --y1: -67.3px; --y2: -20.2px; --y3: 119.2px; --r: 9.4deg; }
-.qnav-piece-11 { --launch: -244px; --x3: 66.0px; --y1: -73.9px; --y2: -22.2px; --y3: 105.1px; --r: 13.5deg; }
-
-@keyframes qnav-burst-fall {
-  0%   { opacity: 0;     transform: translate(0, 0) scale(0.45) rotate(0deg); }
-  10%  { opacity: 1;     transform: translate(calc(var(--x3) * 0.1), calc(var(--launch) * 0.085 + 2.5px)) scale(0.78) rotate(calc(var(--r) * 0.1)); }
-  20%  { opacity: 1;     transform: translate(calc(var(--x3) * 0.2), calc(var(--launch) * 0.17 + 10.1px)) scale(1) rotate(calc(var(--r) * 0.2)); }
-  35%  { opacity: 1;     transform: translate(calc(var(--x3) * 0.35), calc(var(--launch) * 0.2975 + 31px)) scale(1) rotate(calc(var(--r) * 0.35)); }
-  50%  { opacity: 1;     transform: translate(calc(var(--x3) * 0.5), calc(var(--launch) * 0.425 + 63.2px)) scale(1) rotate(calc(var(--r) * 0.5)); }
-  65%  { opacity: 1;     transform: translate(calc(var(--x3) * 0.65), calc(var(--launch) * 0.5525 + 106.8px)) scale(1) rotate(calc(var(--r) * 0.65)); }
-  80%  { opacity: 0.6;   transform: translate(calc(var(--x3) * 0.8), calc(var(--launch) * 0.68 + 162.6px)) scale(1) rotate(calc(var(--r) * 0.8)); }
-  100% { opacity: 0;     transform: translate(var(--x3), calc(var(--launch) * 0.85 + 231px)) scale(1) rotate(var(--r)); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .qnav-piece {
-    animation: none;
-    opacity: 0;
-  }
-}
-</style>

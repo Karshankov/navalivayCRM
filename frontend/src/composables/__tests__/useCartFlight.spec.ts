@@ -150,14 +150,68 @@ describe("useCartFlight + TopCartBar", () => {
     wrapper.unmount();
   });
 
-  it("клик по корзине ведёт на оформление заказа", async () => {
+  it("клик по корзине с товарами ведёт на оформление заказа", async () => {
     const wrapper = mount(TopCartBar, { props: { visible: true } });
+    useCartStore().addItem(makeProduct(), 1);
+    await wrapper.vm.$nextTick();
 
     await wrapper.find("[data-navalivay-cart-bar]").trigger("click");
     expect(routerPush).toHaveBeenCalledWith("/checkout");
 
     await wrapper.find(".nav-top-profile").trigger("click");
     expect(routerPush).toHaveBeenCalledWith("/profile");
+
+    // Композабл — модуль-синглтон: стор переживает пересоздание pinia
+    // между тестами, поэтому товар убираем за собой, иначе следующий
+    // тест увидит непустую корзину.
+    useCartStore().clearCart();
+    await wrapper.vm.$nextTick();
+
+    wrapper.unmount();
+  });
+
+  it("пустая корзина: кнопка неактивна и не ведёт на оформление", async () => {
+    const wrapper = mount(TopCartBar, { props: { visible: true } });
+    const cartButton = wrapper.find("[data-navalivay-cart-bar]");
+
+    // Пустая корзина: кнопка disabled, помечена для скринридера и
+    // приглушена — видно, что нажимать некуда.
+    expect(useCartStore().totalItems).toBe(0);
+    expect(cartButton.attributes("disabled")).toBeDefined();
+    expect(cartButton.attributes("aria-disabled")).toBe("true");
+    expect(cartButton.attributes("aria-label")).toBe("Корзина пуста");
+    expect(cartButton.classes()).toContain("nav-top-cart--disabled");
+
+    // Клик не уводит на /checkout.
+    await cartButton.trigger("click");
+    expect(routerPush).not.toHaveBeenCalledWith("/checkout");
+
+    // Появился товар — кнопка снова активна и ведёт на оформление.
+    useCartStore().addItem(makeProduct(), 1);
+    await wrapper.vm.$nextTick();
+    expect(cartButton.attributes("disabled")).toBeUndefined();
+    expect(cartButton.classes()).not.toContain("nav-top-cart--disabled");
+
+    await cartButton.trigger("click");
+    expect(routerPush).toHaveBeenCalledWith("/checkout");
+
+    wrapper.unmount();
+  });
+
+  it("удаление последнего товара снова блокирует кнопку корзины", async () => {
+    const wrapper = mount(TopCartBar, { props: { visible: true } });
+    const cartStore = useCartStore();
+    cartStore.addItem(makeProduct(), 1);
+    await wrapper.vm.$nextTick();
+
+    const cartButton = wrapper.find("[data-navalivay-cart-bar]");
+    expect(cartButton.attributes("disabled")).toBeUndefined();
+
+    cartStore.removeItem("p-1");
+    await wrapper.vm.$nextTick();
+
+    expect(cartButton.attributes("disabled")).toBeDefined();
+    expect(cartButton.attributes("aria-label")).toBe("Корзина пуста");
 
     wrapper.unmount();
   });

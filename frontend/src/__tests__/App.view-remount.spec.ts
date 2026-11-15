@@ -87,7 +87,6 @@ async function mountApp(router: Router, startAt: string) {
         VapeSmoke: true,
         BottomTabBar: true,
         ReviewPromptModal: true,
-        WheelHomeWidget: true,
         BlockedScreen: true,
         // Гейт авторизации закрывает витрину до ответа сервера. Открываем его,
         // иначе экраны покупателя вообще не смонтируются.
