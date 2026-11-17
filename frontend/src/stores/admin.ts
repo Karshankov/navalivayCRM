@@ -210,6 +210,19 @@ export interface CategoryGroup {
   averageCostAuto?: number | null
   directProductCount?: number
   productsWithCostCount?: number
+  /**
+   * Последняя цена, заданная на всю линейку. Пусто — цену линейкой не правили,
+   * у товаров могут быть свои цены.
+   */
+  linePrice?: number | null
+  /** Какие цены сейчас стоят у товаров линейки — для подсказки в форме. */
+  distinctPrices?: number[] | null
+  /** Сколько товаров линейки имеют цену (их и затронет выравнивание). */
+  pricedProductCount?: number
+  /** Цены скидок товаров линейки — по ним считаем риск при вводе цены. */
+  productDiscounts?: number[] | null
+  /** Сколько товаров обновилось при последнем сохранении цены. */
+  updatedProductCount?: number
   wholesalePrices?: Record<string, number | null>
   wholesaleTiers?: WholesaleTier[]
 }
@@ -373,6 +386,29 @@ export const useAdminStore = defineStore('admin', () => {
         return [String(code), Number(rawPrice)]
       }),
     )
+  }
+
+  /**
+   * Цена линейки: пустое значение означает «цену не задавали», а не ноль.
+   * Ноль здесь был бы опасен — он бы стёр цены всех товаров линейки.
+   */
+  function normalizeLinePrice(value: any): number | null {
+    if (value === null || value === undefined || value === '') {
+      return null
+    }
+    const numeric = Number(value)
+    return Number.isFinite(numeric) && numeric > 0 ? numeric : null
+  }
+
+  /** Список разных цен товаров линейки — для подсказки «сейчас 9, 15, 17». */
+  function normalizePriceList(value: any): number[] | null {
+    if (!Array.isArray(value)) {
+      return null
+    }
+    const prices = value
+      .map((item) => Number(item))
+      .filter((price) => Number.isFinite(price))
+    return prices
   }
 
   function normalizeMinStockThreshold(value: any): number | null {
@@ -1089,6 +1125,9 @@ async function createCategory(category: {
         totalStockSum: group.totalStockSum ?? group.stockSum ?? 0,
         emptySince: group.empty_since ?? null,
         averageCostAuto: group.averageCostAuto ?? group.average_cost_auto ?? null,
+        linePrice: normalizeLinePrice(group.linePrice ?? group.line_price),
+        productDiscounts: normalizePriceList(group.productDiscounts ?? group.product_discounts),
+        distinctPrices: normalizePriceList(group.distinctPrices ?? group.distinct_prices),
         directProductCount: Number(group.directProductCount ?? group.direct_product_count ?? group.productCount ?? 0),
         productsWithCostCount: Number(group.productsWithCostCount ?? group.products_with_cost_count ?? 0),
         wholesalePrices: normalizeWholesalePrices(group.wholesalePrices ?? group.wholesale_prices),
@@ -1186,6 +1225,9 @@ async function createCategory(category: {
         updatedAt: response.updatedAt,
         productCount: response.productCount ?? 0,
         averageCostAuto: response.averageCostAuto ?? response.average_cost_auto ?? null,
+        linePrice: normalizeLinePrice(response.linePrice ?? response.line_price),
+        productDiscounts: normalizePriceList(response.productDiscounts ?? response.product_discounts),
+        distinctPrices: normalizePriceList(response.distinctPrices ?? response.distinct_prices),
         directProductCount: Number(response.directProductCount ?? response.direct_product_count ?? response.productCount ?? 0),
         productsWithCostCount: Number(response.productsWithCostCount ?? response.products_with_cost_count ?? 0),
         wholesalePrices: normalizeWholesalePrices(response.wholesalePrices ?? response.wholesale_prices),
@@ -1290,6 +1332,9 @@ async function createCategory(category: {
         productCount: response.productCount ?? 0,
         totalProductCount: response.totalProductCount ?? response.productCount ?? 0,
         averageCostAuto: response.averageCostAuto ?? response.average_cost_auto ?? null,
+        linePrice: normalizeLinePrice(response.linePrice ?? response.line_price),
+        productDiscounts: normalizePriceList(response.productDiscounts ?? response.product_discounts),
+        distinctPrices: normalizePriceList(response.distinctPrices ?? response.distinct_prices),
         directProductCount: Number(response.directProductCount ?? response.direct_product_count ?? response.productCount ?? 0),
         productsWithCostCount: Number(response.productsWithCostCount ?? response.products_with_cost_count ?? 0),
         wholesalePrices: normalizeWholesalePrices(response.wholesalePrices ?? response.wholesale_prices),
@@ -1310,9 +1355,11 @@ async function createCategory(category: {
 
   async function updateCategoryGroup(
     id: string,
-    updates: Omit<Partial<CategoryGroup>, 'discount'> & {
+    updates: Omit<Partial<CategoryGroup>, 'discount' | 'linePrice'> & {
       newDays?: number
       discount?: { price: number | null; untilDate: string | null }
+      /** Пустая строка означает «цену не менять» — так сервер это и понимает. */
+      linePrice?: number | string
     },
   ) {
     try {
@@ -1341,6 +1388,9 @@ async function createCategory(category: {
       if ('newDays' in updates) body.newDays = updates.newDays
       if ('discount' in updates) body.discount = updates.discount
       if ('wholesalePrices' in updates) body.wholesalePrices = updates.wholesalePrices
+      // Цена линейки: ключ только при намеренном изменении. Пустая строка
+      // означает «не менять» и уходит как есть — сервер её так и понимает.
+      if ('linePrice' in updates) body.linePrice = updates.linePrice ?? ''
       if ('waiveDescription' in updates) body.waiveDescription = updates.waiveDescription
       if ('waiveMinStock' in updates) body.waiveMinStock = updates.waiveMinStock
       if ('waiveWholesale' in updates) body.waiveWholesale = updates.waiveWholesale
@@ -1389,6 +1439,9 @@ async function createCategory(category: {
         productCount: response.productCount ?? existing?.productCount ?? 0,
         totalProductCount: response.totalProductCount ?? response.productCount ?? existing?.totalProductCount ?? 0,
         averageCostAuto: response.averageCostAuto ?? response.average_cost_auto ?? existing?.averageCostAuto ?? null,
+        linePrice: normalizeLinePrice(response.linePrice ?? response.line_price ?? existing?.linePrice),
+        productDiscounts: normalizePriceList(response.productDiscounts ?? response.product_discounts) ?? existing?.productDiscounts,
+        distinctPrices: normalizePriceList(response.distinctPrices ?? response.distinct_prices) ?? existing?.distinctPrices,
         directProductCount: Number(response.directProductCount ?? response.direct_product_count ?? response.productCount ?? existing?.directProductCount ?? 0),
         productsWithCostCount: Number(response.productsWithCostCount ?? response.products_with_cost_count ?? existing?.productsWithCostCount ?? 0),
         wholesalePrices: normalizeWholesalePrices(response.wholesalePrices ?? response.wholesale_prices),

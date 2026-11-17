@@ -7,9 +7,12 @@
         <input
           v-model="searchQuery"
           type="search"
-          placeholder="Поиск по названию или slug..."
+          placeholder="Поиск по категориям и линейкам..."
           class="crm-ref-search-input"
-          aria-label="Поиск по категориям"
+          aria-label="Поиск по категориям и линейкам"
+          :aria-expanded="hasGroupResults"
+          aria-controls="crm-group-suggest"
+          autocomplete="off"
         />
         <svg
           v-if="!searchQuery"
@@ -26,6 +29,51 @@
             d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
           />
         </svg>
+
+        <!--
+          Найденные линейки. Показываем выпадающим списком прямо под полем:
+          продавец набирает «PODONKI» и сразу жмёт нужную строку, а список
+          категорий под ним остаётся на месте и не прыгает.
+        -->
+        <div v-if="hasGroupResults" id="crm-group-suggest" class="crm-ref-suggest" role="listbox">
+          <p class="crm-ref-suggest-head">
+            <span>Линейки</span>
+            <span class="crm-ref-suggest-count">{{ matchedGroups.length }}</span>
+          </p>
+          <div class="crm-ref-suggest-list">
+            <button
+              v-for="group in matchedGroups"
+              :key="group.id"
+              type="button"
+              class="crm-ref-suggest-item"
+              role="option"
+              :aria-selected="false"
+              @click="openGroup(group)"
+            >
+              <span class="crm-ref-suggest-mark" aria-hidden="true">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="1.9"
+                    d="M3.75 6A2.25 2.25 0 016 3.75h7.5A2.25 2.25 0 0115.75 6v1.5M3.75 6v12A2.25 2.25 0 006 20.25h4.5M3.75 6h12M9 9.75h9.75A2.25 2.25 0 0121 12v6.75a2.25 2.25 0 01-2.25 2.25H9a2.25 2.25 0 01-2.25-2.25V12A2.25 2.25 0 019 9.75z"
+                  />
+                </svg>
+              </span>
+              <span class="crm-ref-suggest-body">
+                <span class="crm-ref-suggest-name" v-html="highlight(group.name)" />
+                <span class="crm-ref-suggest-path">{{ categoryNameFor(group.categoryId) }}</span>
+              </span>
+              <span class="crm-ref-suggest-meta">
+                {{ group.productCount ?? 0 }} {{ pluralProducts(group.productCount ?? 0) }}
+              </span>
+            </button>
+          </div>
+          <p v-if="hasMoreGroups" class="crm-ref-suggest-foot">
+            Показаны первые {{ matchedGroups.length }} из {{ matchedGroupsTotal }} —
+            уточните запрос, если нужной линейки нет.
+          </p>
+        </div>
       </div>
     </div>
 
@@ -70,7 +118,7 @@
     </div>
 
     <!-- Сетка категорий -->
-    <div v-else-if="hasAnyCategories" class="grid gap-4 grid-cols-1 lg:grid-cols-2 xl:grid-cols-3">
+    <div v-if="hasAnyCategories" class="grid gap-4 grid-cols-1 lg:grid-cols-2 xl:grid-cols-3">
       <article
         v-for="category in displayedCategories"
         :key="category.id"
@@ -189,15 +237,17 @@
       </article>
     </div>
 
-    <!-- Пустые результаты поиска -->
-    <div v-else-if="searchQuery" class="crm-ref-card crm-ref-empty">
+    <!-- Пустые результаты поиска: показываем только если не нашлось ни
+         категорий, ни линеек — иначе сообщение противоречило бы списку выше. -->
+    <div v-if="searchQuery && !displayedCategories.length && !hasGroupResults" class="crm-ref-card crm-ref-empty">
       <span class="crm-ref-empty-symbol">⌕</span>
       <b>Ничего не нашлось</b>
-      <span>По запросу «{{ searchQuery }}» категорий нет. Проверьте написание.</span>
+      <span>По запросу «{{ searchQuery }}» нет ни категорий, ни линеек. Проверьте написание.</span>
     </div>
 
-    <!-- Совсем нет категорий -->
-    <div v-else class="crm-ref-card crm-ref-empty">
+    <!-- Совсем нет категорий: только когда нет и поискового запроса, иначе
+         предыдущий блок уже объяснил пустой результат. -->
+    <div v-if="!searchQuery && !hasAnyCategories && !isLoading" class="crm-ref-card crm-ref-empty">
       <span class="crm-ref-empty-symbol">
         <svg class="h-7 w-7" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" d="M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.567 3z" />
@@ -241,7 +291,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import type { Category } from '@/stores/admin'
+import type { Category, CategoryGroup as AdminCategoryGroup } from '@/stores/admin'
 
 const props = withDefaults(
   defineProps<{
@@ -249,8 +299,19 @@ const props = withDefaults(
     isLoading?: boolean
     groupCounts?: Record<string, number>
     crossSellCounts?: Record<string, number>
+    /**
+     * Все линейки: по ним ищет общий поиск. Держим полный список, а не
+     * только открытой категории — иначе «PODONKI» не находилось бы, пока
+     * не откроешь нужную категорию наугад.
+     */
+    groups?: AdminCategoryGroup[]
   }>(),
-  { isLoading: false, groupCounts: () => ({}), crossSellCounts: () => ({}) }
+  {
+    isLoading: false,
+    groupCounts: () => ({}),
+    crossSellCounts: () => ({}),
+    groups: () => [],
+  },
 )
 
 const emit = defineEmits<{
@@ -261,6 +322,7 @@ const emit = defineEmits<{
   (e: 'reorder', list: { id: string; order: number }[]): void
   (e: 'manage-groups', category: Category): void
   (e: 'manage-cross-sell', category: Category): void
+  (e: 'open-group', payload: { categoryId: string; groupId: string }): void
 }>()
 
 const localCategories = ref<Category[]>([])
@@ -278,6 +340,102 @@ const displayedCategories = computed(() => {
     return name.includes(query) || slug.includes(query)
   })
 })
+
+/**
+ * Линейки, подходящие под запрос.
+ *
+ * Показываем их списком под полем поиска: продавцу нужно «найти PODONKI и
+ * сразу открыть её», а не угадывать, в какой категории она лежит. Минимум два
+ * символа — иначе на одну букву всплывут сотни линеек и поиск станет бесполезным.
+ */
+const MIN_GROUP_QUERY_LENGTH = 2
+
+/** Сколько линеек показываем сразу. Остальное — по уточнению запроса. */
+const GROUP_RESULT_LIMIT = 30
+
+const matchedGroupsAll = computed(() => {
+  const query = searchQuery.value.trim().toLowerCase()
+  if (query.length < MIN_GROUP_QUERY_LENGTH) {
+    return []
+  }
+
+  return (props.groups || [])
+    .filter((group) => {
+      const name = (group.name || '').toLowerCase()
+      const slug = (group.slug || '').toLowerCase()
+      return name.includes(query) || slug.includes(query)
+    })
+    // Сначала те, где совпало с начала названия: «POD» → «PODONKI», а не
+    // «SUPER PODONKI» — так нужная линейка оказывается первой.
+    .sort((a, b) => {
+      const aStarts = (a.name || '').toLowerCase().startsWith(query) ? 0 : 1
+      const bStarts = (b.name || '').toLowerCase().startsWith(query) ? 0 : 1
+      if (aStarts !== bStarts) return aStarts - bStarts
+      return (a.name || '').localeCompare(b.name || '', 'ru')
+    })
+})
+
+const matchedGroups = computed(() => matchedGroupsAll.value.slice(0, GROUP_RESULT_LIMIT))
+const matchedGroupsTotal = computed(() => matchedGroupsAll.value.length)
+const hasMoreGroups = computed(() => matchedGroupsTotal.value > GROUP_RESULT_LIMIT)
+
+/**
+ * Подсвечивает совпавшую часть названия.
+ *
+ * Названия линеек приходят от продавцов, а `v-html` вставляет текст как
+ * разметку — значит всё, кроме собственного тега <mark>, надо экранировать,
+ * иначе название вроде «<img onerror=...>» выполнится в чужом браузере.
+ */
+function highlight(text: string): string {
+  const source = String(text ?? '')
+  const query = searchQuery.value.trim()
+
+  const escapeHtml = (value: string) =>
+    value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;')
+
+  if (query.length < MIN_GROUP_QUERY_LENGTH) {
+    return escapeHtml(source)
+  }
+
+  const at = source.toLowerCase().indexOf(query.toLowerCase())
+  if (at === -1) {
+    return escapeHtml(source)
+  }
+
+  return (
+    escapeHtml(source.slice(0, at)) +
+    '<mark>' +
+    escapeHtml(source.slice(at, at + query.length)) +
+    '</mark>' +
+    escapeHtml(source.slice(at + query.length))
+  )
+}
+
+/** Название категории для строки результата: где именно лежит линейка. */
+function categoryNameFor(categoryId: string): string {
+  const found = localCategories.value.find((cat) => cat.id === categoryId)
+  return found?.name || 'Без категории'
+}
+
+const hasGroupResults = computed(() => matchedGroups.value.length > 0)
+
+/** Склонение слова «товар» для счётчика рядом с линейкой. */
+function pluralProducts(count: number): string {
+  const mod10 = count % 10
+  const mod100 = count % 100
+  if (mod10 === 1 && mod100 !== 11) return 'товар'
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return 'товара'
+  return 'товаров'
+}
+
+function openGroup(group: AdminCategoryGroup) {
+  emit('open-group', { categoryId: group.categoryId, groupId: group.id })
+}
 
 watch(() => props.categories, (val) => {
   localCategories.value = Array.isArray(val) ? [...val] : []

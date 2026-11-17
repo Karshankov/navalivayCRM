@@ -206,6 +206,100 @@
       </div>
     </div>
 
+    <!--
+      Цена всей линейки. Вкусы — это отдельные товары, и со временем цены у них
+      разъезжаются (например 15 и 17). Править поштучно долго, поэтому цена
+      задаётся здесь и применяется ко всем товарам линейки сразу.
+    -->
+    <section class="crm-ref-lineprice" aria-labelledby="group-line-price-title">
+      <div class="crm-ref-lineprice-head">
+        <span class="crm-ref-lineprice-mark" aria-hidden="true">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="1.9"
+              d="M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.568 3z"
+            />
+          </svg>
+        </span>
+        <div class="crm-ref-lineprice-headtext">
+          <h3 id="group-line-price-title" class="crm-ref-lineprice-title">Цена линейки</h3>
+          <p class="crm-ref-lineprice-sub">
+            Одна цена сразу всем товарам линейки — поштучно править не нужно.
+          </p>
+        </div>
+        <div v-if="priceSpreadLabel" class="crm-ref-lineprice-spread">
+          <p class="crm-ref-lineprice-spread-label">Сейчас в линейке</p>
+          <p class="crm-ref-lineprice-spread-value">{{ priceSpreadLabel }}</p>
+        </div>
+      </div>
+
+      <div class="crm-ref-lineprice-row">
+        <div class="crm-ref-lineprice-field">
+          <label class="crm-ref-lineprice-label" for="group-line-price">
+            Новая цена, BYN
+          </label>
+          <div class="crm-ref-lineprice-inputwrap">
+            <input
+              id="group-line-price"
+              v-model="form.linePrice"
+              type="text"
+              inputmode="decimal"
+              autocomplete="off"
+              class="crm-ref-lineprice-input"
+              placeholder="Оставьте пустым"
+              :aria-describedby="'group-line-price-hint'"
+            />
+            <span class="crm-ref-lineprice-unit" aria-hidden="true">BYN</span>
+          </div>
+        </div>
+      </div>
+
+      <p id="group-line-price-hint" class="crm-ref-lineprice-hint">{{ linePriceHint }}</p>
+
+      <!--
+        Линейка-родитель без своих товаров: цена применится, но менять нечего.
+        Говорим прямо, иначе продавец решит, что выровнял всю линейку.
+      -->
+      <div v-if="linePriceUnapplied" class="crm-ref-lineprice-idle">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="1.9"
+            d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z"
+          />
+        </svg>
+        <p>
+          У этой линейки {{ hasChildGroups ? 'нет своих товаров — они в дочерних линейках' : 'пока нет товаров' }}.
+          Цена сохранится и применится, когда товары появятся.
+        </p>
+      </div>
+
+      <!--
+        Скидка хранит не процент, а готовую цену. Если поднять цену выше
+        скидки, скидка перестанет применяться — покупатель не переплатит, но
+        продавец должен узнать об этом до сохранения.
+      -->
+      <div v-if="discountsAtRiskCount > 0" class="crm-ref-lineprice-warn" role="status">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"
+          />
+        </svg>
+        <p>
+          У {{ discountsAtRiskCount }} {{ pluralProductsGenitive(discountsAtRiskCount) }}
+          есть скидка, которая станет невыгодной при такой цене. Она перестанет
+          применяться, а покупатель увидит обычную цену. Скидку можно поправить
+          в карточке товара.
+        </p>
+      </div>
+    </section>
+
     <div
       class="rounded-2xl border p-4 transition"
       :class="form.isNew
@@ -494,6 +588,21 @@ function parseDiscountPrice(value: string): number | null {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null
 }
 
+/**
+ * Цена линейки: возвращает число или пустую строку.
+ *
+ * Пустая строка — это «не менять цены товаров», а не ноль: ноль обнулил бы
+ * цены всей линейки. Некорректный ввод тоже уходит как пустое значение —
+ * сервер отклонит явный мусор, а мы не отправляем его вовсе.
+ */
+function parseLinePrice(value: string): number | string {
+  const raw = String(value ?? '').trim()
+  if (!raw) return ''
+
+  const parsed = Number(raw.replace(',', '.'))
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : ''
+}
+
 const DEFAULT_NEW_DAYS = 30
 const MAX_NEW_DAYS = 180
 
@@ -530,6 +639,16 @@ interface CategoryGroup {
   productsWithCostCount?: number
   wholesalePrices?: Record<string, number | null>
   wholesaleTiers?: WholesaleTier[]
+  /** Последняя цена, заданная на линейку целиком. */
+  linePrice?: number | null
+  /** Какие цены стоят у товаров сейчас — подсказка «сейчас 9, 15, 17». */
+  distinctPrices?: number[] | null
+  /** Сколько товаров линейки имеют цену. */
+  pricedProductCount?: number
+  /** Всего товаров в линейке — для подсказок и предупреждений. */
+  productCount?: number
+  /** Цены скидок товаров линейки — по ним считаем риск при вводе цены. */
+  productDiscounts?: number[] | null
 }
 
 interface WholesaleTier {
@@ -550,7 +669,7 @@ const props = withDefaults(defineProps<{ editingGroup?: CategoryGroup | null; is
 })
 
 const emit = defineEmits<{
-  (e: 'submit', payload: { name: string; coverImage?: string | null; hideEmpty?: boolean; parentId?: string | null; metaLabel?: string | null; metaValue?: string | null; minStockThreshold?: number | null; totalControl?: boolean; isNew?: boolean; newDays?: number; discount?: { price: number | null; untilDate: string | null }; wholesalePrices?: Record<string, number | null>; waiveDescription?: boolean; waiveMinStock?: boolean; waiveWholesale?: boolean; waiveStrengthTier?: boolean; strengthTier?: string | null; significanceMarkId?: string | null; posPublication?: PosPublicationValue }): void
+  (e: 'submit', payload: { name: string; coverImage?: string | null; hideEmpty?: boolean; parentId?: string | null; metaLabel?: string | null; metaValue?: string | null; minStockThreshold?: number | null; totalControl?: boolean; isNew?: boolean; newDays?: number; discount?: { price: number | null; untilDate: string | null }; wholesalePrices?: Record<string, number | null>; linePrice?: number | string; waiveDescription?: boolean; waiveMinStock?: boolean; waiveWholesale?: boolean; waiveStrengthTier?: boolean; strengthTier?: string | null; significanceMarkId?: string | null; posPublication?: PosPublicationValue }): void
   (e: 'cancel'): void
 }>()
 
@@ -624,6 +743,7 @@ const form = reactive({
   discountEnabled: false,
   discountPrice: '',
   discountUntil: '',
+  linePrice: '',
   waiveDescription: false,
   waiveMinStock: false,
   waiveWholesale: false,
@@ -721,6 +841,7 @@ watch(
       form.discountEnabled = Boolean(group.discount)
       form.discountPrice = group.discount ? String(group.discount.price) : ''
       form.discountUntil = group.discount?.untilDate ?? ''
+      form.linePrice = group.linePrice ? String(group.linePrice) : ''
       form.newDays = String(group.newDaysTotal && group.newDaysTotal > 0 ? group.newDaysTotal : DEFAULT_NEW_DAYS)
       form.waiveDescription = Boolean(group.waiveDescription)
       form.waiveMinStock = Boolean(group.waiveMinStock)
@@ -751,6 +872,7 @@ watch(
       form.discountEnabled = false
       form.discountPrice = ''
       form.discountUntil = ''
+      form.linePrice = ''
       form.waiveDescription = false
       form.waiveMinStock = false
       form.waiveWholesale = false
@@ -777,6 +899,129 @@ const basePriceLabel = computed(() => {
     ? `Сейчас продаётся по ${current.price} BYN`
     : `Прошлая скидка ${current.price} BYN уже не действует`
 })
+
+/** Что сейчас стоит у товаров линейки: «44 товара, цены 9, 15, 17». */
+const priceSpreadLabel = computed(() => {
+  const group = props.editingGroup
+  if (!group) return ''
+
+  const prices = Array.isArray(group.distinctPrices) ? group.distinctPrices : []
+  const count = Number(group.pricedProductCount ?? group.productCount ?? 0)
+
+  if (!prices.length) {
+    return count > 0 ? `${count} ${pluralProducts(count)}, цена не задана` : ''
+  }
+
+  const pricesText = prices.map((price) => formatPrice(price)).join(', ')
+  const pricesWord = pluralPrices(prices.length)
+  return `${pricesWord}: ${pricesText}`
+})
+
+/** Есть ли у линейки дочерние — тогда её товары лежат в них. */
+const hasChildGroups = computed(() =>
+  (props.availableGroups || []).some(
+    (candidate) => candidate.parentId === props.editingGroup?.id,
+  ),
+)
+
+/** Сколько товаров линейки затронет цена: свои товары, без дочерних. */
+const linePriceTargetCount = computed(() => {
+  const group = props.editingGroup
+  if (!group) return 0
+  return Number(group.pricedProductCount ?? group.productCount ?? 0)
+})
+
+/**
+ * Подсказка под полем. Показывает, что именно произойдёт при сохранении —
+ * иначе непонятно, применится цена сейчас или поле просто запомнится.
+ */
+const linePriceHint = computed(() => {
+  if (!form.linePrice.trim()) {
+    return 'Пусто — цены товаров не меняются. Так можно править остальные настройки линейки, не трогая цены.'
+  }
+
+  const parsed = Number(form.linePrice.replace(',', '.'))
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return 'Введите цену числом больше нуля.'
+  }
+
+  const count = linePriceTargetCount.value
+  if (count === 0) {
+    return `Цена ${formatPrice(parsed)} сохранится в настройках линейки.`
+  }
+
+  return `Цена ${formatPrice(parsed)} встанет всем ${count} ${pluralProducts(count)} этой линейки.`
+})
+
+/**
+ * Цена задана, но применять её не к чему: у линейки нет своих товаров.
+ * Показываем отдельной плашкой, чтобы продавец не ждал изменений впустую.
+ */
+const linePriceUnapplied = computed(() => {
+  const parsed = Number(form.linePrice.replace(',', '.'))
+  return Number.isFinite(parsed) && parsed > 0 && linePriceTargetCount.value === 0
+})
+
+/**
+ * Сколько товаров со скидкой пострадает от введённой цены.
+ *
+ * Скидка хранит готовую цену, а не процент: если она окажется не ниже новой
+ * цены, то перестанет применяться. Покупатель не переплатит — цена просто
+ * станет обычной, — но продавец должен узнать об этом до сохранения.
+ *
+ * Считаем на клиенте, а не на сервере: цена ещё набирается в поле, и
+ * предупреждение должно меняться сразу.
+ */
+const discountsAtRiskCount = computed(() => {
+  const raw = Number(form.linePrice.replace(',', '.'))
+  if (!Number.isFinite(raw) || raw <= 0) return 0
+
+  const group = props.editingGroup
+  if (!group) return 0
+
+  const productDiscounts = Array.isArray(group.productDiscounts) ? group.productDiscounts : []
+  const productCount = Number(group.pricedProductCount ?? group.productCount ?? 0)
+
+  // Скидка на всю линейку достаётся каждому её товару, поэтому она считается
+  // один раз на всю линейку, а не поштучно.
+  const groupDiscountPrice = group.discount?.active ? Number(group.discount.price) : null
+  const groupDiscountAtRisk =
+    groupDiscountPrice !== null && Number.isFinite(groupDiscountPrice) && groupDiscountPrice >= raw
+
+  if (groupDiscountAtRisk) {
+    return Math.max(productCount, productDiscounts.filter((price) => price >= raw).length)
+  }
+
+  return productDiscounts.filter((price) => price >= raw).length
+})
+
+function formatPrice(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(2)
+}
+
+function pluralProducts(count: number): string {
+  const mod10 = count % 10
+  const mod100 = count % 100
+  if (mod10 === 1 && mod100 !== 11) return 'товар'
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return 'товара'
+  return 'товаров'
+}
+
+/** Родительный падеж: «у 3 товаров есть скидка». */
+function pluralProductsGenitive(count: number): string {
+  const mod10 = count % 10
+  const mod100 = count % 100
+  if (mod10 === 1 && mod100 !== 11) return 'товара'
+  return 'товаров'
+}
+
+function pluralPrices(count: number): string {
+  const mod10 = count % 10
+  const mod100 = count % 100
+  if (mod10 === 1 && mod100 !== 11) return 'Сейчас 1 разная цена'
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return `Сейчас ${count} разные цены`
+  return `Сейчас ${count} разных цен`
+}
 
 /**
  * Дата из базы приходит как «2026-07-20 10:00:00», через пробел. Chrome такую
@@ -882,6 +1127,10 @@ function onSubmit() {
     // продлить текущую новинку или начать отсчёт заново.
     ...(form.isNew ? { newDays: parseNewDays(form.newDays) } : {}),
     wholesalePrices,
+    // Цена линейки уходит всегда: пустая строка значит «не менять цены», и
+    // сервер понимает это так же. Запятая как разделитель — привычная вводy
+    // на клавиатуре мака, поэтому принимаем и её.
+    linePrice: parseLinePrice(form.linePrice),
     waiveDescription: form.waiveDescription,
     waiveMinStock: form.waiveMinStock,
     waiveWholesale: form.waiveWholesale,

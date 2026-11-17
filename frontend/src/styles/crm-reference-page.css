@@ -251,6 +251,196 @@
 .crm-ref-modal-actions { display: flex; gap: 10px; margin-top: 20px; }
 .crm-ref-modal-actions > button { flex: 1; }
 
+/* ===== Поиск: найденные линейки под полем =====
+   Поиск ищет и категории, и линейки. Линейки показываем выпадающим списком
+   прямо под полем: продавец набирает «PODONKI» и сразу видит нужную строку,
+   а список категорий остаётся на месте. */
+.crm-ref-suggest {
+  position: absolute; z-index: 30;
+  top: calc(100% + 7px); left: 0; right: 0;
+  overflow: hidden;
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 18px 44px #0b2f6b26, 0 2px 8px #0b2f6b0f;
+}
+.crm-ref-suggest-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 12px 15px 9px;
+  color: #62769c; font-size: 10.5px; font-weight: 700;
+  letter-spacing: .14em; text-transform: uppercase;
+}
+.crm-ref-suggest-count {
+  display: inline-flex; align-items: center;
+  padding: 3px 8px; border-radius: 40px;
+  background: #e7f1ff; color: #1759ed;
+  font-size: 10.5px; font-weight: 800; letter-spacing: normal;
+}
+.crm-ref-suggest-list { max-height: 330px; overflow-y: auto; padding: 0 7px 7px; }
+.crm-ref-suggest-item {
+  display: flex; align-items: center; gap: 11px;
+  width: 100%; padding: 10px;
+  border: 0; border-radius: 11px;
+  background: transparent; color: inherit;
+  font: inherit; text-align: left; cursor: pointer;
+  transition: background-color .12s ease-out;
+}
+.crm-ref-suggest-item:hover { background: #f4f8fd; }
+.crm-ref-suggest-item:focus-visible { outline: 2px solid #0958ff; outline-offset: -2px; }
+.crm-ref-suggest-mark {
+  display: grid; place-items: center; flex-shrink: 0;
+  width: 34px; height: 34px;
+  border-radius: 10px;
+  background: linear-gradient(150deg, #eaf3ff, #dbe9ff);
+  color: #3568c4;
+}
+.crm-ref-suggest-mark > svg { width: 16px; height: 16px; }
+.crm-ref-suggest-body { min-width: 0; flex: 1; }
+.crm-ref-suggest-name {
+  display: block; overflow: hidden;
+  color: #081b4b; font-size: 13px; font-weight: 700; line-height: normal;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+.crm-ref-suggest-path {
+  display: block; overflow: hidden; margin-top: 3px;
+  color: #5d7099; font-size: 11.5px; font-weight: 600; line-height: normal;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+.crm-ref-suggest-name mark,
+.crm-ref-suggest-path mark {
+  padding: 0 1px; border-radius: 3px;
+  background: #d9ecff; color: #0a3f96;
+}
+.crm-ref-suggest-meta {
+  flex-shrink: 0;
+  padding: 5px 9px; border-radius: 40px;
+  background: #f0f4fa; color: #4a5f8c;
+  font-size: 11px; font-weight: 700; line-height: normal;
+  white-space: nowrap;
+}
+.crm-ref-suggest-foot {
+  padding: 9px 15px 11px;
+  border-top: 1px solid #eef3fa;
+  color: #9ba8c0; font-size: 11px; font-weight: 600; line-height: normal;
+}
+
+/* ===== Цена линейки (в настройках линейки) =====
+   Вкусы — отдельные товары, и цены у них со временем разъезжаются. Здесь
+   задаётся одна цена на всю линейку, поэтому блок отделён от прочих
+   настроек и сразу показывает, что именно изменится. */
+.crm-ref-lineprice {
+  padding: 17px 18px 16px;
+  border: 1px solid #dbe7f7; border-radius: 17px;
+  background: linear-gradient(168deg, #f7fbff, #eff5fd);
+}
+.crm-ref-lineprice-head {
+  display: flex; align-items: flex-start; gap: 12px;
+  margin-bottom: 15px;
+}
+.crm-ref-lineprice-mark {
+  display: grid; place-items: center; flex-shrink: 0;
+  width: 38px; height: 38px;
+  border-radius: 11px;
+  /* Градиент прописан значением, а не через var(--crm-ref-primary): форма
+     открывается в модалке без обёртки .crm-ref, где переменная не определена,
+     и фон иконки схлопывался в пустой квадрат. */
+  background: linear-gradient(100deg, #05b8ff, #185dff);
+  color: #ffffff;
+  box-shadow: 0 8px 17px #328aff40;
+}
+.crm-ref-lineprice-mark > svg { width: 18px; height: 18px; }
+.crm-ref-lineprice-headtext { min-width: 0; flex: 1; }
+.crm-ref-lineprice-title {
+  margin: 0; color: #081b4b;
+  font-size: 14px; font-weight: 750; line-height: normal; letter-spacing: -.01em;
+}
+.crm-ref-lineprice-sub {
+  margin: 5px 0 0; color: #5d7099;
+  font-size: 11.5px; font-weight: 500; line-height: 1.45;
+}
+.crm-ref-lineprice-spread {
+  flex-shrink: 0; text-align: right;
+}
+.crm-ref-lineprice-spread-label {
+  margin: 0; color: #8898b5;
+  font-size: 10px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase;
+}
+.crm-ref-lineprice-spread-value {
+  margin: 5px 0 0; color: #081b4b;
+  font-size: 13px; font-weight: 750; line-height: normal;
+}
+.crm-ref-lineprice-row {
+  display: flex; align-items: flex-end; flex-wrap: wrap; gap: 11px;
+}
+.crm-ref-lineprice-field { min-width: 168px; }
+.crm-ref-lineprice-label {
+  display: block; margin-bottom: 6px;
+  color: #253663; font-size: 11.5px; font-weight: 700; line-height: normal;
+}
+.crm-ref-lineprice-inputwrap { position: relative; }
+.crm-ref-lineprice-input {
+  display: block; width: 100%;
+  padding: 12px 52px 12px 15px;
+  border: 1px solid #dbe7f7; border-radius: 12px;
+  background: #ffffff; color: #081b4b;
+  font: inherit; font-size: 15px; font-weight: 700; line-height: normal;
+  caret-color: #0958ff;
+  transition: border-color .15s, box-shadow .15s;
+}
+.crm-ref-lineprice-input::placeholder {
+  color: #9ba8c0; font-size: 13px; font-weight: 500; opacity: 1;
+}
+.crm-ref-lineprice-input:focus-visible {
+  outline: none;
+  border-color: #9cc0ff;
+  box-shadow: 0 0 0 3px #0958ff26;
+}
+.crm-ref-lineprice-unit {
+  position: absolute; right: 15px; top: 50%;
+  transform: translateY(-50%);
+  color: #8898b5; font-size: 11px; font-weight: 800; letter-spacing: .08em;
+  pointer-events: none;
+}
+.crm-ref-lineprice-hint {
+  margin: 9px 0 0; color: #586c93;
+  font-size: 11.5px; font-weight: 500; line-height: 1.5;
+}
+/* Предупреждение о скидках: цена поднялась выше скидки — та перестанет работать. */
+.crm-ref-lineprice-warn {
+  display: flex; align-items: flex-start; gap: 10px;
+  margin-top: 13px; padding: 12px 14px;
+  border: 1px solid #ffe0b8; border-radius: 13px;
+  background: #fff8ec;
+}
+.crm-ref-lineprice-warn > svg {
+  width: 17px; height: 17px; flex-shrink: 0; margin-top: 1px;
+  color: #d98418;
+}
+.crm-ref-lineprice-warn p {
+  margin: 0; color: #8a5a12;
+  font-size: 11.5px; font-weight: 500; line-height: 1.5;
+}
+/* Линейка-родитель без своих товаров: менять нечего, говорим об этом прямо. */
+.crm-ref-lineprice-idle {
+  display: flex; align-items: flex-start; gap: 10px;
+  margin-top: 13px; padding: 12px 14px;
+  border: 1px solid #dbe7f7; border-radius: 13px;
+  background: #ffffffa8;
+}
+.crm-ref-lineprice-idle > svg {
+  width: 17px; height: 17px; flex-shrink: 0; margin-top: 1px;
+  color: #6b86b5;
+}
+.crm-ref-lineprice-idle p {
+  margin: 0; color: #5d7099;
+  font-size: 11.5px; font-weight: 500; line-height: 1.5;
+}
+
+@media (max-width: 700px) {
+  .crm-ref-lineprice-head { flex-wrap: wrap; }
+  .crm-ref-lineprice-spread { width: 100%; text-align: left; }
+  .crm-ref-lineprice-field { min-width: 0; flex: 1; }
+}
+
 /* ===== Адаптив ===== */
 @media (max-width: 700px) {
   .crm-ref-heading { display: block; }

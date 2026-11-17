@@ -46,6 +46,14 @@ import { syncGroupParking, syncParkingFromFlattened } from '../utils/group-parki
 import { invalidateRestockCache } from '../utils/restock-candidates.js';
 import { searchProductsForAdmin, searchProductsForCrm, syncProductSearchIndex } from '../services/product-search-service.js';
 import { bumpCatalogRevision } from '../utils/catalog-revision.js';
+import {
+  applyLinePrice,
+  getBulkGroupLinePrices,
+  getGroupLinePrice,
+  getGroupProductDiscountPrices,
+  getGroupPriceSpread,
+  normalizeLinePrice,
+} from '../utils/line-price.js';
 import { resolveFirstImageThumbnail } from '../services/image-thumbnail-service.js';
 import {
   COMPLETENESS_FIELD_LABELS,
@@ -247,6 +255,7 @@ function enrichAdminCategoryGroups(groups) {
   const groupIds = normalizedGroups.map((group) => String(group.id || '')).filter(Boolean);
   const priceMapByGroup = getBulkGroupWholesalePrices(groupIds);
   const costStatsByGroup = getBulkGroupAverageCostStats(groupIds);
+  const linePriceByGroup = getBulkGroupLinePrices(groupIds);
   const wholesaleTiers = buildWholesaleTiersPayload();
   // Публикация на кассу возвращается вместе со списком, иначе менеджер не
   // увидит, что линейка уже выставлена на заблокированный экран.
@@ -263,6 +272,7 @@ function enrichAdminCategoryGroups(groups) {
       direct_product_count: costStats?.directProductCount ?? Number(group.productCount ?? 0),
       products_with_cost_count: costStats?.productsWithCostCount ?? 0,
       wholesale_tiers: wholesaleTiers,
+      line_price: linePriceByGroup.get(groupId) ?? null,
     };
   });
 }
@@ -274,6 +284,7 @@ function enrichAdminCategoryGroup(group) {
 
   const costStats = getGroupAverageCostStats(group.id);
   const wholesaleTiers = buildWholesaleTiersPayload();
+  const priceSpread = getGroupPriceSpread(group.id);
   return {
     ...attachPosPublications('group', [group])[0],
     discount: getDiscountRecord('group', group.id),
@@ -287,6 +298,14 @@ function enrichAdminCategoryGroup(group) {
     waive_wholesale: Number(group.waive_wholesale ?? 0),
     strength_tier: group.strength_tier ?? null,
     waive_strength_tier: Number(group.waive_strength_tier ?? 0),
+    // Цена линейки и разнобой по товарам: форма показывает, сколько разных
+    // цен сейчас и сколько товаров затронет выравнивание.
+    line_price: getGroupLinePrice(group.id),
+    distinct_prices: priceSpread.distinctPrices,
+    priced_product_count: priceSpread.productCount,
+    // Скидки товаров линейки. Риск считается в форме под введённую цену —
+    // заранее неизвестно, какое число введёт продавец.
+    product_discounts: getGroupProductDiscountPrices(group.id),
   };
 }
 
@@ -3380,6 +3399,21 @@ adminRouter.put('/api/admin/category-groups/:id', authMiddleware, async (req, re
     }
   }
 
+  // Цену линейки разбираем до транзакции: отказ по кривому числу должен
+  // случиться раньше, чем начнём менять цены товаров.
+  const linePriceProvided = 'linePrice' in (req.body || {}) || 'line_price' in (req.body || {});
+  let nextLinePrice = null;
+  if (linePriceProvided) {
+    try {
+      nextLinePrice = normalizeLinePrice(req.body.linePrice ?? req.body.line_price);
+    } catch (error) {
+      if (error.code === 'invalid_line_price') {
+        return res.status(400).json({ error: 'invalid_line_price', message: error.message });
+      }
+      throw error;
+    }
+  }
+
   // Своя обёртка: общий catch ниже переводит любую ошибку булева в
   // invalid_total_control, и кривой is_new вернул бы ошибку про чужое поле.
   let nextNewBadge;
@@ -3528,6 +3562,10 @@ adminRouter.put('/api/admin/category-groups/:id', authMiddleware, async (req, re
     return Number.isFinite(n) && n > 0 ? Math.trunc(n) : null;
   })();
 
+  // Сколько товаров затронула новая цена линейки. Считается внутри транзакции,
+  // чтобы ответ содержал настоящее число, а не предположение.
+  let updatedProductCount = 0;
+
   // Пометка значимости: как у остальных полей — только явная передача ключа
   // (включая null для снятия), иначе текущее значение не трогаем.
   const significanceMarkProvided =
@@ -3609,6 +3647,12 @@ adminRouter.put('/api/admin/category-groups/:id', authMiddleware, async (req, re
         saveGroupWholesalePrices(id, wholesalePrices ?? wholesale_prices ?? {});
       }
 
+      // Цена линейки: одно значение на все товары группы. Оптовые цены и
+      // история заказов не затрагиваются — они хранятся отдельно.
+      if (linePriceProvided && nextLinePrice !== null) {
+        updatedProductCount = applyLinePrice(id, nextLinePrice);
+      }
+
       if (req.body?.pos_publication !== undefined || req.body?.posPublication !== undefined) {
         savePosPublication('group', id, req.body.pos_publication ?? req.body.posPublication);
       }
@@ -3678,10 +3722,16 @@ adminRouter.put('/api/admin/category-groups/:id', authMiddleware, async (req, re
   `).get(id);
 
   refreshProductSearchIndex('category group update');
+  // Ревизия витрины: цена изменилась, клиентский кэш каталога должен устареть,
+  // иначе mini app покажет старые цены до ручной перезагрузки.
+  if (linePriceProvided && nextLinePrice !== null) {
+    bumpCatalogRevision(db, 'group line price');
+  }
   return res.json(enrichAdminCategoryGroup({
     ...updated,
     productCount: Number(updated.productCount ?? 0),
-    totalProductCount: Number(totalRow?.total ?? updated.productCount ?? 0)
+    totalProductCount: Number(totalRow?.total ?? updated.productCount ?? 0),
+    updatedProductCount,
   }));
 });
 

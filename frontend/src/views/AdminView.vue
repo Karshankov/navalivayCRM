@@ -491,6 +491,7 @@
                 :isLoading="adminStore.isLoading"
                 :group-counts="groupCounts"
                 :cross-sell-counts="crossSellCounts"
+                :groups="searchableGroups"
                 @create="handleCreateCategory"
                 @edit="handleEditCategory"
                 @delete="handleDeleteCategory"
@@ -498,6 +499,7 @@
                 @manage-wholesale-links="openWholesaleLinksModal"
                 @manage-groups="handleManageGroups"
                 @manage-cross-sell="handleManageCrossSell"
+                @open-group="handleOpenIncompleteGroup"
               />
             </div>
           </template>
@@ -1106,6 +1108,7 @@
       @close="closeGroupForm"
     >
       <AdminCategoryGroupForm
+        :key="groupFormRenderKey"
         :editing-group="editingGroup || undefined"
         :is-submitting="groupFormSubmitting"
         :available-groups="groupFormOptions"
@@ -1425,6 +1428,11 @@ const groupFormCategoryId = ref<string | null>(null)
 type CategoryGroupWithDepth = CategoryGroup & { depth: number }
 
 const editingGroup = ref<CategoryGroup | null>(null)
+/**
+ * Ключ пересоздания формы линейки. Меняется, когда после открытия окна
+ * догружаются детали линейки: форма набирает значения заново из новых данных.
+ */
+const groupFormRenderKey = ref(0)
 const editableGroups = ref<CategoryGroupWithDepth[]>([])
 const groupModalRef = ref<InstanceType<typeof AdminModal> | null>(null)
 const savedGroupModalScrollTop = ref(0)
@@ -1980,6 +1988,15 @@ const groupCounts = computed<Record<string, number>>(() => {
   })
   return counts
 })
+
+/**
+ * Все линейки для поиска во вкладке «Категории».
+ *
+ * Хранилище уже держит полный список: при входе в раздел линейки грузятся
+ * целиком, а сохранение одной категории лишь дополняет список. Поэтому
+ * отдельный запрос не нужен — поиск работает сразу.
+ */
+const searchableGroups = computed(() => adminStore.categoryGroups || [])
 
 const crossSellCounts = computed<Record<string, number>>(() => {
   const result: Record<string, number> = {}
@@ -2872,13 +2889,50 @@ function openGroupForm(group?: (CategoryGroup & { depth?: number }) | null, cate
     savedGroupModalScrollTop.value = scrollContainer.scrollTop
   }
   showGroupModal.value = false
+  showGroupFormModal.value = true
   editingGroup.value = group
     ? {
         ...group,
         wholesalePrices: { ...(group.wholesalePrices || {}) },
       }
     : null
-  showGroupFormModal.value = true
+  // Линейку приносят из списка, а там нет ни цены линейки, ни скидок её
+  // товаров, ни разнобоя цен. Догружаем их и показываем форму заново.
+  // Подменяем окно целиком (через key), а не поля: подмена полей затирала бы
+  // то, что продавец уже успел ввести, пока шёл запрос.
+  if (group?.id) {
+    void loadGroupFormDetails(group.id, group)
+  }
+}
+
+async function loadGroupFormDetails(groupId: string, fallback: CategoryGroup) {
+  let details: CategoryGroup | null = null
+  try {
+    details = await adminStore.fetchCategoryGroup(groupId)
+  } catch (error) {
+    // Цена линейки — подсказка, а не сама правка: без неё окно работает,
+    // поэтому показываем то, что уже есть, и молчим об ошибке.
+    console.error('Failed to load group details:', error)
+  }
+
+  // Пока грузились детали, продавец мог закрыть окно или открыть другую
+  // линейку — тогда ответ уже неактуален.
+  if (!details || editingGroup.value?.id !== groupId) {
+    return
+  }
+
+  const scrollContainer = groupModalRef.value?.scrollContainer
+  if (scrollContainer) {
+    savedGroupModalScrollTop.value = scrollContainer.scrollTop
+  }
+
+  editingGroup.value = {
+    ...fallback,
+    ...details,
+  }
+  // Пересоздаём окно, чтобы поля взяли новые значения. Заодно сбрасываются
+  // несохранённые правки, поэтому и нужен свежий key.
+  groupFormRenderKey.value += 1
 }
 
 function closeGroupForm() {
@@ -2917,7 +2971,19 @@ async function reloadProductsAfterDiscount() {
   })
 }
 
-async function handleGroupFormSubmit(payload: { name: string; slug?: string; coverImage?: string | null; hideEmpty?: boolean; parentId?: string | null; metaLabel?: string | null; metaValue?: string | null; minStockThreshold?: number | null; totalControl?: boolean; isNew?: boolean; newDays?: number; discount?: { price: number | null; untilDate: string | null }; wholesalePrices?: Record<string, number | null>; waiveDescription?: boolean; waiveMinStock?: boolean; waiveWholesale?: boolean; waiveStrengthTier?: boolean; strengthTier?: string | null; significanceMarkId?: string | null; posPublication?: any }) {
+/**
+ * Склонение слова «товар» для сообщения о числе затронутых товаров:
+ * «цена встала 1 товару», «44 товарам».
+ */
+function pluralProducts(count: number): string {
+  const mod10 = count % 10
+  const mod100 = count % 100
+  if (mod10 === 1 && mod100 !== 11) return 'товару'
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return 'товарам'
+  return 'товарам'
+}
+
+async function handleGroupFormSubmit(payload: { name: string; slug?: string; coverImage?: string | null; hideEmpty?: boolean; parentId?: string | null; metaLabel?: string | null; metaValue?: string | null; minStockThreshold?: number | null; totalControl?: boolean; isNew?: boolean; newDays?: number; discount?: { price: number | null; untilDate: string | null }; wholesalePrices?: Record<string, number | null>; linePrice?: number | string; waiveDescription?: boolean; waiveMinStock?: boolean; waiveWholesale?: boolean; waiveStrengthTier?: boolean; strengthTier?: string | null; significanceMarkId?: string | null; posPublication?: any }) {
   const categoryId = groupFormCategoryId.value || activeGroupCategory.value?.id || null
   if (!categoryId) {
     showToast('Сначала выберите категорию', 'error')
@@ -2934,7 +3000,7 @@ async function handleGroupFormSubmit(payload: { name: string; slug?: string; cov
   groupFormSubmitting.value = true
   try {
     if (editingGroup.value) {
-      await adminStore.updateCategoryGroup(editingGroup.value.id!, {
+      const updated = await adminStore.updateCategoryGroup(editingGroup.value.id!, {
         name: payload.name,
         slug: payload.slug,
         coverImage: payload.coverImage ?? null,
@@ -2948,6 +3014,7 @@ async function handleGroupFormSubmit(payload: { name: string; slug?: string; cov
         ...(payload.newDays !== undefined ? { newDays: payload.newDays } : {}),
         ...(payload.discount !== undefined ? { discount: payload.discount } : {}),
         wholesalePrices: payload.wholesalePrices ?? {},
+        linePrice: payload.linePrice,
         waiveDescription: payload.waiveDescription,
         waiveMinStock: payload.waiveMinStock,
         waiveWholesale: payload.waiveWholesale,
@@ -2956,7 +3023,15 @@ async function handleGroupFormSubmit(payload: { name: string; slug?: string; cov
         significanceMarkId: payload.significanceMarkId ?? null,
         posPublication: payload.posPublication,
       })
-      showToast('Линейка обновлена', 'success')
+      // Если цену линейки меняли — показываем, сколько товаров это затронуло.
+      // Иначе непонятно, применилось изменение или просто сохранилось.
+      const touched = Number(updated?.updatedProductCount ?? 0)
+      showToast(
+        touched > 0
+          ? `Линейка обновлена, цена встала ${touched} ${pluralProducts(touched)}`
+          : 'Линейка обновлена',
+        'success',
+      )
     } else {
       await adminStore.createCategoryGroup({
         categoryId,
