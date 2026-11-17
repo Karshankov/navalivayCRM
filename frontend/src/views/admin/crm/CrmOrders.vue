@@ -257,6 +257,25 @@
             </span>
           </button>
         <span class="crm-orders-toolbar-spacer" aria-hidden="true" />
+
+          <!--
+            Состояние канала обновления. Раньше его не было видно, и о том,
+            что живой канбан отвалился, можно было узнать только по устаревшей
+            доске. Теперь состояние видно всегда, а клик форсирует проверку.
+          -->
+          <button
+            v-if="autoRefreshEnabled"
+            type="button"
+            class="crm-channel-status"
+            :class="`crm-channel-status--${realtimeChannel}`"
+            :title="realtimeChannelHint"
+            :aria-label="realtimeChannelHint"
+            @click="deferClick(() => reviveRealtime())"
+          >
+            <span class="crm-channel-status__dot" aria-hidden="true" />
+            <span class="crm-channel-status__text">{{ realtimeChannelLabel }}</span>
+          </button>
+
           <!-- Обновить -->
           <CrmButton
             class="crm-reference-button crm-reference-button--gray"
@@ -2796,6 +2815,40 @@ const newOrderHighlight = ref(false);
 // Local unseenOrderIds synced with store
 const unseenOrderIds = computed(() => storeUnseenOrderIds.value);
 
+/**
+ * Состояние канала обновления канбана. Живой канал обновляет доску за пару
+ * секунд, запасной — раз в 15 секунд, а без сети не обновляет вовсе. Разница
+ * для работы существенная, поэтому состояние показываем прямо в шапке.
+ */
+const realtimeChannel = computed(() => crmStore.realtimeChannel);
+
+const realtimeChannelLabel = computed(() => {
+  switch (realtimeChannel.value) {
+    case "live":
+      return "Живьём";
+    case "offline":
+      return "Нет сети";
+    default:
+      return "Раз в 15 сек";
+  }
+});
+
+const realtimeChannelHint = computed(() => {
+  switch (realtimeChannel.value) {
+    case "live":
+      return "Обновляется мгновенно. Нажмите, чтобы проверить связь";
+    case "offline":
+      return "Нет подключения к интернету — доска не обновляется";
+    default:
+      return "Мгновенное обновление недоступно, доска обновляется раз в 15 секунд. Нажмите, чтобы попробовать снова";
+  }
+});
+
+/** Ручная проверка канала: клик по индикатору не ждёт сторожа. */
+async function reviveRealtime() {
+  await refreshOrders({ skipNotify: true });
+}
+
 const notificationsSupported =
   typeof window !== "undefined" && "Notification" in window;
 
@@ -4212,5 +4265,58 @@ async function confirmCancelOrder() {
   .issue-payment-total strong { font-size: 27px; }
   .issue-payment-actions { flex-direction: column-reverse; align-items: stretch; }
   .issue-payment-actions button { width: 100%; }
+}
+
+/* Состояние канала обновления канбана.
+   Цвет — единственный сигнал, который читается боковым зрением, поэтому он
+   разный для трёх состояний; текст поясняет словами. */
+.crm-channel-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 6px 10px;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  color: #6b7280;
+  cursor: pointer;
+  transition: background-color .15s ease, border-color .15s ease;
+}
+.crm-channel-status:hover { background: #f9fafb; border-color: #d1d5db; }
+.crm-channel-status__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #9ca3af;
+  flex-shrink: 0;
+}
+.crm-channel-status--live { border-color: #a7f3d0; background: #ecfdf5; color: #047857; }
+.crm-channel-status--live .crm-channel-status__dot {
+  background: #10b981;
+  /* Живой канал слегка пульсирует: по одному цвету не отличить его от
+     «запасного режима», когда смотришь на доску, а не на индикатор. */
+  animation: crm-channel-pulse 2s ease-in-out infinite;
+}
+.crm-channel-status--polling { border-color: #fde68a; background: #fffbeb; color: #b45309; }
+.crm-channel-status--polling .crm-channel-status__dot { background: #f59e0b; }
+.crm-channel-status--offline { border-color: #fecaca; background: #fef2f2; color: #b91c1c; }
+.crm-channel-status--offline .crm-channel-status__dot { background: #ef4444; }
+
+@keyframes crm-channel-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .45; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .crm-channel-status--live .crm-channel-status__dot { animation: none; }
+}
+@media (max-width: 640px) {
+  /* На узком экране место дорого: текст убираем, состояние читается по цвету
+     и подсказке при нажатии. */
+  .crm-channel-status__text { display: none; }
+  .crm-channel-status { padding: 6px 8px; }
 }
 </style>

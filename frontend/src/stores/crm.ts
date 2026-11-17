@@ -2445,6 +2445,31 @@ export const useCrmStore = defineStore("crm", () => {
   let realtimeReconnectAttempt = 0;
   let realtimeStoppedByUser = false;
   const REALTIME_BACKOFF_MS = [5000, 10000, 20000];
+  /**
+   * Редкий интервал для попыток после того, как быстрый backoff исчерпан.
+   * Раньше на этом месте система сдавалась навсегда: если мак поспал или
+   * пропал Wi-Fi, SSE больше не пробовался до перезагрузки страницы, и доска
+   * тихо застывала. Теперь пробуем и дальше — редко, но бесконечно.
+   */
+  const REALTIME_RETRY_MS = 300000;
+  /** Когда последний раз пришёл любой признак жизни канала (событие или ping). */
+  let realtimeLastSignalAt = 0;
+  /** Сторож живости канала: молчание дольше порога считается обрывом. */
+  let realtimeWatchdogTimer: ReturnType<typeof setInterval> | null = null;
+  /**
+   * Сколько молчание считается нормой. Сервер шлёт `: ping` каждые несколько
+   * секунд (crm-events-hub.js), поэтому минута тишины — это уже обрыв, а не
+   * «просто заказов нет». Раньше отличить одно от другого было нельзя.
+   *
+   * Берём чуть меньше двух тиков сторожа (он ходит раз в 30 секунд), чтобы
+   * реакция наступала на втором тике, а не на третьем: сигнал, пришедший в
+   * середине интервала, иначе сдвигал бы переподключение на лишние полминуты.
+   */
+  const REALTIME_SILENCE_LIMIT_MS = 55000;
+  /** Видимый статус канала: по нему понятно, живёт доска или нет. */
+  const realtimeChannel = ref<'live' | 'polling' | 'offline'>('polling');
+  /** Когда приложения не было видно: после долгой паузы канал переподключаем. */
+  let hiddenSince: number | null = null;
 
   function stopRealtime() {
     realtimeStoppedByUser = true;
@@ -2452,6 +2477,7 @@ export const useCrmStore = defineStore("crm", () => {
       clearTimeout(realtimeReconnectTimer);
       realtimeReconnectTimer = null;
     }
+    stopRealtimeWatchdog();
     if (realtimeEventSource) {
       // close() без onerror-обработки: сначала отключаем колбэки.
       realtimeEventSource.onmessage = null;
@@ -2459,24 +2485,101 @@ export const useCrmStore = defineStore("crm", () => {
       realtimeEventSource.close();
       realtimeEventSource = null;
     }
+    realtimeChannel.value = 'polling';
+  }
+
+  /**
+   * Сторож живости. Пока он молчит, «поток порван» и «заказов нет» выглядят
+   * одинаково, и доска может стоять часами. Проверяем раз в 30 секунд: если
+   * от сервера не было ни события, ни keepalive-пинга дольше минуты — канал
+   * считаем мёртвым и поднимаем заново.
+   */
+  function stopRealtimeWatchdog() {
+    if (realtimeWatchdogTimer) {
+      clearInterval(realtimeWatchdogTimer);
+      realtimeWatchdogTimer = null;
+    }
+  }
+
+  function startRealtimeWatchdog() {
+    if (realtimeWatchdogTimer) return;
+    realtimeWatchdogTimer = setInterval(() => {
+      if (realtimeStoppedByUser) return;
+      // Пока окна не видно, браузер может душить таймеры и сеть — не считаем
+      // это обрывом: отдельная проверка сработает при возврате к окну.
+      if (typeof document !== 'undefined' && document.hidden) return;
+
+      if (realtimeEventSource) {
+        const silentFor = Date.now() - realtimeLastSignalAt;
+        // Сравнение нестрогое: на ровном пороге молчание уже считается
+        // обрывом, иначе реакция сдвигается на целый лишний тик (30 секунд).
+        if (silentFor >= REALTIME_SILENCE_LIMIT_MS) {
+          console.warn(
+            `[CRM] SSE молчит ${Math.round(silentFor / 1000)} с — переподключаюсь`,
+          );
+          // Закрываем и просим новый тикет: старый уже потрачен, а
+          // EventSource сам реконнектится именно с ним и получает 401.
+          const dead = realtimeEventSource;
+          realtimeEventSource = null;
+          dead.onmessage = null;
+          dead.onerror = null;
+          dead.close();
+          scheduleRealtimeReconnect();
+        }
+        return;
+      }
+
+      // Потока нет — например, предыдущие попытки не удались и мы ушли
+      // в запасной режим. Пробуем вернуть живой канал.
+      scheduleRealtimeReconnect();
+    }, 30000);
   }
 
   function scheduleRealtimeReconnect() {
     if (realtimeStoppedByUser || realtimeEventSource) return;
-    if (realtimeReconnectAttempt >= REALTIME_BACKOFF_MS.length) {
-      // SSE недоступен (прокси не настроен, сервер старой версии) —
-      // работаем как раньше: обычный polling.
-      console.warn("[CRM] SSE unavailable, falling back to polling");
-      stopPolling();
-      startPolling();
-      return;
-    }
-    const delay = REALTIME_BACKOFF_MS[realtimeReconnectAttempt];
+    if (realtimeReconnectTimer) return;
+
+    // Быстрый backoff для первых попыток; дальше — редкий, но бесконечный.
+    // Раньше после третьей неудачи система сдавалась навсегда, и застывшая
+    // доска оставалась такой до перезагрузки страницы.
+    const delay =
+      realtimeReconnectAttempt < REALTIME_BACKOFF_MS.length
+        ? REALTIME_BACKOFF_MS[realtimeReconnectAttempt]
+        : REALTIME_RETRY_MS;
     realtimeReconnectAttempt += 1;
     realtimeReconnectTimer = setTimeout(() => {
       realtimeReconnectTimer = null;
       void connectRealtime();
     }, delay);
+  }
+
+  /**
+   * Немедленная проверка канала — вызывается, когда условия могли измениться:
+   * вернулась сеть, окно снова показалось, компьютер проснулся.
+   */
+  function reviveRealtimeIfStale(reason: string) {
+    if (realtimeStoppedByUser) return;
+    if (!realtimeEventSource) {
+      // Запасной режим: пробуем вернуть живой поток, не дожидаясь таймера.
+      if (realtimeReconnectTimer) {
+        clearTimeout(realtimeReconnectTimer);
+        realtimeReconnectTimer = null;
+      }
+      realtimeReconnectAttempt = 0;
+      void connectRealtime();
+      return;
+    }
+    const silentFor = Date.now() - realtimeLastSignalAt;
+    if (silentFor > REALTIME_SILENCE_LIMIT_MS) {
+      console.info(`[CRM] канал мог оборваться (${reason}) — переподключаюсь`);
+      const stale = realtimeEventSource;
+      realtimeEventSource = null;
+      stale.onmessage = null;
+      stale.onerror = null;
+      stale.close();
+      realtimeReconnectAttempt = 0;
+      void connectRealtime();
+    }
   }
 
   async function connectRealtime() {
@@ -2510,6 +2613,8 @@ export const useCrmStore = defineStore("crm", () => {
 
     source.addEventListener("summary", (event) => {
       try {
+        // Любое полученное событие — признак живого канала для сторожа.
+        realtimeLastSignalAt = Date.now();
         const summary = JSON.parse((event as MessageEvent).data) as OrderPollSummary;
         applyOrderPollSummary(summary);
         // Живой канал подтверждён: polling больше не нужен.
@@ -2520,8 +2625,17 @@ export const useCrmStore = defineStore("crm", () => {
       }
     });
 
+    // Сервер шлёт комментарий-keepalive `: ping`. Браузер не отдаёт его в
+    // addEventListener, но наличие трафика продлевает жизнь соединению — и
+    // с точки зрения сети поток остаётся живым.
+    source.addEventListener("ping", () => {
+      realtimeLastSignalAt = Date.now();
+    });
+
     source.onopen = () => {
       realtimeReconnectAttempt = 0;
+      realtimeLastSignalAt = Date.now();
+      realtimeChannel.value = 'live';
     };
 
     source.onerror = () => {
@@ -2530,6 +2644,13 @@ export const useCrmStore = defineStore("crm", () => {
       if (realtimeEventSource === source) {
         realtimeEventSource = null;
         source.close();
+        // Пока поток не поднялся, страховка — обычный polling. Раньше он
+        // выключался первым же событием и при обрыве доска оставалась немой.
+        startPolling();
+        realtimeChannel.value =
+          typeof navigator !== 'undefined' && navigator.onLine === false
+            ? 'offline'
+            : 'polling';
         scheduleRealtimeReconnect();
       }
     };
@@ -2548,10 +2669,52 @@ export const useCrmStore = defineStore("crm", () => {
     if (realtimeEventSource) return; // уже подключено
     realtimeStoppedByUser = false;
     realtimeReconnectAttempt = 0;
+    // Отсчёт тишины начинаем с этого момента: иначе разница с нулевым
+    // значением выглядит как «молчит очень давно», и сторож паникует ещё
+    // до первого соединения.
+    realtimeLastSignalAt = Date.now();
+    registerRealtimeRevivalListeners();
+    // Сторож нужен и до первого соединения: если поток не поднялся вовсе,
+    // он подтолкнёт переподключение, а не будет ждать вечно.
+    startRealtimeWatchdog();
     // Страховка на время подключения: пока SSE не подтверждён первым
     // сообщением, polling продолжает работать (stopPolling вызывается из
     // обработчика summary). Полностью остановим его после коннекта.
     void connectRealtime();
+  }
+
+  /**
+   * Возврат канала в строй по внешним признакам. Без этого после сна мака или
+   * пропажи Wi-Fi живой канбан умирал молча — и оживал только при перезагрузке.
+   */
+  let realtimeListenersRegistered = false;
+  function registerRealtimeRevivalListeners() {
+    if (realtimeListenersRegistered || typeof window === 'undefined') return;
+    realtimeListenersRegistered = true;
+
+    window.addEventListener('online', () => {
+      realtimeChannel.value = 'polling';
+      reviveRealtimeIfStale('вернулась сеть');
+    });
+
+    window.addEventListener('offline', () => {
+      // Канал заведомо мёртв — показываем это честно, а не «всё хорошо».
+      realtimeChannel.value = 'offline';
+    });
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        hiddenSince = Date.now();
+        return;
+      }
+      const awayFor = hiddenSince ? Date.now() - hiddenSince : 0;
+      hiddenSince = null;
+      // Пока окна не было, браузер мог придавить таймеры и сеть: после
+      // заметной паузы проверяем канал, не дожидаясь сторожа.
+      if (awayFor > REALTIME_SILENCE_LIMIT_MS) {
+        reviveRealtimeIfStale('окно вернулось после паузы');
+      }
+    });
   }
 
   function markOrderAsSeen(orderId: string) {
@@ -6468,6 +6631,8 @@ export const useCrmStore = defineStore("crm", () => {
     stopPolling,
     startRealtime,
     stopRealtime,
+    /** Видимый статус канала обновления: живьём / запасной режим / нет сети. */
+    realtimeChannel,
     subscribeOrderActivity,
     checkForNewOrders,
     checkForActionRequired,
