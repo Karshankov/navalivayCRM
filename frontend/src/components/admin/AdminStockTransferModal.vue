@@ -123,6 +123,18 @@
         <div class="flex-none border-b border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-gray-900">
           {{ positionsLabel(activeTransfer.items?.length || 0) }} · {{ Number(activeTransfer.total_quantity || 0) }} шт
         </div>
+        <!-- Линейки, представленные в заявке полностью. Видно сразу, что это
+             комплект: кладовщик забирает всё, а не пересчитывает витрину. -->
+        <div
+          v-for="group in detailsWholeLineGroups"
+          :key="group.id"
+          data-test="transfer-details-whole-line"
+          class="flex flex-none flex-wrap items-center gap-x-2 gap-y-1 border-b border-emerald-200 bg-emerald-50 px-4 py-2.5 text-xs text-emerald-900"
+        >
+          <span class="font-bold uppercase tracking-wide">Вся линейка</span>
+          <span class="font-semibold">{{ group.name }}</span>
+          <span class="text-emerald-700">· {{ positionsLabel(group.positions) }} · {{ group.quantity }} шт</span>
+        </div>
         <div class="transfer-scroll min-h-0 flex-1 divide-y divide-gray-100 overflow-y-auto">
           <div v-for="item in activeTransfer.items" :key="item.id" class="flex items-center justify-between gap-4 px-4 py-3 text-sm">
             <div class="flex min-w-0 items-center gap-3">
@@ -252,6 +264,29 @@
             {{ group.name }}
           </button>
         </div>
+        <!-- Линейка добавлена целиком: кладовщик забирает комплект, а не
+             пересчитывает витрину. Забираем все позиции линейки, у которых есть
+             остаток в источнике; нулевые сервер всё равно отклонит. -->
+        <div
+          v-if="selectedGroupId"
+          class="flex flex-col gap-2 rounded-xl border border-dashed border-gray-300 bg-gray-50/70 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <p class="text-xs text-gray-600">
+            Нужна вся линейка? Добавим все позиции с остатком сразу, количество = остатку.
+          </p>
+          <button
+            type="button"
+            data-test="transfer-add-whole-line"
+            class="min-h-[36px] flex-shrink-0 rounded-lg border border-brand-dark bg-white px-3 py-1.5 text-xs font-semibold text-brand-dark transition hover:bg-brand-dark hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+            :disabled="submitting || addingWholeLine"
+            @click="addWholeLine"
+          >
+            {{ addingWholeLine ? 'Добавляем…' : 'Добавить всю линейку' }}
+          </button>
+        </div>
+        <p v-if="wholeLineError" data-test="transfer-whole-line-error" class="text-xs text-red-600" role="alert">
+          {{ wholeLineError }}
+        </p>
         <!-- Список тянется за нижний край: три позиции в окне заявки мало,
              а фиксированная высота заставляла листать прокрутку в прокрутке. -->
         <div
@@ -323,6 +358,18 @@
         </div>
         <div v-if="!selectedItems.length" class="px-4 py-8 text-center text-sm text-gray-500">Добавьте товары из списка выше</div>
         <div v-else class="overflow-x-auto">
+          <!-- Заголовки линеек, добавленных целиком: кладовщик видит, что это
+               комплект, и не пересчитывает витрину. -->
+          <div
+            v-for="[, meta] in wholeLineLabels"
+            :key="meta.name"
+            data-test="transfer-whole-line-banner"
+            class="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-emerald-200 bg-emerald-50 px-4 py-2.5 text-xs text-emerald-900"
+          >
+            <span class="font-bold uppercase tracking-wide">Вся линейка</span>
+            <span class="font-semibold">{{ meta.name }}</span>
+            <span class="text-emerald-700">· {{ positionsLabel(meta.positions) }} · {{ meta.quantity }} шт</span>
+          </div>
           <table class="w-full min-w-[560px] table-fixed text-sm">
             <thead class="border-b border-gray-100 text-left text-xs uppercase text-gray-500">
               <tr><th class="w-[280px] px-4 py-3">Товар</th><th class="w-[90px] px-4 py-3">Доступно</th><th class="w-[120px] px-4 py-3">Количество</th><th class="w-[70px] px-4 py-3"></th></tr>
@@ -466,6 +513,8 @@ interface InventoryItem {
   product_id?: string
   title: string
   category_name?: string | null
+  /** Линейка позиции: по ней собирается «вся линейка» и заголовок в заявке. */
+  groupId?: string | null
   group_name?: string | null
   is_variant?: boolean
   image?: string | null
@@ -480,6 +529,8 @@ interface SelectedItem {
   variantId: string | null
   title: string
   categoryName: string | null
+  /** id линейки: по нему позиции группируются под заголовком «Вся линейка». */
+  groupId: string | null
   groupName: string | null
   image: string | null
   available: number
@@ -512,6 +563,7 @@ interface StockTransfer {
     product_title: string
     variant_name?: string | null
     category_name?: string | null
+    group_id?: string | null
     group_name?: string | null
     product_image?: string | null
     quantity: number
@@ -530,6 +582,7 @@ interface TransferSeedItem {
   variantId: string | null
   title: string
   categoryName?: string | null
+  groupId?: string | null
   groupName?: string | null
   image?: string | null
   /** Доступно в источнике (для направления склад → розница это склад). */
@@ -571,8 +624,33 @@ const sourceLocation = ref<Location>('retail')
 const destinationLocation = computed<Location>(() => sourceLocation.value === 'retail' ? 'warehouse' : 'retail')
 const comment = ref('')
 const search = ref('')
+/**
+ * Линейка, добавленная целиком: какие позиции в неё входили и сколько их было.
+ * `keys` — «отпечаток» линейки: по нему видно, что из заявки ничего не убрали.
+ */
+interface WholeLineMeta {
+  name: string
+  keys: string[]
+  positions: number
+  quantity: number
+}
+
 const selectedGroupId = ref('')
 const sourceGroups = ref<Array<{ id: string; name: string }>>([])
+/**
+ * Линейки, которые в форме добавлены целиком: id → состав и итог.
+ * Нужны для заголовка «Вся линейка …» над позициями. Живут только в форме:
+ * в заявке заголовок пересчитывается из состава, а не хранится флагом.
+ */
+const wholeLineGroups = ref(new Map<string, WholeLineMeta>())
+/** Идёт добавление всей линейки: кнопка показывает загрузку и блокируется. */
+const addingWholeLine = ref(false)
+const wholeLineError = ref('')
+/**
+ * Состав линеек открытой заявки: groupId → ключи позиций, по которым в точке
+ * отправления есть остаток. Нужен, чтобы отличить полный комплект от выборки.
+ */
+const detailsGroupComposition = ref(new Map<string, string[]>())
 const editingTransferId = ref('')
 const editingTransferNumber = ref(0)
 const originalQuantities = ref(new Map<string, number>())
@@ -647,6 +725,65 @@ let detailsRequestId = 0
 let transfersRequestId = 0
 
 const totalQuantity = computed(() => selectedItems.value.reduce((sum, item) => sum + item.quantity, 0))
+/**
+ * Линейки в форме, добавленные целиком: id → подпись для заголовка.
+ * Показываем над позициями, чтобы в заявке было видно — это комплект, а не
+ * выборка, и кладовщику не нужно пересчитывать витрину.
+ */
+const wholeLineLabels = computed(() => wholeLineGroups.value)
+
+/**
+ * Линейки в сохранённой заявке, добавленные полностью.
+ *
+ * «Полная» — когда заявка накрывает линейку целиком: в ней есть все позиции,
+ * по которым в точке отправления был остаток. Точный факт нажатия кнопки не
+ * хранится, и хранить его не нужно: перемещение не резервирует остатки, поэтому
+ * комплект определяется по составу. Убрали позицию из черновика — заголовок
+ * исчезнет, и кладовщик не подумает, что несёт всю линейку.
+ *
+ * Состав линейки берём из поиска по group_id при открытии заявки
+ * (detailsGroupComposition). Остатка на момент создания в снапшоте нет, поэтому
+ * сверяемся с текущим: позиция, которую уже развезли, из сравнения выпадет и
+ * полноту не сломает — она и так не могла попасть в заявку.
+ */
+const detailsWholeLineGroups = computed(() => {
+  const transfer = activeTransfer.value
+  if (!transfer?.items?.length) return []
+  const byGroup = new Map<string, { name: string; positions: number; quantity: number }>()
+  for (const item of transfer.items) {
+    const key = item.group_id || item.group_name || ''
+    if (!key) continue
+    const entry = byGroup.get(key) || { name: item.group_name || 'Линейка', positions: 0, quantity: 0 }
+    entry.positions += 1
+    entry.quantity += Number(item.quantity || 0)
+    byGroup.set(key, entry)
+  }
+  const result: Array<{ id: string; name: string; positions: number; quantity: number }> = []
+  for (const [id, meta] of byGroup) {
+    const composition = detailsGroupComposition.value.get(id)
+    // Состав линейки ещё не подгрузился: молчим, чтобы не показать заголовок
+    // на неполной заявке. Как только он придёт, заголовок появится.
+    if (!composition) continue
+    const inTransfer = new Set(
+      transfer.items
+        .filter((item) => (item.group_id || item.group_name || '') === id)
+        // Ключ должен совпадать с тем, что строит loadDetailsGroupComposition
+        // и itemKey: иначе варианты не сопоставятся и линейка вечно «неполная».
+        .map((item) => `${item.product_id}:${item.variant_id || ''}`),
+    )
+    // Сверяем в обе стороны. Одного «все остатки заявки покрыты» мало:
+    //   • если линейка в заявке БОЛЬШЕ, чем есть остатков (часть уже развезли),
+    //     проверка в одну сторону пропустила бы лишние позиции;
+    //   • если остатков не осталось вовсе, composition пуст, и every() на пустом
+    //     массиве дал бы true — заголовок повис бы на любой заявке.
+    // Полный комплект — это ровно совпадающие наборы.
+    if (inTransfer.size !== composition.length) continue
+    const covered = composition.every((key) => inTransfer.has(key))
+    if (!covered) continue
+    result.push({ id, ...meta })
+  }
+  return result
+})
 /** Позиция без остатка в точке отправления: сервер такую заявку не примет. */
 const hasEmptyItems = computed(() => selectedItems.value.some((item) => item.available <= 0))
 /**
@@ -799,6 +936,7 @@ async function openDetails(id: string) {
   invalidateTransferLoads()
   const currentRequest = ++detailsRequestId
   failedImageIds.value = new Set()
+  detailsGroupComposition.value = new Map()
   actionMessage.value = ''
   errorMessage.value = ''
   detailError.value = ''
@@ -808,6 +946,9 @@ async function openDetails(id: string) {
     if (currentRequest !== detailsRequestId) return
     activeTransfer.value = transfer
     view.value = 'details'
+    // Состав линеек догружаем фоном: он нужен только для заголовка «Вся
+    // линейка», и если запрос не пройдёт, заявка всё равно откроется.
+    void loadDetailsGroupComposition(transfer, currentRequest)
   } catch (error) {
     if (currentRequest !== detailsRequestId) return
     console.error('[inventory] Failed to load transfer', error)
@@ -818,6 +959,35 @@ async function openDetails(id: string) {
   } finally {
     if (currentRequest === detailsRequestId) openingTransferId.value = ''
   }
+}
+
+/**
+ * Состав линеек открытой заявки — чтобы понять, добавлена линейка целиком или
+ * частично. Ошибка здесь не критична: без состава заголовок просто не покажется,
+ * а сама заявка останется доступной.
+ */
+async function loadDetailsGroupComposition(transfer: StockTransfer, request: number) {
+  const location = transfer.source_location
+  const groupIds = [
+    ...new Set((transfer.items || []).map((item) => item.group_id).filter(Boolean)),
+  ] as string[]
+  if (!groupIds.length) return
+  const next = new Map<string, string[]>()
+  await Promise.all(groupIds.map(async (groupId) => {
+    try {
+      const data = await adminStore.fetchInventoryItems({ location, groupId, limit: 200 })
+      const keys = (Array.isArray(data) ? data : [])
+        .filter((item) => Number(item.available_stock || 0) > 0)
+        // Формат обязан совпадать с itemKey(): иначе заявка никогда не будет
+        // признана полным комплектом.
+        .map((item) => itemKey(item))
+      next.set(groupId, keys)
+    } catch (error) {
+      console.error('[inventory] Failed to load group composition', error)
+    }
+  }))
+  if (request !== detailsRequestId) return
+  detailsGroupComposition.value = next
 }
 
 async function loadItems() {
@@ -872,6 +1042,8 @@ function toggleGroup(groupId: string) {
   const next = selectedGroupId.value === groupId ? '' : groupId
   if (next === selectedGroupId.value) return
   selectedGroupId.value = next
+  // Ошибка относилась к прежней линейке — не переносим её на новую.
+  wholeLineError.value = ''
   void loadItems()
 }
 
@@ -892,6 +1064,7 @@ function addItem(item: InventoryItem) {
     variantId: item.is_variant ? String(item.id) : null,
     title: item.title,
     categoryName: item.category_name || null,
+    groupId: item.groupId || null,
     groupName: item.group_name || null,
     image: item.image || null,
     available,
@@ -903,17 +1076,160 @@ function decreaseResultItem(item: InventoryItem) {
   const existing = selectedItem(item)
   if (!existing) return
   if (existing.quantity <= 1) removeItem(existing.key)
-  else existing.quantity -= 1
+  else {
+    existing.quantity -= 1
+    syncWholeLineGroups()
+  }
+}
+
+/**
+ * Линейка целиком: забираем все её позиции, у которых есть остаток в точке
+ * отправления, и ставим количество равным остатку. Смысл — человек, который
+ * физически несёт товар, не пересчитывает витрину, а забирает линейку всю.
+ *
+ * Нулевые остатки не берём: сервер такую заявку отклонит (insufficient_stock),
+ * а кладовщику всё равно нечего нести. Уже добавленные позиции не дублируем —
+ * поднимаем количество до полного остатка.
+ */
+async function addWholeLine() {
+  const groupId = selectedGroupId.value
+  if (!groupId || addingWholeLine.value || submitting.value) return
+  const group = sourceGroups.value.find((entry) => entry.id === groupId)
+  const groupName = group?.name || 'линейка'
+  addingWholeLine.value = true
+  wholeLineError.value = ''
+  try {
+    const data = await adminStore.fetchInventoryItems({
+      location: sourceLocation.value,
+      groupId,
+      limit: 200,
+    })
+    const available = (Array.isArray(data) ? data : [])
+      .filter((item) => Number(item.available_stock || 0) > 0)
+    if (!available.length) {
+      wholeLineError.value = `В линейке «${groupName}» нет остатков ${locationIn(sourceLocation.value)} — перемещать нечего.`
+      return
+    }
+    let positions = 0
+    let quantity = 0
+    const keys: string[] = []
+    for (const item of available) {
+      const stock = Math.max(0, Number(item.available_stock || 0))
+      const existing = selectedItem(item)
+      if (existing) {
+        // Товар уже в заявке: доводим до полного остатка, а не удваиваем.
+        existing.available = stock
+        existing.groupId = item.groupId || existing.groupId
+        existing.quantity = stock
+      } else {
+        addItem(item)
+        const added = selectedItem(item)
+        if (added) added.quantity = stock
+      }
+      const finalItem = selectedItem(item)
+      if (finalItem) {
+        positions += 1
+        quantity += finalItem.quantity
+        keys.push(finalItem.key)
+      }
+    }
+    const next = new Map(wholeLineGroups.value)
+    next.set(groupId, { name: groupName, keys, positions, quantity })
+    wholeLineGroups.value = next
+  } catch (error) {
+    console.error('[inventory] Failed to add whole line', error)
+    wholeLineError.value = 'Не удалось добавить линейку. Проверьте связь и повторите.'
+  } finally {
+    addingWholeLine.value = false
+  }
+}
+
+/**
+ * Возвращает пометку «вся линейка» при повторном открытии черновика: если он
+ * был сохранён полным комплектом, кладовщик должен увидеть это и при правке тоже.
+ * Проверяем по составу линейки в источнике — иначе пометка повисла бы на
+ * неполной заявке.
+ */
+async function restoreWholeLineGroupsFromDraft() {
+  const transfer = activeTransfer.value
+  if (!transfer?.items?.length) return
+  const groupIds = [...new Set(selectedItems.value.map((item) => item.groupId).filter(Boolean))] as string[]
+  if (!groupIds.length) return
+  const request = detailsRequestId
+  const next = new Map<string, WholeLineMeta>()
+  await Promise.all(groupIds.map(async (groupId) => {
+    try {
+      const data = await adminStore.fetchInventoryItems({
+        location: transfer.source_location,
+        groupId,
+        limit: 200,
+      })
+      const available = (Array.isArray(data) ? data : [])
+        .filter((item) => Number(item.available_stock || 0) > 0)
+      if (!available.length) return
+      const inForm = new Set(selectedItems.value.filter((i) => i.groupId === groupId).map((i) => i.key))
+      const keys = available.map((item) => itemKey(item))
+      // Наборы должны совпадать целиком, а не только «все остатки покрыты»:
+      // иначе лишняя позиция в черновике или опустевший остаток дали бы
+      // пометку «вся линейка» на неполном комплекте.
+      if (inForm.size !== keys.length) return
+      const allCovered = keys.every((key) => inForm.has(key))
+      if (!allCovered) return
+      const group = sourceGroups.value.find((entry) => entry.id === groupId)
+      next.set(groupId, {
+        name: group?.name || available[0]?.group_name || 'Линейка',
+        keys,
+        positions: inForm.size,
+        quantity: selectedItems.value
+          .filter((i) => i.groupId === groupId)
+          .reduce((sum, i) => sum + i.quantity, 0),
+      })
+    } catch (error) {
+      console.error('[inventory] Failed to restore whole line mark', error)
+    }
+  }))
+  if (request !== detailsRequestId) return
+  wholeLineGroups.value = next
 }
 
 function removeItem(key: string) {
   selectedItems.value = selectedItems.value.filter((item) => item.key !== key)
   originalQuantities.value.delete(key)
+  // Убрали позицию — линейка больше не «вся»: заголовок снимаем честно.
+  syncWholeLineGroups()
+}
+
+/**
+ * Пересчитывает пометки «вся линейка» по текущему составу.
+ *
+ * Линейка остаётся «всей» только пока в заявке лежат ВСЕ позиции, которые были
+ * добавлены кнопкой (meta.keys). Проверять одним «количество = остаток» нельзя:
+ * после удаления позиции оставшиеся всё ещё равны остаткам, и заголовок
+ * ошибочно вернулся бы — кладовщик унёс бы неполный комплект, думая, что он полный.
+ */
+function syncWholeLineGroups() {
+  if (!wholeLineGroups.value.size) return
+  const next = new Map<string, WholeLineMeta>()
+  for (const [groupId, meta] of wholeLineGroups.value) {
+    const present = new Set(selectedItems.value.map((item) => item.key))
+    const allPresent = meta.keys.every((key) => present.has(key))
+    if (!allPresent) continue
+    const items = selectedItems.value.filter((item) => item.groupId === groupId)
+    next.set(groupId, {
+      name: meta.name,
+      keys: meta.keys,
+      positions: items.length,
+      quantity: items.reduce((sum, item) => sum + item.quantity, 0),
+    })
+  }
+  wholeLineGroups.value = next
 }
 
 function clampQuantity(item: SelectedItem) {
   const quantity = Math.floor(Number(item.quantity || 1))
   item.quantity = Math.min(Math.max(quantity, 1), item.available)
+  // Правка количества могла «расклеить» линейку — пересчитываем заголовки.
+  syncWholeLineGroups()
 }
 
 function resetForm() {
@@ -933,6 +1249,9 @@ function resetForm() {
   editBaselineUpdatedAt.value = null
   results.value = []
   selectedItems.value = []
+  wholeLineGroups.value = new Map()
+  wholeLineError.value = ''
+  addingWholeLine.value = false
   errorMessage.value = ''
   loadErrorMessage.value = ''
   loading.value = false
@@ -986,6 +1305,7 @@ function seedSelectedItems(seeds: TransferSeedItem[] | undefined) {
       variantId,
       title: seed.title,
       categoryName: seed.categoryName || null,
+      groupId: seed.groupId || null,
       groupName: seed.groupName || null,
       image: seed.image || null,
       available,
@@ -1040,6 +1360,7 @@ function openEdit() {
     variantId: item.variant_id ? String(item.variant_id) : null,
     title: item.variant_name ? `${item.product_title} (${item.variant_name})` : item.product_title,
     categoryName: item.category_name || null,
+    groupId: item.group_id || null,
     groupName: item.group_name || null,
     image: item.product_image || null,
     available: Number(
@@ -1052,6 +1373,9 @@ function openEdit() {
   // Снимок состава: по нему отличаем «ничего не трогал» от настоящих правок.
   editBaseline.value = draftSignature()
   editBaselineUpdatedAt.value = transfer.updated_at ?? null
+  // Заголовки «Вся линейка» восстанавливаем по составу черновика: если заявку
+  // сохранили полным комплектом, при повторном открытии пометка должна быть.
+  void restoreWholeLineGroupsFromDraft()
   activeTransfer.value = null
   view.value = 'create'
   void loadItems()
@@ -1107,6 +1431,9 @@ function swapDirection() {
   sourceLocation.value = destinationLocation.value
   selectedItems.value = []
   selectedGroupId.value = ''
+  // Линейки относятся к прежнему источнику: их состав и заголовки не переносим.
+  wholeLineGroups.value = new Map()
+  wholeLineError.value = ''
   void loadItems()
   void loadGroups()
 }

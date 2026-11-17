@@ -1593,7 +1593,9 @@ async function getInventoryTransfer(id) {
       { source: groupImage, meta: { sourceType: 'group', sourceId: groupId, sourceField: 'category_groups.cover_image' } },
       { source: categoryImage, meta: { sourceType: 'category', sourceId: categoryId, sourceField: 'categories.cover_image' } },
     ]);
-    return { ...details, product_image: productImage };
+    // group_id отдаём наружу: фронт собирает по нему заголовок «Вся линейка».
+    // По имени группы это делать нельзя — имена повторяются у разных категорий.
+    return { ...details, group_id: groupId ?? null, product_image: productImage };
   }));
   return transfer;
 }
