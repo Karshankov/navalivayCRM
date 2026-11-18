@@ -137,16 +137,16 @@
                  сначала список, кнопка — В КОНЦЕ, после строк. -->
             <div
               v-if="collapsedItems.length"
+              v-auto-animate="autoAnimateOptions"
               class="cart-more"
               :class="{ 'cart-more--open': isItemsExpanded }"
             >
-              <div class="cart-more-list">
-                <div>
-                  <article
-                    v-for="item in collapsedItems"
-                    :key="item.productId + (item.variantId || '')"
-                    class="cart-item"
-                  >
+              <div v-if="isItemsExpanded" class="cart-more-list">
+                <article
+                  v-for="item in collapsedItems"
+                  :key="item.productId + (item.variantId || '')"
+                  class="cart-item"
+                >
                     <div class="cart-item-visual">
                       <span class="cart-item-thumb">
                         <img
@@ -216,19 +216,18 @@
                         <span>+</span>
                       </button>
                     </div>
-                  </article>
-                </div>
+                </article>
               </div>
-              <!-- Кнопка — в конце списка (демо: label после .more-list). -->
+              <!-- Кнопка остаётся соседом списка, чтобы AutoAnimate сдвигал её вместе с раскрытием. -->
               <button
                 type="button"
                 class="cart-more-link"
                 :aria-expanded="isItemsExpanded ? 'true' : 'false'"
-                aria-label="Показать остальные товары"
+                :aria-label="isItemsExpanded ? 'Свернуть список товаров' : 'Показать остальные товары'"
                 @click="toggleMoreItems"
               >
-                <span class="closed">Посмотреть все товары</span>
-                <span class="opened">Свернуть список</span>
+                <span v-if="!isItemsExpanded">Посмотреть все товары</span>
+                <span v-else>Свернуть список</span>
               </button>
             </div>
           </section>
@@ -325,19 +324,51 @@
             </Transition>
           </Teleport>
 
-          <!-- Кэшбэк за этот заказ: строка над «Итого», сумма справа
-               тем же начертанием и кеглем, что итоговая. -->
-          <div v-if="cashbackForOrder > 0" class="total-block total-block--cashback">
-            <span class="total-label">Кэшбек за этот заказ</span>
-            <strong class="total-amount total-amount--cashback">
-              +{{ formatCashback(cashbackForOrder) }} BYN
-            </strong>
-          </div>
+          <div v-auto-animate="autoAnimateOptions" class="checkout-total-rows">
+            <!-- Кэшбэк за этот заказ: строка над «Итого», сумма справа
+                 тем же начертанием и кеглем, что итоговая. -->
+            <div v-if="cashbackForOrder > 0" class="total-block total-block--cashback">
+              <span class="total-label">Кэшбек за этот заказ</span>
+              <strong class="total-amount total-amount--cashback total-amount--flow">
+                <NumberFlow
+                  :value="cashbackForOrder"
+                  :format="cashbackNumberFormat"
+                  :trend="0"
+                  :plugins="[continuous]"
+                  prefix="+"
+                  suffix=" BYN"
+                  :transform-timing="{ duration: 360, easing: 'ease-out' }"
+                  :spin-timing="{ duration: 360, easing: 'ease-out' }"
+                />
+              </strong>
+            </div>
 
-          <div class="total-block total-block--total">
-            <span class="total-label">Итого</span>
-            <div class="total-value-with-payment">
-              <strong class="total-amount">{{ formatPrice(finalTotal) }} BYN</strong>
+            <div
+              v-if="isCashbackApplied"
+              class="total-block total-block--cashback-spent"
+              data-cashback-payment-row
+            >
+              <span class="total-label">Оплата кэшбеком</span>
+              <strong class="total-amount total-amount--cashback-spent">
+                -{{ formatCashback(cashbackAppliedAmount) }} BYN
+              </strong>
+            </div>
+
+            <div class="total-block total-block--total">
+              <span class="total-label">Итого</span>
+              <div class="total-value-with-payment">
+                <strong class="total-amount total-amount--flow">
+                  <NumberFlow
+                    :value="displayedFinalTotal"
+                    :format="totalNumberFormat"
+                    :trend="0"
+                    :plugins="[continuous]"
+                    suffix=" BYN"
+                    :transform-timing="{ duration: 360, easing: 'ease-out' }"
+                    :spin-timing="{ duration: 360, easing: 'ease-out' }"
+                  />
+                </strong>
+              </div>
             </div>
           </div>
         </div>
@@ -868,7 +899,14 @@ import {
   LOYALTY_RULES_MODAL_TITLE,
 } from "@/constants/loyalty";
 import LottiePlayer from "@/components/LottiePlayer.vue";
+import NumberFlow, { continuous } from "@number-flow/vue";
+import { vAutoAnimate } from "@formkit/auto-animate/vue";
 import ToastNotification from "@/components/ToastNotification.vue";
+
+const autoAnimateOptions = {
+  duration: 300,
+  easing: "ease-out" as const,
+};
 import {
   fetchMyActiveOrder,
   getTelegramIdentity,
@@ -1129,6 +1167,10 @@ const CASHBACK_ACCRUAL_RATE = 0.05;
 const cashbackForOrder = computed(() =>
   Math.round(finalTotal.value * CASHBACK_ACCRUAL_RATE * 100) / 100,
 );
+const cashbackNumberFormat = {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+};
 
 function toggleCashback(next: boolean) {
   isCashbackApplied.value = next;
@@ -1484,39 +1526,9 @@ const collapsedItems = computed(() => {
   return cartStore.items.slice(1);
 });
 
-/** Переключение «Ещё N товаров».
- *
- * Закрытие с большим списком «дёргало» экран: grid-анимация
- * сжимает страницу на сотни пикселей за 0.3 с, а скролл окна
- * оставался на месте — вьюпорт прыгал. Теперь при закрытии
- * доводим окно скроллом к кнопке тем же плавным темпом: viewport
- * едет вместе с сжимающейся страницей, рывка нет. */
-const COLLAPSE_MS = 340;
-
+/** Переключение списка: AutoAnimate сам двигает соседнюю кнопку и карточку. */
 function toggleMoreItems() {
-  const wasExpanded = isItemsExpanded.value;
   isItemsExpanded.value = !isItemsExpanded.value;
-
-  if (!wasExpanded) return; // дёргаем только при закрытии
-
-  const list = document.querySelector(".cart-more-list");
-  if (!list) return;
-  const startY = window.scrollY;
-  const targetY = Math.max(
-    0,
-    startY + list.getBoundingClientRect().top - window.innerHeight / 3,
-  );
-  if (Math.abs(targetY - startY) < 4) return;
-
-  const startTime = performance.now();
-  const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
-
-  const step = (now: number) => {
-    const t = Math.min(1, (now - startTime) / COLLAPSE_MS);
-    window.scrollTo(0, startY + (targetY - startY) * easeOut(t));
-    if (t < 1) requestAnimationFrame(step);
-  };
-  requestAnimationFrame(step);
 }
 
 
@@ -1554,6 +1566,12 @@ function isIceProduct(item: (typeof cartStore.items)[0]): boolean {
   return title.includes("ice") || variant.includes("ice");
 }
 
+const loyaltyDiscountAmount = computed(() =>
+  wholesaleStore.isWholesale
+    ? 0
+    : (promoResult.value ? 0 : Number(loyaltyStore.totalLoyaltyDiscount || 0)),
+);
+
 const finalTotal = computed(() => {
   const base = cartStore.totalAmount;
   if (wholesaleStore.isWholesale) {
@@ -1568,11 +1586,20 @@ const finalTotal = computed(() => {
   return base;
 });
 
-const loyaltyDiscountAmount = computed(() =>
-  wholesaleStore.isWholesale
-    ? 0
-    : (promoResult.value ? 0 : Number(loyaltyStore.totalLoyaltyDiscount || 0)),
+// Демонстрационное списание: в текущем API нет отдельного источника кэшбэка.
+// Не меняет payload заказа, только показывает эффект переключателя в итогах.
+const CASHBACK_DEMO_SPEND = 5;
+const cashbackAppliedAmount = computed(() =>
+  Math.min(CASHBACK_DEMO_SPEND, Math.max(finalTotal.value, 0)),
 );
+const displayedFinalTotal = computed(() =>
+  Math.max(finalTotal.value - (isCashbackApplied.value ? cashbackAppliedAmount.value : 0), 0),
+);
+
+const totalNumberFormat = {
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 0,
+};
 
 const wholesaleMinimumQuantity = computed(() =>
   wholesaleStore.isWholesale ? wholesaleStore.effectiveMinQuantity : null,
@@ -3110,29 +3137,11 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   color: #18191b;
 }
 
-/* ===== Сворачивание «Ещё N товаров» (демо .more) =====
-   Состояние — класс cart-more--open (управляет Vue).
-   Закрытие длинного списка мягче раскрытия: 0.45s и ease-out —
-   страница сжимается без рывка (скролл доводится в JS тем же
-   темпом, см. toggleMoreItems). */
+/* Список монтируется условно; AutoAnimate анимирует его появление,
+   удаление и перемещение соседней кнопки. */
 .cart-more-list {
-  display: grid;
-  grid-template-rows: 0fr;
-  visibility: hidden;
-  transition:
-    grid-template-rows 0.45s cubic-bezier(0.33, 1, 0.68, 1),
-    visibility 0s linear 0.45s;
-}
-
-.cart-more-list > div {
-  min-height: 0;
-  overflow: hidden;
-}
-
-.cart-more--open .cart-more-list {
-  grid-template-rows: 1fr;
-  visibility: visible;
-  transition-delay: 0s;
+  display: flex;
+  flex-direction: column;
 }
 
 .cart-more-link {
@@ -3176,18 +3185,6 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
 
 .cart-more--open .cart-more-link::after {
   transform: rotate(225deg);
-}
-
-.cart-more--open .cart-more-link .closed {
-  display: none;
-}
-
-.cart-more-link .opened {
-  display: none;
-}
-
-.cart-more--open .cart-more-link .opened {
-  display: inline;
 }
 
 .cart-more-link:hover {
@@ -4055,13 +4052,6 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .total-payment-swap-enter-active,
-  .total-payment-swap-leave-active {
-    transition: none;
-  }
-}
-
 /* Итого внутри карточки заказа: без полосы между предупреждением
    о незабранном заказе и итоговой суммой. */
 .total-block {
@@ -4097,6 +4087,11 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   padding-top: 8px;
 }
 
+.total-block--cashback-spent {
+  padding-top: 8px;
+  padding-bottom: 0;
+}
+
 .total-amount {
   font-family: "Montserrat", sans-serif;
   font-weight: 700;
@@ -4111,6 +4106,35 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
 .total-amount--cashback {
   color: #1f9d55;
   margin-left: auto;
+}
+
+.total-amount--cashback-spent {
+  color: #f50302;
+  margin-left: auto;
+}
+
+.total-amount--flow {
+  display: inline-flex;
+  align-items: baseline;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.total-amount--flow number-flow {
+  display: inline-block;
+  vertical-align: baseline;
+}
+
+.total-amount__currency {
+  flex: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .total-amount--flow number-flow::part(number),
+  .total-amount--flow number-flow::part(digit) {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 .submit-button {

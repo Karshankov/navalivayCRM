@@ -17,8 +17,10 @@
     "test:unit": "vitest run"
   },
   "dependencies": {
+    "@formkit/auto-animate": "^0.10.2",
     "@headlessui/vue": "^1.7.23",
     "@heroicons/vue": "^2.2.0",
+    "@number-flow/vue": "^0.5.2",
     "@unocss/vite": "^66.5.1",
     "@vee-validate/zod": "^4.15.1",
     "@vueuse/core": "^13.9.0",
@@ -26,7 +28,6 @@
     "embla-carousel-vue": "^8.6.0",
     "fitty": "^2.4.2",
     "lottie-web": "^5.13.0",
-    "navalivay": "file:..",
     "pinia": "^3.0.3",
     "sharp": "^0.34.4",
     "unocss": "^66.5.1",

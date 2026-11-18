@@ -33,7 +33,16 @@
         <circle cx="18" cy="20" r="1" fill="none" stroke="currentColor" stroke-width="1.5" />
       </svg>
       <span class="nav-top-cart__label">
-        <span class="nav-top-cart__title">Заказ на {{ formattedAmount }} BYN</span>
+        <span class="nav-top-cart__title">Заказ на <NumberFlow
+          class="nav-top-cart__amount"
+          :value="totalAmount"
+          :format="cartAmountFormat"
+          :trend="0"
+          :plugins="[continuous]"
+          suffix=" BYN"
+          :transform-timing="{ duration: 360, easing: 'ease-out' }"
+          :spin-timing="{ duration: 360, easing: 'ease-out' }"
+        /></span>
         <span class="nav-top-cart__hint">Нажмите, чтобы оформить</span>
       </span>
     </button>
@@ -77,6 +86,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useCartFlight } from "@/composables/useCartFlight";
+import NumberFlow, { continuous } from "@number-flow/vue";
 
 /**
  * Верхняя панель по демо-образцу: корзина слева, «Мой профиль» с
@@ -129,13 +139,12 @@ const cartAriaLabel = computed(() => {
   return expandedVisual.value ? "Открыть корзину и оформить заказ" : "Открыть корзину";
 });
 
-/** Сумма из настоящего состояния корзины. Копеек нет: 25.00 → «25»,
- *  целая часть выводится как есть (20 → «20», 20.5 → «20.5»). */
-const formattedAmount = computed(() => {
-  const value = totalAmount.value;
-  const rounded = Math.round(value * 100) / 100;
-  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2);
-});
+/** Сохраняем прежний формат суммы: без группировки тысяч и максимум 2 знака. */
+const cartAmountFormat = {
+  useGrouping: false,
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 2,
+};
 
 const isAdmin = computed(() => route.path.startsWith("/admin"));
 
