@@ -105,17 +105,16 @@ describe("MyOrderView", () => {
     wrapper.unmount();
   });
 
-  it("shows the assigned pickup number while a new order is still being assembled", async () => {
+  it("hides the assigned pickup number while a new order is still being assembled", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => createJsonResponse(buildOrder("new", 4))));
     const wrapper = mount(MyOrderView);
 
     await flushPromises();
 
     expect(wrapper.text()).toContain("Заказ собирают...");
-    expect(wrapper.text()).toContain("Заказ №4");
-    expect(wrapper.text()).not.toContain("101");
-    expect(wrapper.find(".order-pickup-cell").attributes("aria-label")).toBe("Заказ №4");
-    expect(wrapper.text()).toContain("Назовите этот номер сотруднику");
+    expect(wrapper.find(".order-pickup-cell").exists()).toBe(false);
+    expect(wrapper.text()).not.toContain("Заказ №");
+    expect(wrapper.text()).not.toContain("Назовите этот номер сотруднику");
 
     wrapper.unmount();
   });
@@ -127,10 +126,9 @@ describe("MyOrderView", () => {
     await flushPromises();
 
     expect(wrapper.text()).toContain("Заказ готов к выдаче");
-    expect(wrapper.text()).toContain("Заказ №7");
-    expect(wrapper.text()).not.toContain("101");
-    expect(wrapper.find(".order-pickup-cell").attributes("aria-label")).toBe("Заказ №7");
-    expect(wrapper.text()).toContain("Назовите этот номер сотруднику");
+    expect(wrapper.find(".order-pickup-cell").exists()).toBe(false);
+    expect(wrapper.text()).not.toContain("Заказ №");
+    expect(wrapper.text()).not.toContain("Назовите этот номер сотруднику");
     expect(wrapper.text()).toContain("Готовы к выдаче");
     expect(wrapper.text()).toContain("с 10:30 до 21:00");
 

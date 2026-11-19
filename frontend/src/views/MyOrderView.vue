@@ -35,17 +35,6 @@
           </div>
           <div class="order-status-copy">
             <strong>{{ statusHeadline }}</strong>
-            <div
-              v-if="
-                (order.status === 'new' || order.status === 'in_progress') &&
-                order.pickup_cell_number
-              "
-              class="order-pickup-cell"
-              :aria-label="`Заказ №${order.pickup_cell_number}`"
-            >
-              <span>Заказ №{{ order.pickup_cell_number }}</span>
-              <small>Назовите этот номер сотруднику при получении</small>
-            </div>
             <p>{{ statusDescription }}</p>
           </div>
         </section>
@@ -450,34 +439,6 @@ onUnmounted(() => {
 
 .order-status-copy strong {
   color: #ffffff;
-}
-
-.order-pickup-cell {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  width: fit-content;
-  max-width: 100%;
-  padding: 12px 14px;
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.12);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-}
-
-.order-pickup-cell span {
-  font-family: "Montserrat", sans-serif;
-  font-size: clamp(24px, 8vw, 32px);
-  line-height: 1;
-  font-weight: 800;
-  color: #ffffff;
-  white-space: nowrap;
-}
-
-.order-pickup-cell small {
-  font-family: -apple-system, "SF Pro Display", sans-serif;
-  font-size: 12px;
-  line-height: 16px;
-  color: rgba(255, 255, 255, 0.74);
 }
 
 .order-status-copy p,
