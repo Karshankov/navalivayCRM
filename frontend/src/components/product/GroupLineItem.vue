@@ -115,10 +115,12 @@
       </div>
     </Transition>
 
-    <GroupReviewsModal
+    <!-- Та же панель отзывов, что на главной: вид и поведение
+         одинаковые. Здесь она показывает отзывы только этой линейки. -->
+    <ReviewsFeedPanel
       :open="showReviewsModal"
       :group-id="node.id"
-      :group-name="node.name"
+      :heading="`О линейке «${node.name}»`"
       @close="showReviewsModal = false"
     />
   </div>
@@ -133,7 +135,7 @@ import {
   onMounted,
   ref,
 } from "vue";
-import GroupReviewsModal from "@/components/reviews/GroupReviewsModal.vue";
+import ReviewsFeedPanel from "@/components/reviews/ReviewsFeedPanel.vue";
 import ReviewRatingLink from "@/components/reviews/ReviewRatingLink.vue";
 import SignificanceMark from "@/components/product/SignificanceMark.vue";
 import {

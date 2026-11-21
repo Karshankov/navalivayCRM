@@ -1176,24 +1176,8 @@ export function getPublicGroupReviews(
     LIMIT ? OFFSET ?
   `).all(groupId, REVIEW_STATUSES.APPROVED, limit, offset);
 
-  const tagIds = new Set();
-  for (const row of rows) {
-    try {
-      const parsed = JSON.parse(row.quick_tag_ids || '[]');
-      if (Array.isArray(parsed)) parsed.forEach((id) => tagIds.add(String(id)));
-    } catch {
-      // ignore malformed tag ids
-    }
-  }
-
-  const tagMap = new Map();
-  if (tagIds.size > 0) {
-    const placeholders = [...tagIds].map(() => '?').join(', ');
-    const tags = db.prepare(
-      `SELECT id, label FROM review_quick_tags WHERE id IN (${placeholders})`,
-    ).all(...tagIds);
-    for (const tag of tags) tagMap.set(tag.id, tag.label);
-  }
+  /* Быстрые теги из выдачи убраны: раздел управления ими снят,
+     и в интерфейсе их больше нет. */
 
   return {
     group_id: groupId,
@@ -1201,17 +1185,6 @@ export function getPublicGroupReviews(
     average_rating: summary?.average_rating ? Number(summary.average_rating) : null,
     manager: getManagerReviewBlock(),
     items: rows.map((row) => {
-      let quickTagLabels = [];
-      try {
-        const parsed = JSON.parse(row.quick_tag_ids || '[]');
-        if (Array.isArray(parsed)) {
-          quickTagLabels = parsed
-            .map((id) => tagMap.get(String(id)))
-            .filter(Boolean);
-        }
-      } catch {
-        quickTagLabels = [];
-      }
 
       const purchasedVariantName =
         row.purchased_variant_name
@@ -1227,7 +1200,6 @@ export function getPublicGroupReviews(
         rating: row.rating,
         body_text: row.body_text,
         purchased_variant_name: purchasedVariantName || null,
-        quick_tag_labels: quickTagLabels,
         reviewer: maskReviewer(
           {
             id: row.customer_id_ref,
@@ -1301,14 +1273,24 @@ export function countCustomerReviewsInBusinessMonth(customerId, monthOffset = 0)
  * 4.9529 даёт «4,9», а не «5,0». Так честнее — при восьми отзывах
  * ниже пятёрки «5,0» читалось бы как завышение.
  */
-export function getPublicReviewsFeed({ limit = 20, offset = 0, viewerCustomerId = null } = {}) {
+export function getPublicReviewsFeed({
+  limit = 20,
+  offset = 0,
+  viewerCustomerId = null,
+  groupId = null,
+} = {}) {
+  /* Фильтр по линейке: тот же список, что на главной, но для карточки
+     товара. Вид и данные одинаковые — отличается только выборка. */
+  const groupFilter = groupId ? ' AND group_id = ?' : '';
+  const groupParams = groupId ? [groupId] : [];
+
   const summary = db.prepare(`
     SELECT
       COUNT(*) AS review_count,
       AVG(rating) AS average_rating
     FROM product_reviews
-    WHERE status = ?
-  `).get(REVIEW_STATUSES.APPROVED);
+    WHERE status = ?${groupFilter}
+  `).get(REVIEW_STATUSES.APPROVED, ...groupParams);
 
   const rows = db.prepare(`
     SELECT
@@ -1338,29 +1320,13 @@ export function getPublicReviewsFeed({ limit = 20, offset = 0, viewerCustomerId 
     LEFT JOIN customers c ON c.id = pr.customer_id
     LEFT JOIN category_groups cg ON cg.id = pr.group_id
     LEFT JOIN order_items oi ON oi.id = pr.order_item_id
-    WHERE pr.status = ?
+    WHERE pr.status = ?${groupId ? ' AND pr.group_id = ?' : ''}
     ORDER BY COALESCE(pr.approved_at, pr.created_at) DESC, pr.created_at DESC
     LIMIT ? OFFSET ?
-  `).all(REVIEW_STATUSES.APPROVED, limit, offset);
+  `).all(REVIEW_STATUSES.APPROVED, ...groupParams, limit, offset);
 
-  const tagIds = new Set();
-  for (const row of rows) {
-    try {
-      const parsed = JSON.parse(row.quick_tag_ids || '[]');
-      if (Array.isArray(parsed)) parsed.forEach((id) => tagIds.add(String(id)));
-    } catch {
-      // ignore malformed tag ids
-    }
-  }
-
-  const tagMap = new Map();
-  if (tagIds.size > 0) {
-    const placeholders = [...tagIds].map(() => '?').join(', ');
-    const tags = db.prepare(
-      `SELECT id, label FROM review_quick_tags WHERE id IN (${placeholders})`,
-    ).all(...tagIds);
-    for (const tag of tags) tagMap.set(tag.id, tag.label);
-  }
+  /* Быстрые теги из выдачи убраны: раздел управления ими снят,
+     и в интерфейсе их больше нет. */
 
   const reviewCount = Number(summary?.review_count || 0);
   const rawAverage = summary?.average_rating ? Number(summary.average_rating) : null;
@@ -1370,17 +1336,6 @@ export function getPublicReviewsFeed({ limit = 20, offset = 0, viewerCustomerId 
     // Отбрасывание, не округление: Math.trunc(49.529) / 10 = 4.9.
     average_rating: rawAverage === null ? null : Math.trunc(rawAverage * 10) / 10,
     items: rows.map((row) => {
-      let quickTagLabels = [];
-      try {
-        const parsed = JSON.parse(row.quick_tag_ids || '[]');
-        if (Array.isArray(parsed)) {
-          quickTagLabels = parsed
-            .map((id) => tagMap.get(String(id)))
-            .filter(Boolean);
-        }
-      } catch {
-        quickTagLabels = [];
-      }
 
       const purchasedVariantName =
         row.purchased_variant_name
@@ -1405,7 +1360,6 @@ export function getPublicReviewsFeed({ limit = 20, offset = 0, viewerCustomerId 
             ? `/api/category-groups/${encodeURIComponent(row.group_id)}/cover`
             : null),
         purchased_variant_name: purchasedVariantName || null,
-        quick_tag_labels: quickTagLabels,
         reviewer: maskReviewer(
           {
             id: row.customer_id_ref,

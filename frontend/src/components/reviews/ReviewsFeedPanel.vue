@@ -28,7 +28,7 @@
         <header class="rs-head" @pointerdown="onDragStart" @pointermove="onDragMove" @pointerup="onDragEnd" @pointercancel="onDragCancel">
           <div>
             <h2 id="rs-panel-title">Отзывы клиентов</h2>
-            <p>О товарах и их качестве</p>
+            <p>{{ props.heading || "О товарах и их качестве" }}</p>
           </div>
           <div class="rs-head-actions">
             <button type="button" class="rs-icon-button rs-close" aria-label="Закрыть отзывы" @click="requestClose">
@@ -182,7 +182,16 @@ function markProductBroken(id: string) {
   brokenProducts.value = new Set(brokenProducts.value).add(id);
 }
 
-const props = defineProps<{ open: boolean }>();
+const props = withDefaults(
+  defineProps<{
+    open: boolean;
+    /** Линейка для карточки товара. Без неё — общий поток отзывов. */
+    groupId?: string | null;
+    /** Заголовок панели: в карточке товара называем линейку. */
+    heading?: string;
+  }>(),
+  { groupId: null, heading: "" },
+);
 const emit = defineEmits<{ (e: "close"): void }>();
 
 const {
@@ -194,7 +203,7 @@ const {
   hasMore,
   load,
   loadMore,
-} = useReviewsFeed();
+} = useReviewsFeed({ groupId: () => props.groupId });
 
 const shellRef = ref<HTMLElement | null>(null);
 const panelRef = ref<HTMLElement | null>(null);
@@ -425,9 +434,12 @@ async function handleOpened() {
 }
 
 watch(
-  () => props.open,
-  (isOpen) => {
-    if (isOpen) void handleOpened();
+  [() => props.open, () => props.groupId],
+  ([isOpen], [wasOpen, wasGroup]) => {
+    if (!isOpen) return;
+    // Загружаем при открытии и при смене линейки: иначе в карточке
+    // товара показались бы отзывы прошлой линейки.
+    if (!wasOpen || wasGroup !== props.groupId) void handleOpened();
   },
   // immediate: панель может быть смонтирована уже открытой — без этого
   // данные не загрузились бы вовсе, и экран остался бы пустым.

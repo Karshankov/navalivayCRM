@@ -3251,6 +3251,9 @@ publicRouter.get(
     try {
       const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 50);
       const offset = Math.max(Number(req.query.offset) || 0, 0);
+      // Отзывы по одной линейке — для карточки товара. Без параметра
+      // отдаём общий поток, как на главной.
+      const groupId = String(req.query.group_id || "").trim() || null;
 
       const telegramId = String(req.telegramAuth?.telegramId || "").trim();
       const telegramUsername = normalizeTelegramUsername(req.telegramAuth?.telegramUsername);
@@ -3267,6 +3270,7 @@ publicRouter.get(
       return res.json(getPublicReviewsFeed({
         limit,
         offset,
+        groupId,
         viewerCustomerId: viewer?.id || null,
       }));
     } catch (error) {

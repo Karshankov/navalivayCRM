@@ -1,9 +1,12 @@
 /**
- * Загрузка общего потока отзывов для панели на главной.
+ * Загрузка потока отзывов для панели.
  *
- * Источник — GET /api/reviews/feed: агрегат по всем одобренным отзывам
- * и сами отзывы по всем товарам, свежие сверху. Считает сервер, здесь
- * только запрос и пагинация.
+ * Источник — GET /api/reviews/feed: агрегат по одобренным отзывам и сами
+ * отзывы, свежие сверху. Считает сервер, здесь только запрос и пагинация.
+ *
+ * Панель одна на всё приложение: на главной она показывает все отзывы,
+ * а в карточке товара — только по этой линейке (параметр groupId).
+ * Вид при этом одинаковый.
  */
 import { ref, computed } from "vue";
 import { withTelegramAuthHeaders } from "@/utils/telegramAuth";
@@ -24,7 +27,6 @@ export interface ReviewsFeedItem {
   /** Обложка товара; null — у товара нет фото, показываем заглушку. */
   product_image_url: string | null;
   purchased_variant_name: string | null;
-  quick_tag_labels: string[];
   reviewer: ReviewsFeedReviewer;
   created_at: string;
   approved_at: string | null;
@@ -38,7 +40,8 @@ export interface ReviewsFeedResponse {
 
 const PAGE_SIZE = 20;
 
-export function useReviewsFeed() {
+export function useReviewsFeed(options: { groupId?: () => string | null } = {}) {
+  const groupId = options.groupId;
   const items = ref<ReviewsFeedItem[]>([]);
   const reviewCount = ref(0);
   const averageRating = ref<number | null>(null);
@@ -65,10 +68,16 @@ export function useReviewsFeed() {
   });
 
   async function fetchPage(offset: number, { append }: { append: boolean }) {
-    const response = await fetch(
-      `/api/reviews/feed?limit=${PAGE_SIZE}&offset=${offset}`,
-      { headers: withTelegramAuthHeaders() },
-    );
+    const scopedGroup = groupId?.() || null;
+    const params = new URLSearchParams({
+      limit: String(PAGE_SIZE),
+      offset: String(offset),
+    });
+    if (scopedGroup) params.set("group_id", scopedGroup);
+
+    const response = await fetch(`/api/reviews/feed?${params.toString()}`, {
+      headers: withTelegramAuthHeaders(),
+    });
 
     if (!response.ok) {
       throw new Error("Не удалось загрузить отзывы");
