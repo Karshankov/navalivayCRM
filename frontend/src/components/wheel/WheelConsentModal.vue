@@ -69,7 +69,7 @@ const emit = defineEmits<{
   font-family: 'SF Pro Display', system-ui, sans-serif;
   font-size: 14px;
   line-height: 19px;
-  color: #1f2933;
+  color: var(--customer-ink, #191919);
 }
 
 .consent-footer {
@@ -103,7 +103,7 @@ const emit = defineEmits<{
 
 .consent-footer__ghost {
   background: rgba(15, 23, 42, 0.05);
-  color: #1f2933;
+  color: var(--customer-ink, #191919);
 }
 
 .consent-footer__primary:disabled,

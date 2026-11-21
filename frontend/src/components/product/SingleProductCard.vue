@@ -235,7 +235,7 @@ const isAtStockLimit = computed(() => {
 }
 
 .single-product-image-price-currency {
-  color: #191919;
+  color: var(--customer-ink, #191919);
 }
 
 /* Информация о товаре */
@@ -254,7 +254,7 @@ const isAtStockLimit = computed(() => {
   font-weight: 700;
   font-size: 16px;
   line-height: 20px;
-  color: #191919;
+  color: var(--customer-ink, #191919);
   /* Длинные названия переносятся по словам целиком — без обрезки
      и без уменьшения шрифта. */
   overflow-wrap: break-word;
@@ -285,7 +285,7 @@ const isAtStockLimit = computed(() => {
 .single-qty-btn {
   width: 40px;
   height: 40px;
-  border-radius: 512px;
+  border-radius: var(--customer-radius-pill, 999px);
   border: none;
   background: #f5f7fa;
   display: flex;
@@ -321,7 +321,7 @@ const isAtStockLimit = computed(() => {
 .single-qty-icon {
   width: 18px;
   height: 18px;
-  color: #191919;
+  color: var(--customer-ink, #191919);
   stroke-width: 2;
 }
 
@@ -343,7 +343,7 @@ const isAtStockLimit = computed(() => {
   font-weight: 500;
   font-size: 16px;
   line-height: 19px;
-  color: #191919;
+  color: var(--customer-ink, #191919);
 }
 
 /* Адаптивные стили */

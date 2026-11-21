@@ -34,7 +34,7 @@ function openFavorites() {
   padding: 0;
   border: 0;
   border-radius: 4.756% / 25.342%;
-  background: #fff;
+  background: var(--customer-surface, #ffffff);
   color: #080808;
   box-shadow: none;
   cursor: pointer;

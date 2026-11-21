@@ -223,7 +223,7 @@ onMounted(async () => {
 <style scoped>
 .order-detail-page {
   min-height: 100vh;
-  background: #f5f7fa;
+  background: var(--customer-bg, #f5f7fa);
   padding-bottom: 24px;
 }
 
@@ -247,7 +247,7 @@ onMounted(async () => {
   height: 40px;
   border: none;
   border-radius: 50%;
-  background: #ffffff;
+  background: var(--customer-surface, #ffffff);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -261,7 +261,7 @@ onMounted(async () => {
   font-weight: 700;
   font-size: 20px;
   line-height: 24px;
-  color: #191919;
+  color: var(--customer-ink, #191919);
 }
 
 .order-detail-container {
@@ -284,7 +284,7 @@ onMounted(async () => {
   font-family: -apple-system, "SF Pro Display", sans-serif;
   font-size: 14px;
   line-height: 18px;
-  color: #5c6470;
+  color: var(--customer-muted, #5c6470);
 }
 
 .order-detail-loader {
@@ -307,8 +307,8 @@ onMounted(async () => {
   border-radius: 999px;
   min-height: 44px;
   padding: 0 18px;
-  background: #ffffff;
-  color: #191919;
+  background: var(--customer-surface, #ffffff);
+  color: var(--customer-ink, #191919);
   font-family: "Montserrat", sans-serif;
   font-size: 14px;
   font-weight: 600;
@@ -316,8 +316,8 @@ onMounted(async () => {
 }
 
 .order-detail-overview {
-  background: #ffffff;
-  border-radius: 20px;
+  background: var(--customer-surface, #ffffff);
+  border-radius: var(--customer-radius-card-small, 20px);
   padding: 16px;
   box-shadow: 0 4px 12px rgba(15, 23, 42, 0.04);
 }
@@ -343,7 +343,7 @@ onMounted(async () => {
   font-size: 22px;
   line-height: 26px;
   font-weight: 700;
-  color: #191919;
+  color: var(--customer-ink, #191919);
 }
 
 .order-detail-overview__positions {
@@ -362,7 +362,7 @@ onMounted(async () => {
   font-size: 12px;
   line-height: 14px;
   font-weight: 600;
-  color: #5c6470;
+  color: var(--customer-muted, #5c6470);
 }
 
 .order-detail-overview__status--delivered,
@@ -447,11 +447,11 @@ onMounted(async () => {
   font-family: -apple-system, "SF Pro Display", sans-serif;
   font-size: 14px;
   line-height: 18px;
-  color: #5c6470;
+  color: var(--customer-muted, #5c6470);
 }
 
 .order-detail-overview__step--last .order-detail-overview__step-label {
-  color: #191919;
+  color: var(--customer-ink, #191919);
   font-weight: 600;
 }
 
@@ -460,7 +460,7 @@ onMounted(async () => {
   font-size: 13px;
   line-height: 16px;
   font-weight: 600;
-  color: #191919;
+  color: var(--customer-ink, #191919);
   white-space: nowrap;
 }
 
@@ -470,7 +470,7 @@ onMounted(async () => {
   font-weight: 700;
   font-size: 16px;
   line-height: 20px;
-  color: #191919;
+  color: var(--customer-ink, #191919);
 }
 
 .order-detail-reviews {
@@ -491,7 +491,7 @@ onMounted(async () => {
   font-family: -apple-system, "SF Pro Display", sans-serif;
   font-size: 13px;
   line-height: 17px;
-  color: #5c6470;
+  color: var(--customer-muted, #5c6470);
 }
 
 @media (max-width: 360px) {

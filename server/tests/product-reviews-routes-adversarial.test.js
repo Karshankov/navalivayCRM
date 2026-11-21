@@ -136,7 +136,9 @@ console.log('\n--- A-API4: short body rejected ---');
       quick_tag_ids: [],
     }),
   });
-  ok(response.status === 400 && data?.error === 'review_body_too_short', 'short body 400');
+  // Минимум в 20 знаков снят: короткий текст больше не отклоняется.
+  // Проверяем, что запрос дошёл до бизнес-логики, а не упал на валидации.
+  ok(data?.error !== 'review_body_too_short', 'short body no longer rejected');
 }
 
 console.log('\n--- A-API5: SQL injection in group path ---');

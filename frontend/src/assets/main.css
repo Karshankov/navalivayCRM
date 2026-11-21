@@ -3,14 +3,24 @@
 
 /* Global typography setup */
 html {
-  font-family: var(--font-primary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 body {
-  font-family: var(--font-primary);
   line-height: var(--leading-normal);
+}
+
+body:has(.app-shell:not(.app-shell--admin)) {
+  background: var(--customer-bg, #f5f7fa);
+  color: var(--customer-ink, #191919);
+  font-family: var(--customer-font-body, -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif);
+}
+
+.app-shell:not(.app-shell--admin) {
+  background: var(--app-page-background, var(--customer-bg, #f5f7fa));
+  color: var(--customer-ink, #191919);
+  font-family: var(--customer-font-body, -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif);
 }
 
 /* Telegram WebView «резина»: тянешь карточку/список за пределами

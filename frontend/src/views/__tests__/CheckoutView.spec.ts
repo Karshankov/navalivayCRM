@@ -891,6 +891,77 @@ describe("CheckoutView order flows", () => {
     wrapper.unmount();
   });
 
+  it("переключает способ получения под итогами и не меняет сумму заказа", async () => {
+    const cartStore = useCartStore();
+    cartStore.replaceItemsFromOrder([{
+      productId: "p-1", title: "Liquid Cherry", productTitle: "Liquid Cherry", groupName: "Жидкости",
+      priceRub: 15, quantity: 1, image: "/img/liquid.png", variantId: null, variantName: null,
+      groupId: "group-1", categoryId: "c_liquids_salt",
+    }]);
+
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith("/api/product/")) return createJsonResponse({ id: "p-1", hasVariants: false, stock: 10 });
+      if (url === "/api/card-payment/status") return createJsonResponse({ enabled: false, card_available: false });
+      if (url.startsWith("/api/loyalty/me")) return createJsonResponse(buildLoyaltySnapshot());
+      if (url === "/api/loyalty/checkout-preview") return createJsonResponse(buildLoyaltyPreview(0));
+      if (url === "/api/agreements") return createJsonResponse({ items: [] });
+      throw new Error(`Unexpected fetch: ${url}`);
+    }));
+
+    const wrapper = mount(CheckoutView, {
+      global: { stubs: {
+        MinDeliveryBanner: { template: "<div />" },
+        DeliveryConditionsBanner: { template: "<div />" },
+        CustomerModalShell: { template: "<div><slot /><slot name='footer' /></div>" },
+        LoyaltyBonusPopup: { template: "<div />" },
+      } },
+    });
+    await flushPromises();
+
+    // Блок стоит отдельной карточкой под итогами, а не внутри .order-card.
+    expect(wrapper.find(".order-card .delivery-choice").exists()).toBe(false);
+    expect(wrapper.find(".checkout-content > .delivery-choice").exists()).toBe(true);
+
+    const options = wrapper.findAll(".delivery-choice__input");
+    expect(options).toHaveLength(3);
+
+    // Каждый инпут лежит внутри своего label: связь родная, клик по
+    // любой кнопке выбирает именно её, а не первую.
+    for (const option of options) {
+      expect(option.element.closest("label")).not.toBeNull();
+    }
+
+    const checkedValue = () =>
+      (wrapper.find(".delivery-choice__input:checked").element as HTMLInputElement).value;
+
+    expect(checkedValue()).toBe("pickup");
+
+    const totalBefore = wrapper.find(".total-block--total .total-amount").text();
+
+    // happy-dom не активирует radio кликом по label (ни через for/id, ни
+    // через вложенность), поэтому переключение проверяем через v-model:
+    // setValue здесь и есть «нажали на эту кнопку».
+    await options.find((o) => (o.element as HTMLInputElement).value === "yandex")!.setValue(true);
+    await flushPromises();
+    expect(checkedValue()).toBe("yandex");
+
+    await options.find((o) => (o.element as HTMLInputElement).value === "courier")!.setValue(true);
+    await flushPromises();
+    expect(checkedValue()).toBe("courier");
+
+    await options.find((o) => (o.element as HTMLInputElement).value === "pickup")!.setValue(true);
+    await flushPromises();
+    expect(checkedValue()).toBe("pickup");
+
+    // Ровно один вариант выбран в любой момент.
+    expect(wrapper.findAll(".delivery-choice__input:checked")).toHaveLength(1);
+
+    // Сумма заказа от выбора способа получения не зависит.
+    expect(wrapper.find(".total-block--total .total-amount").text()).toBe(totalBefore);
+    wrapper.unmount();
+  });
+
   it("ignores a second tap on final confirmation while the order is being sent", async () => {
     const cartStore = useCartStore();
     cartStore.replaceItemsFromOrder([{
@@ -1586,35 +1657,9 @@ describe("CheckoutView order flows", () => {
     expect(wrapper.text()).not.toContain("До скидки");
     expect(wrapper.find(".user-info-input").exists()).toBe(true);
 
-    // Промокод теперь вводится через модалку: сначала открываем её кнопкой.
-    await wrapper.find(".promo-open-btn").trigger("click");
-    expect(wrapper.find(".promo-modal-input-row").exists()).toBe(true);
-    await wrapper.find(".promo-input").setValue("PROMO5");
-    await wrapper.find(".promo-apply-btn").trigger("click");
-    await flushPromises();
-    expect(wrapper.find(".submit-button").attributes("disabled")).toBeDefined();
-    expect(wrapper.find(".submit-button").text()).toBe("Рассчитываем скидку...");
-    await wrapper.find(".submit-button").trigger("click");
-    expect(fetchMock.mock.calls.some(([input]) => String(input).startsWith("/api/orders"))).toBe(false);
-
-    resolvePromo(
-      createJsonResponse({
-        valid: true,
-        discount_type: "fixed",
-        discount_value: 5,
-        calculated_discount: 5,
-        has_gift: 0,
-      }),
-    );
-    await flushPromises();
-    expect(wrapper.find(".loyalty-card").exists()).toBe(false);
-
-    // Снятие кода: кнопка всегда видна («Промокод применён»), открывает
-    // модалку с применённым кодом; «Убрать промокод» — внутри модалки.
-    expect(wrapper.find(".promo-open-btn").text()).toContain("Промокод применён");
-    await wrapper.find(".promo-open-btn").trigger("click");
-    await wrapper.find('[data-test="promo-modal-remove"]').trigger("click");
-    await flushPromises();
+    // Триггер ввода промокода удалён из клиентского checkout.
+    expect(wrapper.find(".promo-open-link").exists()).toBe(false);
+    expect(wrapper.find(".promo-open-btn").exists()).toBe(false);
     expect(wrapper.find(".loyalty-card").exists()).toBe(true);
 
     wrapper.unmount();
@@ -1990,7 +2035,7 @@ describe("CheckoutView order flows", () => {
     wrapper.unmount();
   });
 
-  it("shows and applies a gift promo in wholesale checkout", async () => {
+  it("does not show a promo entry point in wholesale checkout", async () => {
     const cartStore = useCartStore();
     const wholesaleStore = useWholesaleStore();
     wholesaleStore.applyOrderWholesaleContext({
@@ -2015,30 +2060,10 @@ describe("CheckoutView order flows", () => {
       },
     ]);
 
-    let promoRequest: RequestInit | undefined;
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.startsWith("/api/product/")) {
         return createJsonResponse({ id: "p-wholesale", hasVariants: false, stock: 100 });
-      }
-      if (url === "/api/promo/validate") {
-        promoRequest = init;
-        const body = JSON.parse(String(init?.body || "{}"));
-        if (body.code === "REGULAR10") {
-          return createJsonResponse({
-            valid: false,
-            error: "wholesale_gift_promo_required",
-            message: "В оптовом заказе можно применить только промокод на подарок",
-          });
-        }
-        return createJsonResponse({
-          valid: true,
-          discount_type: "fixed",
-          discount_value: 25,
-          calculated_discount: 0,
-          customer_description: "Подарок из рулетки",
-          has_gift: 1,
-        });
       }
       throw new Error(`Unexpected fetch: ${url}`);
     });
@@ -2057,32 +2082,8 @@ describe("CheckoutView order flows", () => {
     });
 
     await flushPromises();
-    // Кнопка вместо блока «Есть промокод?»: ввод через модалку.
-    expect(wrapper.find(".promo-open-btn").exists()).toBe(true);
-    await wrapper.find(".promo-open-btn").trigger("click");    await wrapper.find(".promo-input").setValue("WHOLESALEGIFT");
-    await wrapper.find(".promo-apply-btn").trigger("click");
-    await flushPromises();
-
-    expect(wrapper.text()).toContain("Подарок из рулетки");
-    expect(promoRequest?.headers).toEqual(expect.objectContaining({
-      "x-wholesale-code": "500",
-      "x-wholesale-secret": "wholesale-secret",
-    }));
-
-    // Снятие кода: кнопка открывает модалку с применённым кодом,
-    // «Убрать промокод» — внутри модалки.
-    await wrapper.find(".promo-open-btn").trigger("click");
-    await wrapper.find('[data-test="promo-modal-remove"]').trigger("click");
-    await flushPromises();
-    // Код снят — кнопка снова «Ввести промокод».
-    expect(wrapper.find(".promo-open-btn").text()).toContain("Ввести промокод");
-    await wrapper.find(".promo-open-btn").trigger("click");
-    await wrapper.find(".promo-input").setValue("REGULAR10");
-    await wrapper.find(".promo-apply-btn").trigger("click");
-    await flushPromises();
-    expect(wrapper.text()).toContain("только промокод на подарок");
-    expect(wrapper.find(".promo-error-text").attributes("role")).toBe("alert");
-    expect(wrapper.find(".promo-input").attributes("aria-describedby")).toBe("checkout-promo-error");
+    expect(wrapper.find(".promo-open-link").exists()).toBe(false);
+    expect(wrapper.find(".promo-open-btn").exists()).toBe(false);
 
     wrapper.unmount();
   });
@@ -2167,9 +2168,9 @@ describe("CheckoutView order flows", () => {
     });
 
     await flushPromises();
-    expect(wrapper.find(".promo-code-text").text()).toBe("WHOLESALEGIFT");
-    expect(wrapper.text()).toContain("Подарок будет добавлен к заказу");
-    expect(wrapper.text()).toContain("Подарок из рулетки");
+    expect(wrapper.find(".promo-open-link").exists()).toBe(false);
+    expect(wrapper.find(".promo-code-text").exists()).toBe(false);
+    expect(wrapper.find(".promo-open-link").exists()).toBe(false);
 
     wrapper.unmount();
   });
@@ -2209,16 +2210,14 @@ describe("CheckoutView order flows", () => {
 
     await flushPromises();
 
-    // Обе кнопки лежат в общем ряду .checkout-actions.
     const actions = wrapper.find(".checkout-actions");
     expect(actions.exists()).toBe(true);
     const buttons = actions.findAll("button");
-    expect(buttons.length).toBe(2);
-    // Порядок в ряду: промокод первым (слева), оформление вторым.
-    expect(buttons[0].classes()).toContain("promo-open-btn");
-    expect(buttons[1].classes()).toContain("submit-button");
-    // Подпись промокода — короткая, влезает в половину ряда.
-    expect(buttons[0].text()).toContain("Ввести промокод");
+    expect(buttons).toHaveLength(1);
+    expect(buttons[0].classes()).toContain("submit-button");
+    expect(buttons[0].text()).toBeTruthy();
+    expect(wrapper.find(".promo-open-link").exists()).toBe(false);
+    expect(wrapper.find(".promo-open-btn").exists()).toBe(false);
 
     wrapper.unmount();
   });

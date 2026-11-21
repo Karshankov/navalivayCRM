@@ -626,7 +626,7 @@ onBeforeUnmount(() => {
 .group-line-toggle {
   width: 40px;
   height: 40px;
-  border-radius: 512px;
+  border-radius: var(--customer-radius-pill, 999px);
   background: #f5f7fa;
   display: flex;
   align-items: center;

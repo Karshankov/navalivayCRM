@@ -108,7 +108,7 @@ const defaultIconStyle = computed(() => {
   flex-direction: column;
   align-items: stretch;
   border-radius: 24px;
-  background: #ffffff;
+  background: var(--customer-surface, #ffffff);
   border: 2.5px solid #e6e9ed;
   box-shadow: 0 24px 32px rgba(170, 178, 189, 0.12);
   transition: transform 0.2s ease, box-shadow 0.2s ease;

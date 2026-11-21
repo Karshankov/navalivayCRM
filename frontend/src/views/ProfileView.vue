@@ -529,7 +529,7 @@ async function goShopping() {
 <style scoped>
 .profile-page {
   min-height: 100vh;
-  background: #f5f7fa;
+  background: var(--customer-bg, #f5f7fa);
   padding-bottom: 24px;
 }
 
@@ -544,8 +544,8 @@ async function goShopping() {
 }
 
 .user-card {
-  background: #ffffff;
-  border-radius: 24px;
+  background: var(--customer-surface, #ffffff);
+  border-radius: var(--customer-radius-card, 24px);
 }
 
 .user-card {
@@ -571,7 +571,7 @@ async function goShopping() {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f5f7fa;
+  background: var(--customer-bg, #f5f7fa);
   border: 1px solid #e6e9ed;
 }
 
@@ -585,7 +585,7 @@ async function goShopping() {
   font-weight: 700;
   font-size: 20px;
   line-height: 24px;
-  color: #191919;
+  color: var(--customer-ink, #191919);
 }
 
 .user-username {
@@ -613,8 +613,8 @@ async function goShopping() {
   text-align: center;
   gap: 10px;
   padding: 28px 24px;
-  border-radius: 24px;
-  background: #ffffff;
+  border-radius: var(--customer-radius-card, 24px);
+  background: var(--customer-surface, #ffffff);
   box-shadow: 0 4px 16px rgba(15, 23, 42, 0.06);
 }
 
@@ -632,14 +632,14 @@ async function goShopping() {
   font-family: 'Montserrat', sans-serif;
   font-weight: 700;
   font-size: 18px;
-  color: #1f2933;
+  color: var(--customer-ink, #191919);
   margin: 0;
 }
 
 .wholesale-profile-card__text {
   font-family: 'SF Pro Display', system-ui, sans-serif;
   font-size: 14px;
-  color: #5c6470;
+  color: var(--customer-muted, #5c6470);
   margin: 0;
   max-width: 280px;
   line-height: 1.4;
@@ -661,8 +661,8 @@ async function goShopping() {
   display: flex;
   flex-direction: column;
   padding: 24px 24px 45px;
-  border-radius: 24px;
-  background: linear-gradient(106.76deg, #f50302 -2.64%, #a90f0e 85.78%);
+  border-radius: var(--customer-radius-card, 24px);
+  background: var(--customer-red-gradient);
   box-shadow: 0 8px 16px rgba(97, 1, 0, 0.16);
 }
 
@@ -803,8 +803,8 @@ async function goShopping() {
 }
 
 .loyalty-tab--active {
-  background: #ffffff;
-  color: #191919;
+  background: var(--customer-surface, #ffffff);
+  color: var(--customer-ink, #191919);
 }
 
 .loyalty-progress-row {
@@ -911,8 +911,8 @@ async function goShopping() {
   align-items: center;
   gap: 14px;
   padding: 16px 20px;
-  border-radius: 20px;
-  background: #ffffff;
+  border-radius: var(--customer-radius-card-small, 20px);
+  background: var(--customer-surface, #ffffff);
   box-shadow: 0 4px 12px rgba(15, 23, 42, 0.04);
   text-decoration: none;
   color: inherit;
@@ -922,7 +922,7 @@ async function goShopping() {
   width: 44px;
   height: 44px;
   border-radius: 14px;
-  background: #f5f7fa;
+  background: var(--customer-bg, #f5f7fa);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -940,7 +940,7 @@ async function goShopping() {
   font-weight: 700;
   font-size: 15px;
   line-height: 19px;
-  color: #1f2933;
+  color: var(--customer-ink, #191919);
 }
 
 .orders-link-card__copy {
@@ -948,7 +948,7 @@ async function goShopping() {
   font-family: -apple-system, "SF Pro Display", sans-serif;
   font-size: 13px;
   line-height: 17px;
-  color: #5c6470;
+  color: var(--customer-muted, #5c6470);
 }
 
 .wheel-feed-card {
@@ -956,8 +956,8 @@ async function goShopping() {
   align-items: center;
   gap: 16px;
   padding: 16px 20px;
-  border-radius: 20px;
-  background: #ffffff;
+  border-radius: var(--customer-radius-card-small, 20px);
+  background: var(--customer-surface, #ffffff);
   box-shadow: 0 4px 12px rgba(15, 23, 42, 0.04);
 }
 
@@ -972,7 +972,7 @@ async function goShopping() {
   font-weight: 700;
   font-size: 15px;
   line-height: 19px;
-  color: #1f2933;
+  color: var(--customer-ink, #191919);
 }
 
 .wheel-feed-card__copy {
@@ -980,7 +980,7 @@ async function goShopping() {
   font-family: -apple-system, "SF Pro Display", sans-serif;
   font-size: 13px;
   line-height: 17px;
-  color: #5c6470;
+  color: var(--customer-muted, #5c6470);
 }
 
 .wheel-feed-toggle {
@@ -1001,7 +1001,7 @@ async function goShopping() {
 }
 
 .wheel-feed-toggle--on {
-  background: linear-gradient(106.76deg, #f50302 -2.64%, #a90f0e 85.78%);
+  background: var(--customer-red-gradient);
 }
 
 .wheel-feed-toggle__knob {
@@ -1011,7 +1011,7 @@ async function goShopping() {
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  background: #ffffff;
+  background: var(--customer-surface, #ffffff);
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.18);
   transition: transform 0.2s ease;
 }
@@ -1064,8 +1064,8 @@ async function goShopping() {
 
 .rules-modal-card {
   width: min(361px, 100%);
-  border-radius: 20px;
-  background: #ffffff;
+  border-radius: var(--customer-radius-card-small, 20px);
+  background: var(--customer-surface, #ffffff);
   box-sizing: border-box;
   padding: 16px;
   box-shadow: 0 24px 48px rgba(25, 25, 25, 0.12);
@@ -1086,7 +1086,7 @@ async function goShopping() {
   font-weight: 700;
   font-size: 20px;
   line-height: 24px;
-  color: #191919;
+  color: var(--customer-ink, #191919);
 }
 
 .rules-modal-close {
@@ -1094,8 +1094,8 @@ async function goShopping() {
   height: 40px;
   flex-shrink: 0;
   border: none;
-  border-radius: 512px;
-  background: #f5f7fa;
+  border-radius: var(--customer-radius-pill, 999px);
+  background: var(--customer-bg, #f5f7fa);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1104,7 +1104,7 @@ async function goShopping() {
 
 .rules-modal-copy {
   margin-top: 12px;
-  color: #191919;
+  color: var(--customer-ink, #191919);
   font-family: -apple-system, "SF Pro Display", sans-serif;
   font-weight: 500;
   font-size: 16px;
@@ -1124,8 +1124,8 @@ async function goShopping() {
   width: 100%;
   min-height: 64px;
   border: none;
-  border-radius: 528px;
-  background: linear-gradient(90deg, #f50302 0%, #a90f0e 100%);
+  border-radius: var(--customer-radius-action, 18px);
+  background: var(--customer-red-gradient);
   color: #ffffff;
   font-family: "Montserrat", sans-serif;
   font-weight: 500;

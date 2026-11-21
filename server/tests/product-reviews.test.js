@@ -232,18 +232,24 @@ console.log('--- resolveReviewCategoryKey ---');
 
 console.log('\n--- validateReviewBodyText ---');
 {
-  let threw = false;
-  try {
-    validateReviewBodyText('коротко');
-  } catch (error) {
-    threw = error.code === 'review_body_too_short';
-  }
-  ok(threw, 'rejects short body');
+  // Минимума по длине нет: отзыв можно оставить одной оценкой.
+  ok(
+    validateReviewBodyText('коротко') === 'коротко',
+    'accepts short body',
+  );
+  ok(
+    validateReviewBodyText('') === '',
+    'accepts empty body',
+  );
+  ok(
+    validateReviewBodyText('   ') === '',
+    'trims whitespace to empty',
+  );
 
   ok(
     validateReviewBodyText('Мне очень понравился вкус, беру ещё раз') ===
       'Мне очень понравился вкус, беру ещё раз',
-    'accepts long enough body',
+    'accepts long body',
   );
 
   let tooLong = false;
@@ -705,11 +711,10 @@ console.log('\n--- fulfillment milestones prefer status history over completed_a
   ok(milestones.issued_at !== wrongCompletedAt, 'issued does not expose shifted completed_at');
 }
 
-console.log('\n--- repeat purchase: same line within cooldown ---');
+console.log('\n--- повторная покупка: задержки нет, можно оценить ---');
 {
   seedBase();
   clearDefaultSeedOrder();
-  setReviewSetting('cooldown_days', '90');
   seedRepeatPurchaseGroup();
 
   const firstCreatedAt = new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString();
@@ -738,44 +743,41 @@ console.log('\n--- repeat purchase: same line within cooldown ---');
     completedAt: secondCreatedAt,
   });
 
-  const blocked = getGroupReviewEligibility({
+  // Купил позицию повторно — можно оценить снова: задержки нет.
+  const repeat = getGroupReviewEligibility({
     customerId: 'cust1',
     groupId: 'grp_last_hap',
     orderId: 'ord_last_hap_2',
     orderItemId: 'oi_last_hap_2',
   });
-  ok(blocked.canReview === false, 'second purchase within 90d cooldown is not reviewable');
-  ok(blocked.reason === 'cooldown', 'repeat purchase reason is cooldown');
-  ok(Boolean(blocked.cooldownEndsAt), 'cooldown end date is exposed');
+  ok(repeat.canReview === true, 'повторная покупка доступна для отзыва');
+  ok(repeat.reason !== 'cooldown', 'задержка между отзывами не наступает');
 
   const customer = db.prepare('SELECT * FROM customers WHERE id = ?').get('cust1');
   const prompt = getReviewPromptForCustomer(customer);
-  ok(prompt.show === false, 'review dock hidden when only repeat line is on cooldown');
-  ok(prompt.reason === 'nothing_to_review', 'prompt reason is nothing_to_review');
+  ok(prompt.show === true, 'строка отзыва показывается для повторной покупки');
 
   const firstOrderLines = buildReviewableLinesForOrder(firstOrder, 'cust1');
   ok(firstOrderLines.length === 1, 'first order exposes one reviewable line');
   ok(firstOrderLines[0].latest_review?.id === 'rev_last_hap_1', 'first order keeps its own review');
-  ok(firstOrderLines[0].eligibility.reason === 'cooldown', 'first order line is also in cooldown window');
 
   const secondOrderLines = buildReviewableLinesForOrder(secondOrder, 'cust1');
   ok(secondOrderLines.length === 1, 'second order exposes one reviewable line');
   ok(secondOrderLines[0].latest_review == null, 'second order has no review tied to that order id');
-  ok(secondOrderLines[0].eligibility.reason === 'cooldown', 'second order UI gets cooldown state');
+  ok(secondOrderLines[0].eligibility.canReview === true, 'заказ показывает позицию доступной');
 
   const secondDetail = serializeOrderDetail(secondOrder, 'cust1');
-  ok(secondDetail.reviewable_lines[0].eligibility.canReview === false, 'order detail blocks repeat review');
+  ok(secondDetail.reviewable_lines[0].eligibility.canReview === true, 'детали заказа разрешают отзыв');
   ok(
     !('pending_review_count' in serializeOrderHistoryCard(secondOrder)),
     'history card stays compact without review badges',
   );
 }
 
-console.log('\n--- repeat purchase: same line after cooldown expires ---');
+console.log('\n--- повторная покупка: доступна сразу ---');
 {
   seedBase();
   clearDefaultSeedOrder();
-  setReviewSetting('cooldown_days', '90');
   seedRepeatPurchaseGroup();
 
   const firstCreatedAt = new Date(Date.now() - 120 * 24 * 60 * 60 * 1000).toISOString();
@@ -807,22 +809,21 @@ console.log('\n--- repeat purchase: same line after cooldown expires ---');
     orderId: 'ord_fresh',
     orderItemId: 'oi_fresh',
   });
-  ok(eligible.canReview === true, 'repeat purchase after cooldown can be reviewed again');
+  ok(eligible.canReview === true, 'повторная покупка доступна для отзыва');
   ok(eligible.orderId === 'ord_fresh', 'eligibility binds to the newest delivered order');
 
   const prompt = getReviewPromptForCustomer(
     db.prepare('SELECT * FROM customers WHERE id = ?').get('cust1'),
   );
-  ok(prompt.show === true, 'review dock appears for post-cooldown repeat purchase');
+  ok(prompt.show === true, 'строка отзыва показывается для повторной покупки');
   ok(prompt.order_id === 'ord_fresh', 'dock points to the newest eligible order');
   ok(prompt.group_id === 'grp_last_hap', 'dock points to the repeat line');
 }
 
-console.log('\n--- repeat purchase: rejected review does not start cooldown ---');
+console.log('\n--- повторная покупка: отклонённый отзыв не мешает новой оценке ---');
 {
   seedBase();
   clearDefaultSeedOrder();
-  setReviewSetting('cooldown_days', '90');
   seedRepeatPurchaseGroup();
 
   createDeliveredOrder({
@@ -863,11 +864,10 @@ console.log('\n--- repeat purchase: rejected review does not start cooldown ---'
   );
 }
 
-console.log('\n--- repeat purchase: mixed lines only prompts reviewable ones ---');
+console.log('\n--- повторная покупка: в заказе обе линейки доступны ---');
 {
   seedBase();
   clearDefaultSeedOrder();
-  setReviewSetting('cooldown_days', '90');
   seedRepeatPurchaseGroup();
 
   db.prepare(
@@ -909,26 +909,25 @@ console.log('\n--- repeat purchase: mixed lines only prompts reviewable ones ---
   const prompt = getReviewPromptForCustomer(
     db.prepare('SELECT * FROM customers WHERE id = ?').get('cust1'),
   );
-  ok(prompt.show === true, 'dock still appears when another line in the order is reviewable');
-  ok(prompt.group_id === 'grp_other', 'dock targets the still-reviewable line');
-  ok(prompt.pending_review_count === 1, 'only one pending line is counted');
+  ok(prompt.show === true, 'строка отзыва показывается');
+  ok(prompt.pending_review_count === 3, 'все три покупки ждут отзыва: две в заказе и старая');
 
   const lines = buildReviewableLinesForOrder(
+
     db.prepare('SELECT * FROM orders WHERE id = ?').get('ord_mix_new'),
     'cust1',
   );
   ok(lines.length === 2, 'mixed order exposes both lines');
   const repeatLine = lines.find((line) => line.group_id === 'grp_last_hap');
   const otherLine = lines.find((line) => line.group_id === 'grp_other');
-  ok(repeatLine?.eligibility.reason === 'cooldown', 'repeat line stays on cooldown');
-  ok(otherLine?.eligibility.canReview === true, 'fresh line still has the form');
+  ok(repeatLine?.eligibility.canReview === true, 'повторная линейка тоже доступна');
+  ok(otherLine?.eligibility.canReview === true, 'новая линейка доступна');
 }
 
-console.log('\n--- Konstantin: LAST HAP rebuy after 10d with 30d cooldown ---');
+console.log('\n--- Konstantin: повторная покупка доступна сразу после одобрения ---');
 {
   seedBase();
   clearDefaultSeedOrder();
-  setReviewSetting('cooldown_days', '30');
   seedRepeatPurchaseGroup();
 
   const approvedAt = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString();
@@ -956,29 +955,24 @@ console.log('\n--- Konstantin: LAST HAP rebuy after 10d with 30d cooldown ---');
     completedAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
   });
 
-  const blocked = getGroupReviewEligibility({
+  // 10 дней после одобрения — но задержки больше нет: оценить можно.
+  const repeat = getGroupReviewEligibility({
     customerId: 'cust1',
     groupId: 'grp_last_hap',
     orderId: 'ord_konst_2',
     orderItemId: 'oi_konst_2',
   });
-  ok(blocked.canReview === false, '10d rebuy stays blocked under 30d cooldown');
-  ok(blocked.reason === 'cooldown', 'repeat purchase reason is cooldown');
-
-  const expectedCooldownEnd = new Date(
-    new Date(approvedAt).getTime() + 30 * 24 * 60 * 60 * 1000,
-  ).toISOString();
-  ok(blocked.cooldownEndsAt === expectedCooldownEnd, 'cooldown end date matches approved review + 30d');
+  ok(repeat.canReview === true, 'повторная покупка доступна через 10 дней');
+  ok(!repeat.cooldownEndsAt, 'дата окончания задержки не возвращается');
 
   const customer = db.prepare('SELECT * FROM customers WHERE id = ?').get('cust1');
   const prompt = getReviewPromptForCustomer(customer);
-  ok(prompt.show === false, 'review dock hidden after 10d rebuy of reviewed line');
-  ok(prompt.reason === 'nothing_to_review', 'prompt reason is nothing_to_review');
+  ok(prompt.show === true, 'строка отзыва показывается для повторной покупки');
 
   const secondDetail = serializeOrderDetail(secondOrder, 'cust1');
   ok(
-    secondDetail.reviewable_lines[0].eligibility.reason === 'cooldown',
-    'order detail explains cooldown on repeat purchase',
+    secondDetail.reviewable_lines[0].eligibility.canReview === true,
+    'детали заказа разрешают отзыв на повторную покупку',
   );
   ok(secondDetail.reviewable_lines[0].latest_review == null, 'repeat order has no review on that order id');
 
@@ -988,10 +982,7 @@ console.log('\n--- Konstantin: LAST HAP rebuy after 10d with 30d cooldown ---');
   const historyCard = serializeOrderHistoryCard(secondOrder, 'cust1');
   ok(!('pending_review_count' in historyCard), 'history card has no pending_review_count');
   ok(!('has_reviews' in historyCard), 'history card has no review badges');
-  ok(
-    historyCard.review_hint === 'Отзыв на эту линейку уже оставлен',
-    'history card hints cooldown on repeat purchase',
-  );
+  ok(!historyCard.review_hint, 'подсказка о задержке больше не показывается');
 }
 
 console.log('\n--- Dmitriy hole: pending moderation blocks repeat purchase dock ---');
@@ -1113,11 +1104,10 @@ console.log('\n--- Konstantin: pending on LAST HAP, fresh Zloy in repeat order -
   ok(zloyLine?.eligibility.canReview === true, 'Жидкая злая remains reviewable');
 }
 
-console.log('\n--- per-line cooldown does not block other lines ---');
+console.log('\n--- отзыв по одной линейке не мешает другой ---');
 {
   seedBase();
   clearDefaultSeedOrder();
-  setReviewSetting('cooldown_days', '30');
   seedRepeatPurchaseGroup();
   seedZloyLine();
 
@@ -1150,21 +1140,21 @@ console.log('\n--- per-line cooldown does not block other lines ---');
     orderId: 'ord_iso_zloy',
     orderItemId: 'oi_iso_zloy',
   });
-  ok(zloyEligible.canReview === true, 'cooldown on LAST HAP does not block Zloy');
+  ok(zloyEligible.canReview === true, 'отзыв по LAST HAP не мешает Zloy');
   ok(
     buildReviewableLinesForOrder(zloyOrder, 'cust1')[0].eligibility.canReview === true,
     'Zloy order detail exposes review form',
   );
 }
 
-console.log('\n--- cooldown setting ---');
+console.log('\n--- задержка между отзывами убрана ---');
 {
   seedBase();
-  setReviewSetting('cooldown_days', '90');
-  ok(getCooldownDays() === 90, 'default cooldown is 90 days');
-
+  // Раньше здесь читалась настройка cooldown_days. Теперь задержки нет:
+  // купил позицию — можно её оценить, сколько бы времени ни прошло.
+  ok(getCooldownDays() === 0, 'задержка всегда нулевая');
   setReviewSetting('cooldown_days', '30');
-  ok(getCooldownDays() === 30, 'admin cooldown_days=30 is respected');
+  ok(getCooldownDays() === 0, 'настройка задержки больше не влияет');
 }
 
 function seedSnusAndDeviceCatalog() {

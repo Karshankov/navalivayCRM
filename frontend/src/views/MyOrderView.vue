@@ -310,7 +310,7 @@ onUnmounted(() => {
   justify-content: center;
   min-height: 64px;
   padding: 12px 16px 18px;
-  background: #ffffff;
+  background: var(--customer-surface, #ffffff);
   border-radius: 0 0 24px 24px;
   box-shadow: 0 4px 32px rgba(170, 178, 189, 0.2);
 }
@@ -334,7 +334,7 @@ onUnmounted(() => {
   font-size: 20px;
   line-height: 24px;
   font-weight: 700;
-  color: #191919;
+  color: var(--customer-ink, #191919);
 }
 
 .order-container {
@@ -348,7 +348,7 @@ onUnmounted(() => {
 .order-status-card,
 .order-items-card,
 .order-summary-card {
-  background: #ffffff;
+  background: var(--customer-surface, #ffffff);
   border-radius: 24px;
   padding: 20px 18px;
 }
@@ -566,7 +566,7 @@ onUnmounted(() => {
   font-size: 15px;
   line-height: 19px;
   font-weight: 700;
-  color: #191919;
+  color: var(--customer-ink, #191919);
 }
 
 .order-item-meta {
@@ -587,7 +587,7 @@ onUnmounted(() => {
   font-size: 16px;
   line-height: 20px;
   font-weight: 700;
-  color: #191919;
+  color: var(--customer-ink, #191919);
 }
 
 .summary-row--muted strong {
@@ -603,7 +603,7 @@ onUnmounted(() => {
 .summary-row--total strong {
   font-size: 18px;
   line-height: 22px;
-  color: #191919;
+  color: var(--customer-ink, #191919);
 }
 
 .order-sticky-panel {
@@ -624,7 +624,7 @@ onUnmounted(() => {
   padding: 14px;
   background: rgba(255, 255, 255, 0.94);
   border: 1px solid rgba(255, 255, 255, 0.85);
-  border-radius: 26px;
+  border-radius: var(--customer-radius-card, 24px);
   box-shadow: 0 20px 48px rgba(17, 24, 39, 0.18);
   backdrop-filter: blur(18px);
 }
@@ -635,7 +635,7 @@ onUnmounted(() => {
   width: 100%;
   min-height: 56px;
   border: none;
-  border-radius: 999px;
+  border-radius: var(--customer-radius-action, 18px);
   font-family: "Montserrat", sans-serif;
   font-size: 15px;
   line-height: 18px;
@@ -645,13 +645,13 @@ onUnmounted(() => {
 
 .order-primary-button,
 .order-secondary-button {
-  background: linear-gradient(90deg, #f50302 0%, #a90f0e 100%);
+  background: var(--customer-red-gradient);
   color: #ffffff;
 }
 
 .order-danger-button {
   background: linear-gradient(180deg, #ffffff 0%, #f5f6f9 100%);
-  color: #191919;
+  color: var(--customer-ink, #191919);
   box-shadow: inset 0 0 0 1px #e5e7eb;
 }
 

@@ -2,10 +2,45 @@
    НАВАЛИВАЙ - Глобальная тема и переменные
    ============================================ */
 
-/* Google Fonts - Bebas Neue */
-@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Roboto:wght@400;500;700;900&display=swap');
+/* Legacy fallback font import for older utility components. */
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap');
+
+/* Customer display font: local Bebas Neue is available offline in the Mini App. */
+@font-face {
+  font-family: "Bebas Neue";
+  src: url("/fonts/BebasNeue.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+}
 
 :root {
+  /* ===== Customer Mini App design tokens =====
+     Core customer UI uses one calm surface system. Legacy NAVALIVAY
+     tokens remain below for admin/older utilities and are not the
+     source of truth for customer screens. */
+  --customer-bg: #f5f7fa;
+  --customer-surface: #ffffff;
+  --customer-ink: #191919;
+  --customer-muted: #5c6470;
+  --customer-subtle: #8a93a0;
+  --customer-border: #e6e9ed;
+  --customer-red-start: #f50302;
+  --customer-red-end: #a90f0e;
+  --customer-red-gradient: linear-gradient(106.76deg, #f50302 -2.64%, #a90f0e 85.78%);
+  --customer-success: #1f9d55;
+  --customer-danger: #dc2626;
+  --customer-radius-card: 24px;
+  --customer-radius-card-small: 20px;
+  --customer-radius-control: 14px;
+  --customer-radius-action: 18px;
+  --customer-radius-input: 12px;
+  --customer-radius-pill: 999px;
+  --customer-shadow-card: 0 8px 24px rgba(31, 41, 55, 0.08);
+  --customer-shadow-modal: 0 24px 48px rgba(25, 25, 25, 0.12);
+  --customer-font-heading: "Montserrat", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --customer-font-body: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif;
+
   /* ===== Цветовая палитра НАВАЛИВАЙ ===== */
   
   /* Основные цвета */
@@ -43,6 +78,10 @@
   --text-5xl: 3rem;       /* 48px */
   --text-6xl: 3.75rem;    /* 60px */
   --text-7xl: 4.5rem;     /* 72px */
+}
+
+.customer-page-surface {
+  background: var(--customer-bg, #f5f7fa);
 }
 
 /* ===== Глобальные стили ===== */
@@ -83,9 +122,9 @@ button {
 }
 
 body {
-  font-family: var(--font-body);
-  background: var(--navalivay-bg-gray);
-  color: var(--navalivay-black);
+  font-family: var(--customer-font-body, -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif);
+  background: var(--customer-bg, #f5f7fa);
+  color: var(--customer-ink, #191919);
   overflow-x: hidden;
 }
 

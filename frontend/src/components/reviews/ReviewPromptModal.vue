@@ -232,8 +232,8 @@ watch(
   width: 100%;
   min-height: 64px;
   border: none;
-  border-radius: 528px;
-  background: linear-gradient(90deg, #f50302 0%, #a90f0e 100%);
+  border-radius: var(--customer-radius-action, 18px);
+  background: var(--customer-red-gradient);
   color: #ffffff;
   font-family: "Montserrat", sans-serif;
   font-weight: 500;

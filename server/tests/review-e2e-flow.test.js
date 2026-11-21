@@ -181,8 +181,10 @@ console.log('\n=== review e2e flow ===\n');
   ok(publicAfter.data?.manager?.display_name, 'manager display name on public payload');
   ok(publicAfter.data?.manager?.avatar_url, 'manager avatar on public payload');
 
+  // Задержки между отзывами нет: после одобрения покупку можно оценить
+  // снова, поэтому строка отзыва показывается.
   const prompt = await requestJson('/api/reviews/prompt', { headers: customerHeaders() });
-  ok(prompt.data?.show === false, 'prompt hidden after review submitted');
+  ok(prompt.data?.show === true, 'строка отзыва доступна для повторной оценки');
 }
 
 server.close();

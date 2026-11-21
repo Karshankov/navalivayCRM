@@ -220,11 +220,11 @@ onBeforeUnmount(() => {
   max-height: 100%;
   display: flex;
   flex-direction: column;
-  border-radius: 20px;
-  background: #ffffff;
+  border-radius: var(--customer-radius-card-small, 20px);
+  background: var(--customer-surface, #ffffff);
   box-sizing: border-box;
   padding: 16px;
-  box-shadow: 0 24px 48px rgba(25, 25, 25, 0.12);
+  box-shadow: var(--customer-shadow-modal, 0 24px 48px rgba(25, 25, 25, 0.12));
   transform-origin: center center;
   overflow: hidden;
 }
@@ -238,11 +238,11 @@ onBeforeUnmount(() => {
 
 .customer-modal-title {
   margin: 8px 0 0;
-  font-family: "Montserrat", sans-serif;
+  font-family: var(--customer-font-heading, "Montserrat", sans-serif);
   font-weight: 700;
   font-size: 20px;
   line-height: 24px;
-  color: #191919;
+  color: var(--customer-ink, #191919);
 }
 
 .customer-modal-close {
@@ -251,8 +251,8 @@ onBeforeUnmount(() => {
   height: 40px;
   flex-shrink: 0;
   border: none;
-  border-radius: 512px;
-  background: #f5f7fa;
+  border-radius: var(--customer-radius-pill, 999px);
+  background: var(--customer-bg, #f5f7fa);
   display: inline-flex;
   align-items: center;
   justify-content: center;

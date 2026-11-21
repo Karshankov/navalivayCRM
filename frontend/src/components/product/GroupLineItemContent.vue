@@ -604,8 +604,8 @@ function decrementVariantQuantity(
 .group-price-drop {
   margin-left: 6px;
   padding: 1px 6px;
-  border-radius: 999px;
-  background: linear-gradient(106.76deg, #f50302 -2.64%, #a90f0e 85.78%);
+  border-radius: var(--customer-radius-pill, 999px);
+  background: var(--customer-red-gradient);
   font-size: 11px;
   font-weight: 800;
   line-height: 14px;
@@ -661,7 +661,7 @@ function decrementVariantQuantity(
 .group-qty-btn {
   width: 40px;
   height: 40px;
-  border-radius: 512px;
+  border-radius: var(--customer-radius-pill, 999px);
   border: none;
   background: #f5f7fa;
   display: flex;

@@ -93,7 +93,7 @@ function goBack() {
 <style scoped>
 .card-rules-page {
   min-height: 100vh;
-  background: #f5f7fa;
+  background: var(--customer-bg, #f5f7fa);
   padding-bottom: 24px;
 }
 
@@ -117,7 +117,7 @@ function goBack() {
   height: 40px;
   border: none;
   border-radius: 50%;
-  background: #ffffff;
+  background: var(--customer-surface, #ffffff);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -131,7 +131,7 @@ function goBack() {
   font-weight: 700;
   font-size: 18px;
   line-height: 24px;
-  color: #191919;
+  color: var(--customer-ink, #191919);
 }
 
 .card-rules-content {
@@ -145,7 +145,7 @@ function goBack() {
 }
 
 .card-rules-card {
-  background: #ffffff;
+  background: var(--customer-surface, #ffffff);
   border-radius: 20px;
   padding: 20px;
   box-shadow: 0 4px 12px rgba(15, 23, 42, 0.04);
@@ -155,7 +155,7 @@ function goBack() {
   display: flex;
   align-items: flex-start;
   gap: 14px;
-  background: linear-gradient(110deg, #f50302 0%, #a90f0e 100%);
+  background: var(--customer-red-gradient);
   box-shadow: 0 10px 24px rgba(245, 3, 2, 0.24);
 }
 
@@ -177,7 +177,7 @@ function goBack() {
   font-weight: 700;
   font-size: 16px;
   line-height: 22px;
-  color: #191919;
+  color: var(--customer-ink, #191919);
 }
 
 .card-rules-card__title--inverted {
@@ -189,7 +189,7 @@ function goBack() {
   font-family: -apple-system, "SF Pro Display", sans-serif;
   font-size: 13.5px;
   line-height: 19px;
-  color: #5c6470;
+  color: var(--customer-muted, #5c6470);
 }
 
 .card-rules-card__text--inverted {
@@ -211,7 +211,7 @@ function goBack() {
   font-family: -apple-system, "SF Pro Display", sans-serif;
   font-size: 13.5px;
   line-height: 19px;
-  color: #5c6470;
+  color: var(--customer-muted, #5c6470);
 }
 
 .card-rules-list li::before {
@@ -226,7 +226,7 @@ function goBack() {
 }
 
 .card-rules-list strong {
-  color: #1f2933;
+  color: var(--customer-ink, #191919);
   font-weight: 650;
 }
 </style>

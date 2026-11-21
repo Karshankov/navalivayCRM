@@ -16,8 +16,8 @@
 .discount-badge {
   margin: 0;
   padding: 4px 12px;
-  border-radius: 999px;
-  background: linear-gradient(106.76deg, #f50302 -2.64%, #a90f0e 85.78%);
+  border-radius: var(--customer-radius-pill, 999px);
+  background: var(--customer-red-gradient);
   font-family: "Montserrat", sans-serif;
   font-weight: 800;
   font-size: 11px;

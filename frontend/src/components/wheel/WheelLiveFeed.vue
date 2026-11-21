@@ -88,7 +88,7 @@ function formatRelative(iso: string): string {
 <style scoped>
 .wheel-live-feed {
   width: 100%;
-  background: #ffffff;
+  background: var(--customer-surface, #ffffff);
   border-radius: 20px;
   padding: 18px 0;
   overflow: hidden;
@@ -230,7 +230,7 @@ function formatRelative(iso: string): string {
   margin: 0;
   font-family: 'SF Pro Display', system-ui, sans-serif;
   font-size: 13px;
-  color: #5c6470;
+  color: var(--customer-muted, #5c6470);
   line-height: 1.3;
 }
 

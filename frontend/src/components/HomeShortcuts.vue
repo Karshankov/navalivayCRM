@@ -1,7 +1,25 @@
 <template>
   <div class="home-shortcuts" aria-label="Быстрые разделы">
+    <!-- Плитка «Скидки» из navalivay-discounts-component.html.
+         Только вёрстка: обработчиков, переходов и загрузки данных нет.
+         Счётчик подготовлен, но скрыт через hidden — подключим вместе
+         с реальным количеством товаров со скидкой. -->
+    <button class="nvl-discounts" type="button">
+      <span class="nvl-discounts__picture">
+        <img
+          class="nvl-discounts__art"
+          src="/shortcuts/discounts-art.png"
+          alt=""
+          loading="lazy"
+          decoding="async"
+        />
+      </span>
+      <span class="nvl-discounts__count" hidden aria-label="4 товара со скидкой">4</span>
+      <span class="nvl-discounts__label">Скидки</span>
+    </button>
+
     <button
-      class="home-shortcuts__item"
+      class="home-shortcuts__item home-shortcuts__item--favorites"
       type="button"
       aria-label="Открыть избранное"
       @click="openFavorites"
@@ -27,13 +45,17 @@
     >
       <span class="home-shortcuts__cashback-panel">
         <span class="home-shortcuts__cashback-amount"><b>15</b><small>BYN</small></span>
-        <img
-          class="home-shortcuts__cashback-wallet"
-          src="/shortcuts/cashback-wallet.webp"
-          alt=""
-          loading="lazy"
-          decoding="async"
-        />
+        <span class="r-coin r-coin--cashback">
+          <img
+            class="r-coin__image"
+            src="/shortcuts/cashback-coin.png"
+            alt=""
+            width="1024"
+            height="1024"
+            loading="lazy"
+            decoding="async"
+          />
+        </span>
       </span>
       <span class="home-shortcuts__label">Баланс кэшбэка</span>
     </div>
@@ -64,6 +86,108 @@ function openFavorites() {
   margin: 0 0 20px;
 }
 
+/* ===== Плитка «Скидки» =====
+   Перенесено из navalivay-discounts-component.html (блок
+   BEGIN/END COMPONENT STYLES). Единственное отступление от
+   исходника: цвет выреза счётчика берётся из токена фона страницы,
+   а не из #f4f5fa предпросмотра, иначе ореол вокруг счётчика
+   не совпал бы с фоном главной. */
+.nvl-discounts {
+  --nvl-badge-cutout: var(--customer-bg, #f5f7fa);
+  position: relative;
+  display: block;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #080a0b;
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  box-sizing: border-box;
+}
+
+.nvl-discounts__picture {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  aspect-ratio: 3.03;
+  background: #fff;
+  border-radius: 19px;
+}
+
+.nvl-discounts__art {
+  display: block;
+  width: 96%;
+  height: 90%;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Подпись — 1в1 с соседними плитками (.home-shortcuts__label):
+   Montserrat / 600 / 12px, как и было в исходном компоненте плитки
+   отличалось (13px / 650), из-за чего «Скидки» выбивались из ряда. */
+.nvl-discounts__label {
+  display: block;
+  margin-top: 8px;
+  font-family: "Montserrat", sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 15px;
+  letter-spacing: 0.008em;
+  text-align: center;
+  color: #000000;
+}
+
+.nvl-discounts__count {
+  position: absolute;
+  top: -7px;
+  right: -5px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 25px;
+  height: 25px;
+  box-sizing: content-box;
+  border: 3px solid var(--nvl-badge-cutout);
+  border-radius: 50%;
+  background: linear-gradient(145deg, #ff4035, #c51214);
+  color: #fff;
+  box-shadow: 0 3px 7px #bc14151c;
+  font-size: 13px;
+  font-weight: 750;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+/* Счётчик подготовлен, но скрыт. Не снимать hidden до подключения
+   реальных данных. */
+.nvl-discounts__count[hidden] {
+  display: none !important;
+}
+
+.nvl-discounts:focus-visible {
+  outline: 2px solid #cf2020;
+  outline-offset: 5px;
+  border-radius: 19px;
+}
+
+@media (max-width: 350px) {
+  .nvl-discounts__label {
+    font-size: 11px;
+    line-height: 14px;
+  }
+}
+/* ===== /Плитка «Скидки» ===== */
+
 .home-shortcuts__item {
   display: block;
   min-width: 0;
@@ -86,8 +210,21 @@ function openFavorites() {
   cursor: default;
 }
 
+/* Раскладка трёх плиток:
+     Скидки   | (пусто)
+     Избранное | Баланс кэшбэка
+   «Скидки» занимает верхнюю ячейку, под ней в левой колонке —
+   «Избранное», в правой нижней — баланс кэшбэка. Позиции заданы
+   явно: авторазмещение ставило «Избранное» в правый верх, а баланс
+   уводило в левый низ. */
+.home-shortcuts__item--favorites {
+  grid-column: 1;
+  grid-row: 2;
+}
+
 .home-shortcuts__item--cashback {
-  cursor: default;
+  grid-column: 2;
+  grid-row: 2;
 }
 
 .home-shortcuts__cashback-panel {
@@ -150,20 +287,43 @@ function openFavorites() {
   line-height: 1;
 }
 
-.home-shortcuts__cashback-wallet {
-  position: absolute;
-  right: -10px;
-  bottom: -4px;
-  width: 54%;
-  height: 62px;
-  object-fit: contain;
-  object-position: right bottom;
-  filter: drop-shadow(0 4px 8px #1b1d2330);
-  transform-origin: 85% 94%;
-  animation: cashback-wallet-gesture 6s ease-in-out infinite;
+/* Монета кэшбэка (cashback-coin.html) вместо бирки.
+   Кошелёк и бирка сохранены в public/shortcuts/_backup/ — вернуть
+   одним копированием (см. комментарий у .home-shortcuts__cashback-panel).
+
+   Сам элемент из исходника — .r-coin / .r-coin__image. В исходнике
+   размер задаётся переменной --coin-size; здесь её роль играет
+   height и absolute-позиция внутри панели баланса. */
+.r-coin {
+  display: inline-block;
+  width: var(--coin-size, 160px);
+  max-width: 100%;
+  aspect-ratio: 1;
+  vertical-align: middle;
 }
 
-@keyframes cashback-wallet-gesture {
+.r-coin__image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.r-coin--cashback {
+  position: absolute;
+  /* Позиция и размер — те же, что были у бирки: монета заняла её
+     место один в один, чтобы вид блока не менялся. */
+  right: 8px;
+  bottom: -19px;
+  width: 95px;
+  height: 95px;
+  aspect-ratio: 1 / 1;
+  filter: drop-shadow(0 3px 6px #1b1d2326);
+  transform-origin: 85% 94%;
+  animation: cashback-coin-gesture 6s ease-in-out infinite;
+}
+
+@keyframes cashback-coin-gesture {
   0%, 9%, 100% { transform: none; }
   19% { transform: translate(-2px, -4px) rotate(-3deg); }
   29% { transform: translate(-1px, -1px) rotate(-1deg); }
@@ -181,7 +341,7 @@ function openFavorites() {
   justify-content: center;
   height: 58px;
   border-radius: 18px;
-  background: #ffffff;
+  background: var(--customer-surface, #ffffff);
   overflow: hidden;
   transition: transform 0.2s ease;
 }
@@ -212,7 +372,7 @@ function openFavorites() {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .home-shortcuts__cashback-wallet {
+  .r-coin--cashback {
     animation: none;
   }
 }

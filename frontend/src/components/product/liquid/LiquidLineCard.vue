@@ -1265,7 +1265,7 @@ function closeColorPreview() {
 .liquid-line-toggle {
   width: 40px;
   height: 40px;
-  border-radius: 512px;
+  border-radius: var(--customer-radius-pill, 999px);
   border: none;
   background: #f5f7fa;
   display: flex;
@@ -1391,7 +1391,7 @@ function closeColorPreview() {
   height: 40px;
   /* Не сжимается длинными названиями: стрелка всегда на месте. */
   flex-shrink: 0;
-  border-radius: 512px;
+  border-radius: var(--customer-radius-pill, 999px);
   border: none;
   background: #f5f7fa;
   display: flex;
@@ -1522,7 +1522,7 @@ function closeColorPreview() {
 .liquid-qty-btn {
   width: 40px;
   height: 40px;
-  border-radius: 512px;
+  border-radius: var(--customer-radius-pill, 999px);
   border: none;
   background: #f5f7fa;
   display: flex;

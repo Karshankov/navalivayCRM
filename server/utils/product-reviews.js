@@ -99,7 +99,9 @@ export const REVIEW_STATUSES = Object.freeze({
 });
 
 const COMPLETED_ORDER_STATUSES = new Set(['delivered', 'completed']);
-const MIN_REVIEW_BODY_LENGTH = 20;
+/* Минимума по длине нет: отзыв можно оставить одной оценкой без слов.
+   Ограничение сверху остаётся, чтобы не хранить простыни. */
+const MIN_REVIEW_BODY_LENGTH = 0;
 const MAX_REVIEW_BODY_LENGTH = 4000;
 
 export { MIN_REVIEW_BODY_LENGTH, MAX_REVIEW_BODY_LENGTH };
@@ -107,7 +109,8 @@ export { MIN_REVIEW_BODY_LENGTH, MAX_REVIEW_BODY_LENGTH };
 export const REVIEW_ERROR_MESSAGES = Object.freeze({
   pending_moderation:
     'Вы уже отправили отзыв на эту линейку. Мы проверим его и опубликуем после одобрения.',
-  cooldown: 'Недавно вы уже оставляли отзыв на эту линейку. Подождите, прежде чем писать снова.',
+  // cooldown больше не наступает: задержки между отзывами нет.
+  cooldown: 'Отзыв на эту линейку уже оставлен.',
   not_purchased: 'Отзыв можно оставить только на товары, которые вы уже покупали.',
   order_not_reviewable: 'Отзыв можно оставить только после выдачи заказа.',
   review_body_too_short: 'Напишите отзыв подробнее - минимум 20 символов.',
@@ -252,9 +255,11 @@ export function setReviewSetting(key, value) {
   ).run(key, String(value));
 }
 
+/* Задержка между отзывами убрана: раньше здесь читался
+   cooldown_days, но теперь купил позицию — можно её оценить.
+   Функция оставлена, чтобы не трогать зависимый код. */
 export function getCooldownDays() {
-  const raw = Number(getReviewSetting('cooldown_days', '90'));
-  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 90;
+  return 0;
 }
 
 export function isDevTestModeEnabled() {
@@ -346,12 +351,7 @@ export function getManagerReviewBlock() {
 
 export function validateReviewBodyText(bodyText) {
   const trimmed = String(bodyText || '').trim();
-  if (trimmed.length < MIN_REVIEW_BODY_LENGTH) {
-    const err = new Error('review_body_too_short');
-    err.code = 'review_body_too_short';
-    err.minLength = MIN_REVIEW_BODY_LENGTH;
-    throw err;
-  }
+  // Пустой текст допустим: клиент может оценить товар без комментария.
   if (trimmed.length > MAX_REVIEW_BODY_LENGTH) {
     const err = new Error('review_body_too_long');
     err.code = 'review_body_too_long';
@@ -645,23 +645,9 @@ export function getGroupReviewEligibility({
     return { canReview: false, reason: 'not_purchased' };
   }
 
-  const latest = getLatestReviewForGroup(customerId, groupId);
-  if (latest) {
-    if (latest.status === REVIEW_STATUSES.APPROVED) {
-      const cooldownDays = getCooldownDays();
-      const createdAt = new Date(latest.created_at);
-      const cooldownEnds = new Date(createdAt.getTime() + cooldownDays * 24 * 60 * 60 * 1000);
-      if (Date.now() < cooldownEnds.getTime()) {
-        return {
-          canReview: false,
-          reason: 'cooldown',
-          cooldownEndsAt: cooldownEnds.toISOString(),
-          reviewId: latest.id,
-          existingReview: latest,
-        };
-      }
-    }
-  }
+  /* Задержки между отзывами нет: купил позицию — можешь её оценить.
+     От повторной отправки по одной покупке защищает проверка
+     pending_moderation выше: пока отзыв не проверен, второй не уйдёт. */
 
   const scopedOrderId = orderId || purchase.order_id;
   const scopedItem = orderItemId
@@ -891,21 +877,11 @@ export function buildOrderLineIconsFromGroups(groups, maxVisible = 4) {
   };
 }
 
-function buildOrderHistoryReviewHint(order, customerId, { devBypass = false } = {}) {
-  if (!customerId || !['delivered', 'completed'].includes(order.status)) {
-    return null;
-  }
-
-  const lines = buildReviewableLinesForOrder(order, customerId, { devBypass });
-  if (!lines.length) return null;
-
-  const hasReviewable = lines.some((line) => line.eligibility.canReview);
-  if (hasReviewable) return null;
-
-  const hasCooldown = lines.some((line) => line.eligibility.reason === 'cooldown');
-  if (!hasCooldown) return null;
-
-  return 'Отзыв на эту линейку уже оставлен';
+/* Подсказка в истории заказов появлялась только при задержке между
+   отзывами. Задержки больше нет — купил позицию, значит можешь её
+   оценить, поэтому подсказка не нужна. */
+function buildOrderHistoryReviewHint(_order, _customerId, _options = {}) {
+  return null;
 }
 
 export function serializeOrderHistoryCard(order, customerId = null, { devBypass = false } = {}) {
@@ -972,19 +948,28 @@ export function getReviewPromptForCustomer(customer, { devBypass = false } = {})
     limit: 20,
   });
 
+  /* Позиции собираем со ВСЕХ заказов, а не с первого попавшегося:
+     иначе счётчик показывал «ждёт 1», даже когда на оценку ждут
+     несколько покупок из разных заказов. Порядок — от свежих заказов
+     к старым, поэтому первым в очереди идёт последний полученный. */
+  const queue = [];
   for (const order of orders) {
     const lines = buildReviewableLinesForOrder(order, customer.id, { devBypass });
-    const pending = lines.filter((line) => line.eligibility.canReview);
-    if (pending.length === 0) continue;
+    for (const line of lines) {
+      if (!line.eligibility.canReview) continue;
+      queue.push({ order, line });
+    }
+  }
 
-    const primary = pending[0];
-    const pendingGroups = pending.map((line) => ({
-      group_id: line.group_id,
-      category_id: line.category_id,
-      category_name: line.category_name,
-      group_name: line.group_name,
-      group_cover_image: line.group_cover_image,
-      category_cover_image: line.category_cover_image,
+  if (queue.length > 0) {
+    const primary = queue[0];
+    const pendingGroups = queue.map((entry) => ({
+      group_id: entry.line.group_id,
+      category_id: entry.line.category_id,
+      category_name: entry.line.category_name,
+      group_name: entry.line.group_name,
+      group_cover_image: entry.line.group_cover_image,
+      category_cover_image: entry.line.category_cover_image,
     }));
     const { icons: previewIcons, overflow: previewIconsOverflow } =
       buildOrderLineIconsFromGroups(pendingGroups, 5);
@@ -992,12 +977,13 @@ export function getReviewPromptForCustomer(customer, { devBypass = false } = {})
     return {
       show: true,
       reason: 'pending_reviews',
-      order_id: order.id,
-      order_number: order.order_number,
-      group_id: primary.group_id,
-      group_name: primary.group_name,
-      purchased_variant_name: primary.purchased_variant_name,
-      pending_review_count: pending.length,
+      order_id: primary.order.id,
+      order_number: primary.order.order_number,
+      group_id: primary.line.group_id,
+      group_name: primary.line.group_name,
+      purchased_variant_name: primary.line.purchased_variant_name,
+      order_item_id: primary.line.order_item_id || null,
+      pending_review_count: queue.length,
       preview_icons: previewIcons,
       preview_icons_overflow: previewIconsOverflow,
       lottery_hint_text: getReviewSetting('lottery_hint_text', ''),
@@ -1301,4 +1287,138 @@ export function countCustomerReviewsInBusinessMonth(customerId, monthOffset = 0)
   `).get(customerId, REVIEW_STATUSES.APPROVED, startIso, endIso);
 
   return Number(row?.count || 0);
+}
+
+/**
+ * Плоский список всех одобренных отзывов по всем товарам + агрегат.
+ *
+ * Отличие от getPublicGroupReviews: тот отдаёт отзывы одного товара,
+ * этот — общий поток для плашки на главной и экрана «все отзывы».
+ * Считаются только APPROVED: pending ждут модерации, rejected
+ * отклонены и в публичный список попадать не должны.
+ *
+ * Средняя оценка отбрасывается до одного знака, а не округляется:
+ * 4.9529 даёт «4,9», а не «5,0». Так честнее — при восьми отзывах
+ * ниже пятёрки «5,0» читалось бы как завышение.
+ */
+export function getPublicReviewsFeed({ limit = 20, offset = 0, viewerCustomerId = null } = {}) {
+  const summary = db.prepare(`
+    SELECT
+      COUNT(*) AS review_count,
+      AVG(rating) AS average_rating
+    FROM product_reviews
+    WHERE status = ?
+  `).get(REVIEW_STATUSES.APPROVED);
+
+  const rows = db.prepare(`
+    SELECT
+      pr.*,
+      c.id AS customer_id_ref,
+      c.first_name,
+      c.last_name,
+      c.photo_url,
+      cg.name AS group_name,
+      oi.variant_name AS order_item_variant_name,
+      oi.product_title AS order_item_product_title,
+      oi.group_name AS order_item_group_name,
+      oi.base_product_title AS order_item_base_product_title,
+      /* Обложка товара (position = 0). Берём по base_product_id, а если
+         его нет — по product_id: у вариантов фото лежит на базовом
+         товаре, у обычных позиций — на самом товаре. */
+      (SELECT url FROM product_images
+        WHERE productId = COALESCE(oi.base_product_id, oi.product_id)
+        ORDER BY position LIMIT 1) AS product_image_url,
+      /* Признак, что у группы есть обложка: саму картинку в ответ не
+         кладём — это base64 на десятки килобайт, и список из 20
+         отзывов раздувался до 1.3 МБ. Клиент возьмёт её по адресу
+         /api/category-groups/:id/cover. */
+      CASE WHEN cg.cover_image IS NOT NULL AND cg.cover_image != ''
+        THEN 1 ELSE 0 END AS has_group_cover
+    FROM product_reviews pr
+    LEFT JOIN customers c ON c.id = pr.customer_id
+    LEFT JOIN category_groups cg ON cg.id = pr.group_id
+    LEFT JOIN order_items oi ON oi.id = pr.order_item_id
+    WHERE pr.status = ?
+    ORDER BY COALESCE(pr.approved_at, pr.created_at) DESC, pr.created_at DESC
+    LIMIT ? OFFSET ?
+  `).all(REVIEW_STATUSES.APPROVED, limit, offset);
+
+  const tagIds = new Set();
+  for (const row of rows) {
+    try {
+      const parsed = JSON.parse(row.quick_tag_ids || '[]');
+      if (Array.isArray(parsed)) parsed.forEach((id) => tagIds.add(String(id)));
+    } catch {
+      // ignore malformed tag ids
+    }
+  }
+
+  const tagMap = new Map();
+  if (tagIds.size > 0) {
+    const placeholders = [...tagIds].map(() => '?').join(', ');
+    const tags = db.prepare(
+      `SELECT id, label FROM review_quick_tags WHERE id IN (${placeholders})`,
+    ).all(...tagIds);
+    for (const tag of tags) tagMap.set(tag.id, tag.label);
+  }
+
+  const reviewCount = Number(summary?.review_count || 0);
+  const rawAverage = summary?.average_rating ? Number(summary.average_rating) : null;
+
+  return {
+    review_count: reviewCount,
+    // Отбрасывание, не округление: Math.trunc(49.529) / 10 = 4.9.
+    average_rating: rawAverage === null ? null : Math.trunc(rawAverage * 10) / 10,
+    items: rows.map((row) => {
+      let quickTagLabels = [];
+      try {
+        const parsed = JSON.parse(row.quick_tag_ids || '[]');
+        if (Array.isArray(parsed)) {
+          quickTagLabels = parsed
+            .map((id) => tagMap.get(String(id)))
+            .filter(Boolean);
+        }
+      } catch {
+        quickTagLabels = [];
+      }
+
+      const purchasedVariantName =
+        row.purchased_variant_name
+        || resolvePurchasedVariantName({
+          variantName: row.order_item_variant_name,
+          productTitle: row.order_item_product_title,
+          baseProductTitle: row.order_item_base_product_title,
+          groupName: row.order_item_group_name || row.group_name,
+        });
+
+      return {
+        id: row.id,
+        rating: row.rating,
+        body_text: row.body_text,
+        group_id: row.group_id || null,
+        group_name: row.group_name || null,
+        // Картинка товара: своя, иначе обложка группы по её адресу.
+        // null — нет ни того, ни другого, клиент покажет заглушку.
+        product_image_url:
+          row.product_image_url
+          || (Number(row.has_group_cover) === 1 && row.group_id
+            ? `/api/category-groups/${encodeURIComponent(row.group_id)}/cover`
+            : null),
+        purchased_variant_name: purchasedVariantName || null,
+        quick_tag_labels: quickTagLabels,
+        reviewer: maskReviewer(
+          {
+            id: row.customer_id_ref,
+            first_name: row.first_name,
+            last_name: row.last_name,
+            photo_url: row.photo_url,
+          },
+          row,
+          { viewerCustomerId },
+        ),
+        created_at: row.created_at,
+        approved_at: row.approved_at || null,
+      };
+    }),
+  };
 }

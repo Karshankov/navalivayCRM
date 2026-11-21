@@ -4,9 +4,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import VapeSmoke from "@/components/VapeSmoke.vue";
 import BlockedScreen from "@/components/BlockedScreen.vue";
-import ReviewPromptModal from "@/components/reviews/ReviewPromptModal.vue";
 import ReferralAuthorizationGate from "@/components/ReferralAuthorizationGate.vue";
-import TopCartBar from "@/components/TopCartBar.vue";
 import { useCustomerBlock } from "@/composables/useCustomerBlock";
 import { useUserStore } from "@/stores/user";
 import { useCatalogStore } from "@/stores/catalog";
@@ -24,17 +22,6 @@ const referralGateActive = ref(!isAdminRoute.value);
 const showCustomerContent = computed(
   () => isAdminRoute.value || (!referralGateActive.value && !isBlocked.value),
 );
-
-/** Верхняя панель с корзиной и профилем: только на витринных экранах
- *  клиента — не в админке, чекауте, оформленном заказе и опт-лендинге. */
-const showTopCartBar = computed(() => {
-  const path = route.path;
-  if (path.startsWith("/admin")) return false;
-  if (path === "/checkout") return false;
-  if (path === "/my-order") return false;
-  if (path.startsWith("/opt")) return false;
-  return true;
-});
 
 watch(isAdminRoute, (isAdmin, wasAdmin) => {
   if (isAdmin) {
@@ -75,19 +62,6 @@ const showOfflinePlaceholder = computed(
       gateNetworkError.value ||
       (catalogStore.offline && !catalogStore.categories.length)),
 );
-
-/* Нижний красный футер (домик/рулетка/человечек) удалён: главная и
-   профиль доступны из верхней панели, корзина — там же, рулетка —
-   через плавающий виджет на главном экране. Промпт отзывов живёт
-   только на витринных экранах (не чекаут/заказ/админ). */
-const showReviewPrompt = computed(() => {
-  const path = route.path;
-  if (path.startsWith("/admin")) return false;
-  if (path === "/checkout") return false;
-  if (path === "/my-order") return false;
-  if (path === "/favorites") return false;
-  return true;
-});
 
 const showReferralGate = computed(
   () => !isAdminRoute.value && !isBlocked.value && !showOfflinePlaceholder.value,
@@ -130,15 +104,6 @@ onMounted(() => {
     <OfflinePlaceholder v-if="showOfflinePlaceholder" />
 
     <div v-else-if="showCustomerContent" class="app-shell__protected">
-      <!-- Верхняя закреплённая панель: корзина слева, профиль справа.
-           app-shell__topbar-sizer резервирует высоту, чтобы контент
-           не перекрывался панелью. -->
-      <div
-        v-if="showTopCartBar"
-        class="app-shell__topbar-sizer"
-        aria-hidden="true"
-      ></div>
-      <TopCartBar v-if="showTopCartBar" :visible="showTopCartBar" />
       <div class="app-shell__content">
         <RouterView v-slot="{ Component, route: viewRoute }">
           <Transition name="page-fade" mode="out-in">
@@ -147,7 +112,6 @@ onMounted(() => {
         </RouterView>
       </div>
       <VapeSmoke />
-      <ReviewPromptModal v-if="showReviewPrompt" />
     </div>
     <ReferralAuthorizationGate
       v-if="showReferralGate"
@@ -172,10 +136,6 @@ onMounted(() => {
   --app-bottom-tab-bar-height: calc(24px + env(safe-area-inset-bottom, 0px));
   --app-cart-bottom-offset: var(--app-bottom-tab-bar-height, 130px);
   --app-page-background: #f5f7fa;
-  /* Высота закреплённой верхней панели (16px + safe-area + 54px) и
-     точка залипания sticky-элементов под ней. */
-  --app-topbar-height: calc(16px + env(safe-area-inset-top, 0px) + 54px);
-  --app-topbar-offset: calc(var(--app-topbar-height) + 8px);
 }
 
 html,
@@ -189,12 +149,6 @@ body,
 .app-shell {
   min-height: 100vh;
   overflow-x: hidden;
-}
-
-/* Отступ под верхнюю панель: панель + зазор, чтобы контент страницы
-   не перекрывался. */
-.app-shell__topbar-sizer {
-  height: var(--app-topbar-offset);
 }
 
 /* Desktop admin content owns its scroll; customer and mobile pages stay in document flow. */

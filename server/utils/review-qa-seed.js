@@ -1,5 +1,14 @@
 import { db } from '../db.js';
-import { getReviewPeriodKey } from './review-monthly-draw.js';
+import { getBusinessPeriodRange } from './business-time.js';
+
+/* Ключ периода в формате «ГГГГ-ММ»: переехал сюда из розыгрыша,
+   который убран — нужен только для пометки тестовых данных. */
+export function getReviewPeriodKey(monthOffset = 0) {
+  const { calendarStart } = getBusinessPeriodRange('month', monthOffset);
+  const year = calendarStart.year;
+  const month = String(calendarStart.month).padStart(2, '0');
+  return `${year}-${month}`;
+}
 
 export const SCENARIO_TAG = '[dev-reviews-scenarios]';
 

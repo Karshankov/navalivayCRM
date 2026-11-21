@@ -28,12 +28,6 @@ import {
 } from '../utils/product-reviews.js';
 import { runReviewQaSeed } from '../utils/review-qa-seed.js';
 import {
-  getDrawById,
-  getReviewPeriodKey,
-  rerollDrawSeat,
-  runMonthlyReviewDraw,
-} from '../utils/review-monthly-draw.js';
-import {
   PENDING_ACTIVE_PREDICATE,
   computeBlockUntil,
   createBlock,
@@ -2892,11 +2886,19 @@ crmRouter.get('/api/admin/crm/product-reviews', authMiddleware, (req, res) => {
         c.first_name,
         c.last_name,
         g.name AS group_name,
-        o.order_number
+        o.order_number,
+        /* Обложка товара для карточки модерации: своя картинка, иначе
+           обложка группы — так же, как в публичном списке отзывов. */
+        (SELECT url FROM product_images
+          WHERE productId = COALESCE(oi.base_product_id, oi.product_id)
+          ORDER BY position LIMIT 1) AS product_image_url,
+        CASE WHEN g.cover_image IS NOT NULL AND g.cover_image != ''
+          THEN 1 ELSE 0 END AS has_group_cover
       FROM product_reviews pr
       LEFT JOIN customers c ON c.id = pr.customer_id
       LEFT JOIN category_groups g ON g.id = pr.group_id
       LEFT JOIN orders o ON o.id = pr.order_id
+      LEFT JOIN order_items oi ON oi.id = pr.order_item_id
     `;
     const params = [];
     if (status) {
@@ -2904,7 +2906,18 @@ crmRouter.get('/api/admin/crm/product-reviews', authMiddleware, (req, res) => {
       params.push(status);
     }
     sql += ' ORDER BY pr.created_at DESC LIMIT 200';
-    const items = db.prepare(sql).all(...params);
+    const rows = db.prepare(sql).all(...params);
+
+    // Картинку не тащим в JSON как base64: отдаём адрес обложки группы.
+    const items = rows.map((row) => ({
+      ...row,
+      product_image_url:
+        row.product_image_url
+        || (Number(row.has_group_cover) === 1
+          ? `/api/category-groups/${encodeURIComponent(row.group_id)}/cover`
+          : null),
+    }));
+
     res.json({ items });
   } catch (error) {
     console.error('[crm] List product reviews error:', error);
@@ -3202,53 +3215,5 @@ crmRouter.post('/api/admin/crm/review-qa/disable', authMiddleware, (_req, res) =
   }
 });
 
-crmRouter.get('/api/admin/crm/review-monthly-draws', authMiddleware, (_req, res) => {
-  try {
-    const draws = db.prepare(`
-      SELECT * FROM review_monthly_draws
-      ORDER BY drawn_at DESC
-      LIMIT 24
-    `).all();
-
-    const items = draws.map((draw) => getDrawById(draw.id));
-    res.json({ items });
-  } catch (error) {
-    console.error('[crm] List review draws error:', error);
-    res.status(500).json({ error: 'failed', message: error.message });
-  }
-});
-
-crmRouter.post('/api/admin/crm/review-monthly-draws/run', authMiddleware, (req, res) => {
-  try {
-    const periodKey = req.body?.period_key || getReviewPeriodKey(0);
-    const draw = runMonthlyReviewDraw({ periodKey });
-    res.json({ ok: true, draw });
-  } catch (error) {
-    if (error?.code === 'draw_already_exists') {
-      return res.status(409).json({ error: error.code, draw_id: error.drawId });
-    }
-    console.error('[crm] Run review draw error:', error);
-    res.status(500).json({ error: 'failed', message: error.message });
-  }
-});
-
-crmRouter.post('/api/admin/crm/review-monthly-draws/:drawId/reroll', authMiddleware, (req, res) => {
-  try {
-    const seatNumber = Number(req.body?.seat_number || 0);
-    if (!Number.isInteger(seatNumber) || seatNumber < 1 || seatNumber > 5) {
-      return res.status(400).json({ error: 'invalid_seat_number' });
-    }
-
-    const draw = rerollDrawSeat(req.params.drawId, seatNumber);
-    res.json({ ok: true, draw });
-  } catch (error) {
-    const code = error?.code || 'failed';
-    const status =
-      code === 'draw_not_found' || code === 'seat_not_found' ? 404 :
-      code === 'no_eligible_tickets' ? 409 : 500;
-    if (status === 500) {
-      console.error('[crm] Reroll review draw error:', error);
-    }
-    res.status(status).json({ error: code, message: error.message });
-  }
-});
+/* Эндпоинты розыгрыша призов убраны: розыгрышей больше не будет,
+   вместо них планируется кэшбэк (логику напишем позже). */

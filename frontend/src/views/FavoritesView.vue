@@ -628,7 +628,7 @@ onBeforeUnmount(() => {
 }
 
 .favorites-header {
-  background: white;
+  background: var(--customer-surface, #ffffff);
   border-radius: 0 0 24px 24px;
   padding: 24px 20px;
   text-align: center;
@@ -670,9 +670,9 @@ button {
   width: 100%;
   min-height: 44px;
   border: 0;
-  border-radius: 999px;
+  border-radius: var(--customer-radius-action, 18px);
   padding: 10px 16px;
-  background: linear-gradient(110deg, #e62c20, #a92520);
+  background: var(--customer-red-gradient);
   color: white;
   font-size: 13px;
   font-weight: 600;
@@ -695,8 +695,8 @@ button {
 }
 
 .card {
-  border-radius: 24px;
-  background: #fff;
+  border-radius: var(--customer-radius-card, 24px);
+  background: var(--customer-surface, #ffffff);
   overflow: hidden;
 }
 
@@ -898,8 +898,8 @@ button {
   z-index: 1000;
   margin: 0;
   pointer-events: none;
-  background: #fff;
-  border-radius: 24px;
+  background: var(--customer-surface, #ffffff);
+  border-radius: var(--customer-radius-card, 24px);
   transform-origin: center;
   box-shadow: 0 14px 34px #20283826;
   will-change: transform;

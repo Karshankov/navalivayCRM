@@ -278,7 +278,7 @@ function formatMoney(minor?: number | null) {
      прокручивается только её внутренняя область) — паттерн CustomerModalShell,
      проверенный в Telegram Mini App. */
   box-sizing: border-box;
-  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  font-family: var(--customer-font-body, -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif);
   color: var(--tariff-ink);
   background: rgba(16, 24, 36, 0.53);
   backdrop-filter: blur(5px);
@@ -313,7 +313,7 @@ function formatMoney(minor?: number | null) {
   display: flex;
   flex-direction: column;
   background: #fff;
-  border-radius: 36px;
+  border-radius: var(--customer-radius-card, 24px);
   box-shadow: var(--tariff-shadow);
   overflow: hidden;
   position: relative;
@@ -348,6 +348,7 @@ function formatMoney(minor?: number | null) {
 
 /* Ручки-планки сверху нет: заголовок сразу под крестиком. */
 .tariff-sheet-top h1 {
+  font-family: var(--customer-font-heading, "Montserrat", sans-serif);
   font-size: clamp(24px, 5.2vw, 35px);
   letter-spacing: -1.3px;
   line-height: 1.1;
@@ -389,7 +390,7 @@ function formatMoney(minor?: number | null) {
 
 .tariff-plan {
   border: 1.5px solid #f8d9dc;
-  border-radius: 23px;
+  border-radius: var(--customer-radius-card-small, 20px);
   padding: 16px 16px 12px;
   position: relative;
   cursor: pointer;
@@ -405,7 +406,7 @@ function formatMoney(minor?: number | null) {
 }
 
 .tariff-plan--selected {
-  background: linear-gradient(113deg, #f5000b 0%, #e00009 52%, #a80912 100%);
+  background: var(--customer-red-gradient);
   border-color: transparent;
   color: white;
   box-shadow: 0 12px 28px rgba(189, 0, 13, 0.2);
@@ -635,8 +636,8 @@ function formatMoney(minor?: number | null) {
 .tariff-sheet-submit {
   width: 100%;
   border: 0;
-  border-radius: 19px;
-  background: linear-gradient(100deg, #f0000a, #aa0710);
+  border-radius: var(--customer-radius-action, 18px);
+  background: var(--customer-red-gradient);
   color: white;
   font-weight: 800;
   font-size: 18px;
@@ -645,7 +646,7 @@ function formatMoney(minor?: number | null) {
   cursor: pointer;
   box-shadow: 0 7px 17px rgba(192, 0, 10, 0.14);
   transition: transform 0.15s, filter 0.15s;
-  font-family: inherit;
+  font-family: var(--customer-font-heading, "Montserrat", sans-serif);
 }
 
 .tariff-sheet-submit:hover:not(:disabled) {
@@ -681,8 +682,8 @@ function formatMoney(minor?: number | null) {
 
 .tariff-sheet-dialog {
   width: min(100%, 380px);
-  border-radius: 26px;
-  background: white;
+  border-radius: var(--customer-radius-card, 24px);
+  background: var(--customer-surface, #ffffff);
   padding: 30px;
   text-align: center;
   box-shadow: var(--tariff-shadow);
@@ -707,7 +708,7 @@ function formatMoney(minor?: number | null) {
 }
 
 .tariff-sheet-dialog button {
-  background: linear-gradient(90deg, #ef0010, #ac0712);
+  background: var(--customer-red-gradient);
   border: 0;
   color: white;
   border-radius: 13px;

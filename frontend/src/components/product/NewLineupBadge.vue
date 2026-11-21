@@ -29,9 +29,9 @@ const WORD_COUNT = 6
 .new-lineup-badge {
   overflow: hidden;
   margin: -16px -16px 12px;
-  border-radius: 20px 20px 0 0;
+  border-radius: var(--customer-radius-card-small, 20px) var(--customer-radius-card-small, 20px) 0 0;
   padding: 7px 0;
-  background: linear-gradient(106.76deg, #f50302 -2.64%, #a90f0e 85.78%);
+  background: var(--customer-red-gradient);
   box-shadow: 0 8px 16px rgba(97, 1, 0, 0.16);
 }
 
@@ -75,7 +75,7 @@ const WORD_COUNT = 6
 @media (max-width: 360px) {
   .new-lineup-badge {
     margin: -14px -14px 12px;
-    border-radius: 18px 18px 0 0;
+    border-radius: var(--customer-radius-card-small, 20px) var(--customer-radius-card-small, 20px) 0 0;
   }
 }
 

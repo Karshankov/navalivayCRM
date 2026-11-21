@@ -105,6 +105,7 @@ import {
   findCustomerByTelegram,
   findOwnedOrders,
   getPublicGroupReviews,
+  getPublicReviewsFeed,
   getReviewErrorMessage,
   getReviewPromptForCustomer,
   shouldDevBypassForCustomer,
@@ -3231,6 +3232,48 @@ publicRouter.patch(
       return res.status(500).json({
         error: "review_preferences_failed",
         message: "Не удалось обновить настройки отзывов",
+      });
+    }
+  },
+);
+
+/**
+ * Общий поток отзывов: агрегат (средняя оценка, количество) и сами
+ * отзывы по всем товарам, свежие сверху. Питает плашку на главной и
+ * экран «все отзывы». Авторизация необязательна: гость видит те же
+ * отзывы, но без пометки «это ваш отзыв».
+ */
+publicRouter.get(
+  "/api/reviews/feed",
+  publicMiniAppReadLimiter,
+  optionalTelegramMiniAppAuth({ allowInsecureFallback: allowInsecureTelegramFallback }),
+  async (req, res) => {
+    try {
+      const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 50);
+      const offset = Math.max(Number(req.query.offset) || 0, 0);
+
+      const telegramId = String(req.telegramAuth?.telegramId || "").trim();
+      const telegramUsername = normalizeTelegramUsername(req.telegramAuth?.telegramUsername);
+      const viewer = telegramId || telegramUsername
+        ? findCustomerByTelegram({ telegramId, telegramUsername })
+        : null;
+
+      const initPhotoUrl = String(req.telegramAuth?.photoUrl || "").trim();
+      if (viewer) {
+        // Прогрев фото в фоне: не держать ответ (качает с t.me до 8с).
+        warmCustomerPhotoFromInitData(viewer.id, initPhotoUrl, db).catch(() => {});
+      }
+
+      return res.json(getPublicReviewsFeed({
+        limit,
+        offset,
+        viewerCustomerId: viewer?.id || null,
+      }));
+    } catch (error) {
+      console.error("[public] Failed to get public reviews feed:", error);
+      return res.status(500).json({
+        error: "reviews_feed_failed",
+        message: "Не удалось загрузить отзывы",
       });
     }
   },

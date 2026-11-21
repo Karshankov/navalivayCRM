@@ -200,9 +200,11 @@ console.log('\n--- A3b: qa/dev bypass still blocks duplicate pending ---');
   );
 }
 
-console.log('\n--- A4: cooldown after approved review ---');
+console.log('\n--- A4: повторный отзыв по тому же заказу на модерации ---');
 {
   seedWorld();
+  // Задержки между отзывами больше нет, но защита от повторов осталась:
+  // пока отзыв не проверен, второй по той же покупке не уйдёт.
   const review = createProductReview({
     customerId: 'cust1',
     orderId: 'ord1',
@@ -212,16 +214,28 @@ console.log('\n--- A4: cooldown after approved review ---');
     bodyText: 'Отличная линейка, беру снова и снова',
     quickTagIds: [],
   });
-  db.prepare(
-    `UPDATE product_reviews SET status = ?, approved_at = DATETIME('now') WHERE id = ?`,
-  ).run(REVIEW_STATUSES.APPROVED, review.id);
 
   const blocked = getGroupReviewEligibility({
     customerId: 'cust1',
     groupId: 'grp1',
     orderId: 'ord1',
   });
-  ok(blocked.canReview === false && blocked.reason === 'cooldown', 'cooldown enforced');
+  ok(
+    blocked.canReview === false && blocked.reason === 'pending_moderation',
+    'повторный отзыв ждёт проверки первого',
+  );
+
+  // После одобрения по этой же покупке отзыв снова доступен.
+  db.prepare(
+    `UPDATE product_reviews SET status = ?, approved_at = DATETIME('now') WHERE id = ?`,
+  ).run(REVIEW_STATUSES.APPROVED, review.id);
+
+  const afterApproval = getGroupReviewEligibility({
+    customerId: 'cust1',
+    groupId: 'grp1',
+    orderId: 'ord1',
+  });
+  ok(afterApproval.canReview === true, 'после одобрения можно оценить снова');
 }
 
 console.log('\n--- A5: invalid quick tag rejected ---');
@@ -320,13 +334,18 @@ console.log('\n--- A6: rating bounds ---');
   );
 }
 
-console.log('\n--- A7: body too short (anti empty-review) ---');
+console.log('\n--- A7: короткий и пустой текст допустимы ---');
 {
   seedWorld();
-  expectThrows(
-    () => validateReviewBodyText('коротко'),
-    'review_body_too_short',
-    'short body rejected',
+  // Раньше здесь ждали отказ: минимум в 20 знаков снят по запросу,
+  // отзыв можно оставить одной оценкой без слов.
+  ok(
+    validateReviewBodyText('коротко') === 'коротко',
+    'short body accepted',
+  );
+  ok(
+    validateReviewBodyText('') === '',
+    'empty body accepted',
   );
 }
 
@@ -415,10 +434,10 @@ console.log('\n--- A11: dev test mode allows review without delivered status ---
   setReviewSetting('dev_test_mode', '0');
 }
 
-console.log('\n--- R1: whitespace-trimmed body passes at 20 chars ---');
+console.log('\n--- R1: пробелы обрезаются, текст сохраняется как есть ---');
 {
   ok(
-    validateReviewBodyText('  Двадцать символов тут  ').length >= 20,
+    validateReviewBodyText('  Двадцать символов тут  ') === 'Двадцать символов тут',
     'trimmed body accepted',
   );
 }
@@ -483,25 +502,26 @@ function seedRepeatPurchaseWorld() {
   ).run();
 }
 
-console.log('\n--- A12: repeat purchase within 30d cooldown cannot farm reviews ---');
+console.log('\n--- A12: повторная покупка доступна, задержки нет ---');
 {
   seedRepeatPurchaseWorld();
-  const blocked = getGroupReviewEligibility({
+  const repeat = getGroupReviewEligibility({
     customerId: 'cust1',
     groupId: 'grp1',
     orderId: 'ord_repeat',
     orderItemId: 'oi_repeat',
   });
-  ok(blocked.canReview === false && blocked.reason === 'cooldown', '10d rebuy blocked by 30d cooldown');
-  ok(Boolean(blocked.cooldownEndsAt), 'cooldown end date exposed for order detail');
+  // Покупка повторная, но оценить её можно сразу.
+  ok(repeat.canReview === true, 'повторная покупка доступна для отзыва');
+  ok(!repeat.cooldownEndsAt, 'дата окончания задержки не возвращается');
 }
 
-console.log('\n--- A13: cooldown hides dock when only repeat line exists ---');
+console.log('\n--- A13: строка отзыва показывается для повторной покупки ---');
 {
   seedRepeatPurchaseWorld();
   const customer = db.prepare('SELECT * FROM customers WHERE id = ?').get('cust1');
   const prompt = getReviewPromptForCustomer(customer);
-  ok(prompt.show === false && prompt.reason === 'nothing_to_review', 'dock hidden on cooldown-only customer');
+  ok(prompt.show === true, 'строка показывается: оценивать можно');
 }
 
 console.log('\n--- A14: order history hints cooldown without exposing internals ---');
@@ -512,16 +532,16 @@ console.log('\n--- A14: order history hints cooldown without exposing internals 
   ok(!('pending_review_count' in card), 'history card has no pending_review_count');
   ok(!('has_reviews' in card), 'history card has no has_reviews');
   ok(!('cooldownEndsAt' in card), 'history card has no cooldown end date');
-  ok(card.review_hint === 'Отзыв на эту линейку уже оставлен', 'history card hints cooldown repeat purchase');
+  ok(!card.review_hint, 'подсказка о задержке больше не показывается');
 }
 
-console.log('\n--- A15: order detail exposes cooldown explanation ---');
+console.log('\n--- A15: детали заказа разрешают отзыв на повторную покупку ---');
 {
   seedRepeatPurchaseWorld();
   const repeatOrder = db.prepare('SELECT * FROM orders WHERE id = ?').get('ord_repeat');
   const detail = serializeOrderDetail(repeatOrder, 'cust1');
   const line = detail.reviewable_lines.find((row) => row.group_id === 'grp1');
-  ok(line?.eligibility.reason === 'cooldown', 'detail line shows cooldown reason');
+  ok(line?.eligibility.canReview === true, 'детали заказа разрешают отзыв');
   ok(line?.latest_review == null, 'repeat order has no scoped review row');
 }
 
@@ -555,7 +575,7 @@ console.log('\n--- A16: pending moderation blocks repeat purchase duplicate ---'
   );
 }
 
-console.log('\n--- A17: cooldown on one line does not block another line ---');
+console.log('\n--- A17: в заказе доступны обе линейки ---');
 {
   seedRepeatPurchaseWorld();
   db.prepare(
@@ -574,25 +594,25 @@ console.log('\n--- A17: cooldown on one line does not block another line ---');
   );
   const grp1 = lines.find((line) => line.group_id === 'grp1');
   const grp2 = lines.find((line) => line.group_id === 'grp2');
-  ok(grp1?.eligibility.reason === 'cooldown', 'first line stays on cooldown');
-  ok(grp2?.eligibility.canReview === true, 'fresh line still reviewable');
+  ok(grp1?.eligibility.canReview === true, 'повторная линейка доступна');
+  ok(grp2?.eligibility.canReview === true, 'новая линейка доступна');
 
   const prompt = getReviewPromptForCustomer(db.prepare('SELECT * FROM customers WHERE id = ?').get('cust1'));
-  ok(prompt.show === true && prompt.group_id === 'grp2', 'dock targets fresh line only');
+  ok(prompt.show === true, 'строка отзыва показывается');
 }
 
-console.log('\n--- A18: global dev_test_mode without devBypass still enforces cooldown ---');
+console.log('\n--- A18: без devBypass повторная покупка всё равно доступна ---');
 {
   seedRepeatPurchaseWorld();
   setReviewSetting('dev_test_mode', '1');
-  const blocked = getGroupReviewEligibility({
+  const repeat = getGroupReviewEligibility({
     customerId: 'cust1',
     groupId: 'grp1',
     orderId: 'ord_repeat',
     orderItemId: 'oi_repeat',
     devBypass: false,
   });
-  ok(blocked.canReview === false && blocked.reason === 'cooldown', 'cooldown enforced without explicit bypass flag');
+  ok(repeat.canReview === true, 'задержка не мешает и без тестового режима');
   setReviewSetting('dev_test_mode', '0');
 }
 

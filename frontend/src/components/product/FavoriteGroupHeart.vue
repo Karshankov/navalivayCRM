@@ -76,7 +76,7 @@ async function onToggle() {
   margin: 0;
   padding: 6px 14px;
   border: 0;
-  border-radius: 999px;
+  border-radius: var(--customer-radius-pill, 999px);
   background: var(--favorite-bg);
   color: var(--favorite-text);
   box-shadow: none;
@@ -105,7 +105,7 @@ async function onToggle() {
 }
 
 .favorite-button[aria-pressed='true'] {
-  background: linear-gradient(110deg, var(--favorite-red-start) 0%, var(--favorite-red-end) 100%);
+  background: var(--customer-red-gradient);
   color: #fff;
 }
 

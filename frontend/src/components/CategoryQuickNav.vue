@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <nav
     ref="navRef"
     class="qnav"
@@ -276,7 +276,7 @@ onBeforeUnmount(() => {
   max-width: 430px;
   margin: 0 auto;
   padding: 12px 8px 16px;
-  background: #ffffff;
+  background: var(--customer-surface, #ffffff);
   border-radius: 20px;
   /* Визуальное отделение от контента: тень сверху панели. */
   box-shadow:
@@ -391,7 +391,7 @@ onBeforeUnmount(() => {
   z-index: -1;
   inset: 0;
   border-radius: 13px;
-  background: linear-gradient(110deg, #ff0505, #d40000 54%, #9b0000);
+  background: var(--customer-red-gradient);
   opacity: 0;
   pointer-events: none;
 }

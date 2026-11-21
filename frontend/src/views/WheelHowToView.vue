@@ -119,7 +119,7 @@ onMounted(() => {
 <style scoped>
 .wheel-howto-page {
   min-height: 100vh;
-  background: #f5f7fa;
+  background: var(--customer-bg, #f5f7fa);
   padding-bottom: 24px;
 }
 
@@ -136,7 +136,7 @@ onMounted(() => {
   height: 36px;
   border-radius: 50%;
   border: none;
-  background: #ffffff;
+  background: var(--customer-surface, #ffffff);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -156,7 +156,7 @@ onMounted(() => {
   font-family: 'Montserrat', sans-serif;
   font-weight: 700;
   font-size: 18px;
-  color: #1f2933;
+  color: var(--customer-ink, #191919);
   margin: 0;
 }
 
@@ -168,8 +168,8 @@ onMounted(() => {
 }
 
 .wheel-howto-card {
-  background: #ffffff;
-  border-radius: 22px;
+  background: var(--customer-surface, #ffffff);
+  border-radius: var(--customer-radius-card-small, 20px);
   padding: 18px 18px 16px;
   box-shadow: 0 4px 12px rgba(15, 23, 42, 0.04);
 }
@@ -180,7 +180,7 @@ onMounted(() => {
   color: #FFFFFF;
   padding: 16px 102px 16px 18px;
   overflow: hidden;
-  border-radius: 20px;
+  border-radius: var(--customer-radius-card-small, 20px);
   box-shadow: none;
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
@@ -289,14 +289,14 @@ onMounted(() => {
   font-family: 'Montserrat', sans-serif;
   font-weight: 700;
   font-size: 16px;
-  color: #1f2933;
+  color: var(--customer-ink, #191919);
   margin: 0 0 8px;
 }
 
 .wheel-howto-card__text {
   font-family: 'SF Pro Display', system-ui, sans-serif;
   font-size: 14px;
-  color: #5c6470;
+  color: var(--customer-muted, #5c6470);
   margin: 0;
   line-height: 1.4;
 }
@@ -336,7 +336,7 @@ onMounted(() => {
   padding-left: 20px;
   font-family: 'SF Pro Display', system-ui, sans-serif;
   font-size: 14px;
-  color: #5c6470;
+  color: var(--customer-muted, #5c6470);
   line-height: 1.5;
 }
 </style>

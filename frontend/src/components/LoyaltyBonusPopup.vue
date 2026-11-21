@@ -91,7 +91,7 @@ const categorySummary = computed(() => {
 .loyalty-popup-primary {
   flex: 1;
   min-height: 64px;
-  border-radius: 528px;
+  border-radius: var(--customer-radius-pill, 999px);
   border: none;
   font-family: "Montserrat", sans-serif;
   font-size: 15px;
@@ -106,7 +106,7 @@ const categorySummary = computed(() => {
 }
 
 .loyalty-popup-primary {
-  background: linear-gradient(90deg, #f50302 0%, #a90f0e 100%);
+  background: var(--customer-red-gradient);
   color: #ffffff;
 }
 

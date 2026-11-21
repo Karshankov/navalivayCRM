@@ -51,11 +51,15 @@ describe('HomeView shortcuts (Избранное / Баланс кэшбэка)'
 
     await flushPromises()
 
-    // Две плитки: рабочая «Избранное» и декоративный «Баланс кэшбэка».
-    const items = wrapper.findAll('.home-shortcuts__item')
-    expect(items.length).toBe(2)
-    expect(wrapper.find('.home-shortcuts__label').text()).toBe('Избранное')
-    expect(wrapper.text()).toContain('Баланс кэшбэка')
+    // Три плитки: «Скидки» (только вёрстка), рабочая «Избранное» и
+    // декоративный «Баланс кэшбэка».
+    const tiles = wrapper.findAll('.nvl-discounts, .home-shortcuts__item')
+    expect(tiles.length).toBe(3)
+    expect(wrapper.find('.nvl-discounts__label').text()).toBe('Скидки')
+    // Подписи ищутся по своей плитке, а не «первая попавшаяся»:
+    // порядок плиток в сетке менялся и больше не совпадает с DOM.
+    expect(wrapper.find('.home-shortcuts__item--favorites .home-shortcuts__label').text()).toBe('Избранное')
+    expect(wrapper.find('.home-shortcuts__item--cashback .home-shortcuts__label').text()).toBe('Баланс кэшбэка')
 
     // Старая длинная кнопка избранного больше не рендерится.
     expect(wrapper.find('.favorites').exists()).toBe(false)
@@ -76,7 +80,13 @@ describe('HomeView shortcuts (Избранное / Баланс кэшбэка)'
 
     await flushPromises()
 
-    await wrapper.find('.home-shortcuts__item:not(.home-shortcuts__item--placeholder)').trigger('click')
+    // Только «Избранное» ведёт на /favorites; «Скидки» пока без
+    // обработчика, «Баланс кэшбэка» — декоративный.
+    const favorites = wrapper
+      .findAll('.home-shortcuts__item:not(.home-shortcuts__item--placeholder)')
+      .find((item) => item.text().includes('Избранное'))
+    expect(favorites).toBeDefined()
+    await favorites!.trigger('click')
     expect(routerPush).toHaveBeenCalledWith({ name: 'favorites' })
 
     wrapper.unmount()
@@ -101,7 +111,9 @@ describe('HomeView shortcuts (Избранное / Баланс кэшбэка)'
     expect(cashback.text()).toContain('BYN')
     expect(cashback.text()).toContain('Баланс кэшбэка')
     expect(cashback.element.tagName).not.toBe('BUTTON')
-    expect(cashback.find('img').attributes('src')).toBe('/shortcuts/cashback-wallet.webp')
+    // Картинка баланса — монета кэшбэка; кошелёк и бирка лежат
+    // в public/shortcuts/_backup/ на случай возврата.
+    expect(cashback.find('img').attributes('src')).toBe('/shortcuts/cashback-coin.png')
 
     await cashback.trigger('click')
     expect(routerPush).not.toHaveBeenCalled()

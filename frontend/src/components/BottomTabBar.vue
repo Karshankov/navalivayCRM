@@ -390,7 +390,7 @@ onBeforeUnmount(() => {
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: #fff;
+  background: var(--customer-surface, #ffffff);
 }
 
 @media (max-width: 360px) {

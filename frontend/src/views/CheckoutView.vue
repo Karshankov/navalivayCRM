@@ -116,7 +116,7 @@
                     class="qty-btn"
                     :aria-label="`Уменьшить количество: ${item.title}`"
                   >
-                    <span>−</span>
+                    <MinusIcon class="qty-icon" />
                   </button>
                   <span class="qty-value">
                     <span>{{ item.quantity }}</span>
@@ -128,7 +128,7 @@
                     :disabled="!canIncrement(item)"
                     :aria-label="`Увеличить количество: ${item.title}`"
                   >
-                    <span>+</span>
+                    <PlusIcon class="qty-icon" />
                   </button>
                 </div>
               </article>
@@ -201,7 +201,7 @@
                         class="qty-btn"
                         :aria-label="`Уменьшить количество: ${item.title}`"
                       >
-                        <span>−</span>
+                        <MinusIcon class="qty-icon" />
                       </button>
                       <span class="qty-value">
                         <span>{{ item.quantity }}</span>
@@ -213,7 +213,7 @@
                         :disabled="!canIncrement(item)"
                         :aria-label="`Увеличить количество: ${item.title}`"
                       >
-                        <span>+</span>
+                        <PlusIcon class="qty-icon" />
                       </button>
                     </div>
                 </article>
@@ -372,6 +372,69 @@
             </div>
           </div>
         </div>
+
+        <!-- Способ получения: отдельная карточка под итогами заказа.
+             Лежит ВНЕ .order-card и ВНЕ v-auto-animate, поэтому
+             ничего не перехватывает нажатия на варианты.
+             Значение хранится в deliveryChoice, но на сумму и
+             оформление заказа пока не влияет. -->
+        <fieldset class="delivery-choice">
+          <legend class="delivery-choice__legend">Способ получения</legend>
+          <p class="delivery-choice__title">Как получите заказ?</p>
+          <div class="delivery-choice__options">
+            <!-- Инпут лежит внутри своего label: связь родная, без
+                 id/for и без спрятанных полей в потоке сетки. Поэтому
+                 каждая кнопка нажимается сама по себе. -->
+            <label class="delivery-choice__label">
+              <input
+                v-model="deliveryChoice"
+                class="delivery-choice__input"
+                type="radio"
+                name="delivery-choice"
+                value="pickup"
+              />
+              <span class="delivery-choice__ico" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                  <path d="M3 10h18M4 10v11h16V10M2 10l3-7h14l3 7M9 21v-7h6v7" />
+                </svg>
+              </span>
+              <span class="delivery-choice__text">Заберу сам</span>
+            </label>
+            <label class="delivery-choice__label">
+              <input
+                v-model="deliveryChoice"
+                class="delivery-choice__input"
+                type="radio"
+                name="delivery-choice"
+                value="yandex"
+              />
+              <span class="delivery-choice__ico" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                  <path d="M4 15l2-7h12l2 7M3 15h18v5h-3v-2H6v2H3zM8 8l1-3h6l1 3" />
+                  <path d="M6 15h2m8 0h2" />
+                </svg>
+              </span>
+              <span class="delivery-choice__text">Яндекс</span>
+            </label>
+            <label class="delivery-choice__label">
+              <input
+                v-model="deliveryChoice"
+                class="delivery-choice__input"
+                type="radio"
+                name="delivery-choice"
+                value="courier"
+              />
+              <span class="delivery-choice__ico" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                  <path d="M3 4h11v13H3zM14 9h4l3 4v4h-7M6 8h5M6 11h3" />
+                  <circle cx="7" cy="18" r="2" />
+                  <circle cx="18" cy="18" r="2" />
+                </svg>
+              </span>
+              <span class="delivery-choice__text">Наш курьер</span>
+            </label>
+          </div>
+        </fieldset>
 
         <div v-if="isEditingOrder" class="editing-order-card">
           <p class="editing-order-kicker">Редактирование заказа</p>
@@ -591,21 +654,7 @@
     <div class="checkout-footer" v-if="cartStore.items.length">
       <div v-if="submitError" class="submit-error">{{ submitError }}</div>
 
-      <!-- Кнопки в один ряд: промокод слева, оформление справа.
-           Ошибка отправки остаётся во всю ширину над ними. -->
       <div class="checkout-actions">
-        <button
-          v-if="!isOrderConfirmation && !discountBlocked"
-          type="button"
-          class="promo-open-btn"
-          data-test="promo-open-btn"
-          @click="openPromoModal"
-        >
-          <span class="promo-open-btn__label">{{
-            promoResult ? 'Промокод применён' : 'Ввести промокод'
-          }}</span>
-        </button>
-
         <button
           @click="beginCheckout"
           :disabled="isSubmitting || isConfirmingOrder || isCheckingCardPaymentStatus || checkoutCalculationPending || isWholesaleSubmitBlocked || shouldShowOpenInTelegramForWholesale"
@@ -689,15 +738,29 @@
       </template>
     </CustomerModalShell>
 
-    <!-- Модалка промокода: ВСЕ действия и вся информация здесь —
-         ввод, применённый код, описание скидки/подарка, снятие. -->
-    <CustomerModalShell
-      :open="showPromoModal"
-      :title="promoResult ? 'Ваш промокод' : 'Ввести промокод'"
-      close-label="Закрыть окно"
-      @close="closePromoModal"
-    >
-      <div class="checkout-modal-copy">
+    <!-- Bottom sheet промокода по customer-прототипу. Бизнес-логика
+         применения и снятия промокода остаётся прежней. -->
+    <Transition name="promo-sheet">
+      <div v-if="showPromoModal" class="promo-sheet-layer" @keydown.esc="closePromoModal">
+        <button type="button" class="promo-sheet-backdrop" aria-label="Закрыть окно" @click="closePromoModal"></button>
+        <section
+          class="promo-sheet"
+          :style="promoSheetStyle"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="promo-sheet-title"
+          tabindex="-1"
+        >
+          <div class="promo-sheet__handle" aria-hidden="true"></div>
+          <div class="promo-sheet__top">
+            <div class="promo-sheet__badge" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M3 4h18v5a3 3 0 0 0 0 6v5H3v-5a3 3 0 0 0 0-6zM9 8h.01M15 16h.01M9 16l6-8" /></svg>
+            </div>
+            <button type="button" class="promo-sheet__close" aria-label="Закрыть" @click="closePromoModal">×</button>
+          </div>
+          <h2 id="promo-sheet-title">{{ promoResult ? 'Ваш промокод' : 'Есть промокод?' }}</h2>
+          <p class="promo-sheet__subtitle">{{ promoResult ? 'Промокод применён к этому заказу.' : 'Введите его, чтобы получить скидку.' }}</p>
+          <div class="promo-sheet__content">
         <!-- Применённый промокод: код с галочкой, описание и снятие. -->
         <template v-if="promoResult">
           <div class="promo-applied-row promo-applied-row--modal">
@@ -754,6 +817,13 @@
               @input="promoError = ''"
             />
             <button
+              v-if="promoCode"
+              type="button"
+              class="promo-input-clear"
+              aria-label="Очистить промокод"
+              @click="promoCode = ''; promoError = ''; promoInputRef?.focus()"
+            >×</button>
+            <button
               class="promo-apply-btn"
               :disabled="!promoCode.trim() || promoValidating"
               data-test="promo-modal-apply"
@@ -791,8 +861,10 @@
             </div>
           </div>
         </div>
+          </div>
+        </section>
       </div>
-    </CustomerModalShell>
+    </Transition>
 
     <CustomerModalShell
       :open="isUsernameModalOpen"
@@ -879,6 +951,10 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onBeforeUnmount, watch, nextTick } from "vue";
 import { useRouter } from "vue-router";
+/* Иконки шаговых кнопок — те же, что в «Нашем ассортименте»
+   (см. SingleProductCard.vue), чтобы управление количеством
+   выглядело одинаково на обоих экранах. */
+import { PlusIcon, MinusIcon } from "@heroicons/vue/24/outline";
 import { useCartStore } from "@/stores/cart";
 import { useCatalogStore } from "@/stores/catalog";
 import {
@@ -1006,8 +1082,38 @@ const promoResult = ref<{
 } | null>(null);
 const promoError = ref("");
 const promoInputRef = ref<HTMLInputElement | null>(null);
-/** Модалка ввода промокода (кнопка «Ввести промокод» на карточке). */
+const promoKeyboardOffset = ref(0);
+const promoSheetStyle = computed(() => ({ bottom: `${promoKeyboardOffset.value}px` }));
+/** Sheet ввода промокода вызывается кнопкой в checkout. */
 const showPromoModal = ref(false);
+
+function syncPromoKeyboardOffset() {
+  if (!showPromoModal.value || !window.visualViewport || document.activeElement !== promoInputRef.value) {
+    promoKeyboardOffset.value = 0;
+    return;
+  }
+  promoKeyboardOffset.value = Math.max(
+    0,
+    Math.round(window.innerHeight - window.visualViewport.height - window.visualViewport.offsetTop),
+  );
+}
+
+watch(showPromoModal, (open) => {
+  if (!open) {
+    promoInputRef.value?.blur();
+    promoKeyboardOffset.value = 0;
+  }
+});
+
+onMounted(() => {
+  window.visualViewport?.addEventListener("resize", syncPromoKeyboardOffset);
+  window.visualViewport?.addEventListener("scroll", syncPromoKeyboardOffset);
+});
+
+onBeforeUnmount(() => {
+  window.visualViewport?.removeEventListener("resize", syncPromoKeyboardOffset);
+  window.visualViewport?.removeEventListener("scroll", syncPromoKeyboardOffset);
+});
 
 function openPromoModal() {
   if (discountBlocked.value) return;
@@ -1119,6 +1225,11 @@ const editingOrderDetails = ref<CustomerActiveOrder | null>(null);
 const showLoyaltyRulesModal = ref(false);
 const showLoyaltyPopup = ref(false);
 const selectedPaymentMethod = ref<"cash" | "card">("cash");
+
+/** Способ получения из макета navalivay-delivery-switch.html.
+ *  Пока это только выбор на экране: он ни на сумму, ни на оформление
+ *  заказа не влияет — расчёт доставки подключается отдельно. */
+const deliveryChoice = ref<"pickup" | "yandex" | "courier">("pickup");
 
 /** Кэш статуса оплаты картой между заходами в корзину.
  *  Без него блок «Способ оплаты» появлялся последним: он виден только когда
@@ -2729,13 +2840,15 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
 .checkout-page {
   display: flex;
   flex-direction: column;
-  min-height: calc(100vh - var(--app-topbar-offset, 86px));
+  /* Верхняя панель убрана: высота страницы больше не уменьшается на её
+     высоту, доступное место задаёт инлайн-стиль из JS выше. */
+  min-height: 100vh;
   background: #f2f3f6;
 }
 
 .header-area {
   position: relative;
-  background: #ffffff;
+  background: var(--customer-surface, #ffffff);
   border-radius: 0 0 20px 20px;
   padding: 0;
   box-shadow: 0 4px 32px rgba(170, 178, 189, 0.32);
@@ -2786,24 +2899,11 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
 /* Ряд кнопок внизу: промокод слева, оформление справа.
    Обе по половине ширины. */
 .checkout-actions {
-  display: flex;
-  align-items: stretch;
-  gap: 8px;
+  display: block;
 }
 
-.checkout-actions .promo-open-btn,
 .checkout-actions .submit-button {
-  flex: 1 1 0;
-  width: auto;
-  min-width: 0;
-  padding-inline: 12px;
-}
-
-/* Подпись переносится, а не обрезается: на узких экранах кнопка
-   становится чуть выше ростом, но текст читается целиком. */
-.checkout-actions .promo-open-btn__label {
-  white-space: normal;
-  text-align: center;
+  width: 100%;
 }
 
 .checkout-footer .submit-error {
@@ -2831,7 +2931,7 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
 }
 
 .icon-button:hover {
-  background: #f5f7fa;
+  background: var(--customer-bg, #f5f7fa);
 }
 
 .icon-button--muted {
@@ -2849,7 +2949,7 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   font-size: clamp(17px, 5vw, 21px);
   line-height: 1.2;
   text-align: center;
-  color: #18191b;
+  color: var(--customer-ink, #191919);
   margin: 0;
 }
 
@@ -2860,8 +2960,8 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
 .empty-cart {
   text-align: center;
   padding: 60px 20px;
-  background: #ffffff;
-  border-radius: 20px;
+  background: var(--customer-surface, #ffffff);
+  border-radius: var(--customer-radius-card-small, 20px);
 }
 
 .empty-cart-icon {
@@ -2877,10 +2977,10 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
 
 .back-to-shop-btn {
   padding: 16px 32px;
-  background: linear-gradient(90deg, #f50302 0%, #a90f0e 100%);
+  background: var(--customer-red-gradient);
   color: #fff;
   border: none;
-  border-radius: 528px;
+  border-radius: var(--customer-radius-pill, 999px);
   font-family: "Montserrat", sans-serif;
   font-size: 16px;
   font-weight: 500;
@@ -2914,7 +3014,7 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
 .order-confirmation__title {
   max-width: 340px;
   margin: 0;
-  color: #18191b;
+  color: var(--customer-ink, #191919);
   font-family: "Montserrat", sans-serif;
   font-size: 21px;
   font-weight: 800;
@@ -2924,7 +3024,7 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
 
 .order-confirmation__text {
   margin: 0;
-  color: #656b75;
+  color: var(--customer-muted, #5c6470);
   font-family: -apple-system, "SF Pro Display", sans-serif;
   font-size: 14px;
   line-height: 1.55;
@@ -2943,8 +3043,8 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
 
 
 .order-card {
-  background: #ffffff;
-  border-radius: 20px;
+  background: var(--customer-surface, #ffffff);
+  border-radius: var(--customer-radius-card-small, 20px);
   overflow: hidden;
 }
 
@@ -2952,12 +3052,12 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   overflow: hidden;
 }
 
-/* Компактная строка из демо: сетка 49px / 1fr / 80px.
-   Третья колонка уменьшена с 91px вместе со степпером (30/20/30) —
-   эти 11px отданы названию товара. */
+/* Строка товара: обложка / название / управление количеством.
+   Третья колонка 104px — под компактный шаговый блок
+   (32px + 32px + 32px и два зазора по 4px). */
 .cart-item {
   display: grid;
-  grid-template-columns: 49px minmax(0, 1fr) 80px;
+  grid-template-columns: 49px minmax(0, 1fr) 104px;
   gap: 10px;
   align-items: center;
   padding: 9px 10px;
@@ -2982,7 +3082,7 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   width: 49px;
   height: 54px;
   border-radius: 9px;
-  background: #ffffff;
+  background: var(--customer-surface, #ffffff);
   border: 1px solid #e5e7eb;
   overflow: hidden;
   color: #a0a7b3;
@@ -3037,7 +3137,7 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   font-weight: 700;
   font-size: 12px;
   line-height: 15px;
-  color: #18191b;
+  color: var(--customer-ink, #191919);
   margin: 2px 0;
   /* Название всегда в одну строку: длинные («Испарители для Aegis
      boost/hero») раньше переносились на две и ломали ритм списка.
@@ -3061,7 +3161,7 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   font-weight: 500;
   font-size: 13px;
   line-height: 16px;
-  color: #18191b;
+  color: var(--customer-ink, #191919);
   margin: 2px 0 0;
 }
 
@@ -3078,27 +3178,33 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
    Сужена с 34/23/34 (91px) до 30/20/30 (80px): освободившиеся 11px
    уходят названию товара, чтобы «Испарители для Aegis boost/hero»
    помещалось в строку. 30px остаётся выше минимума удобной цели (24px). */
+/* Управление количеством — рисунок как в «Нашем ассортименте»
+   (SingleProductCard.vue): круглые кнопки и поле с рамкой между ними,
+   но компактнее. Ступенчатый размер 40px выглядел в строке корзины
+   громоздко: кнопки съедали 136px и отбирали 56px у названия товара.
+   32px и зазор 4px дают 104px — на треть меньше. */
 .cart-item-controls {
   display: grid;
-  grid-template-columns: 30px 20px 30px;
+  grid-template-columns: 32px 32px 32px;
+  gap: 4px;
   align-items: center;
   justify-content: end;
   text-align: right;
 }
 
 .qty-btn {
-  height: 34px;
+  width: 32px;
+  height: 32px;
   border: none;
-  border-radius: 11px;
-  background: #f2f3f6;
-  color: #18191b;
+  border-radius: var(--customer-radius-pill, 999px);
+  background: #f5f7fa;
+  color: var(--customer-ink, #191919);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: background 0.15s;
-  font-size: 20px;
-  line-height: 1;
+  flex-shrink: 0;
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
 }
@@ -3113,28 +3219,34 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   cursor: not-allowed;
 }
 
-.qty-btn span {
-  font-family: -apple-system, "SF Pro Display", sans-serif;
-  font-weight: 500;
-  font-size: 18px;
-  line-height: 1;
-  color: #18191b;
-  margin-top: -2px;
+.qty-icon {
+  width: 15px;
+  height: 15px;
+  color: var(--customer-ink, #191919);
+  stroke-width: 2;
 }
 
+/* Поле с количеством — как .single-qty-field в ассортименте:
+   белый квадрат 40px с рамкой, чтобы оно не сливалось с фоном. */
 .qty-value {
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: var(--customer-surface, #ffffff);
+  border: 1px solid #e6e9ed;
+  border-radius: 10px;
+  box-sizing: border-box;
   text-align: center;
 }
 
 .qty-value span {
-  font-family: -apple-system, "SF Pro Display", sans-serif;
-  font-weight: 650;
-  font-size: 13px;
+  font-family: "SF Pro Display", -apple-system, BlinkMacSystemFont, sans-serif;
+  font-weight: 500;
+  font-size: 14px;
   line-height: 16px;
-  color: #18191b;
+  color: var(--customer-ink, #191919);
 }
 
 /* Список монтируется условно; AutoAnimate анимирует его появление,
@@ -3198,7 +3310,7 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
 
 .editing-order-card {
   background: linear-gradient(145deg, #191919 0%, #363636 100%);
-  border-radius: 20px;
+  border-radius: var(--customer-radius-card-small, 20px);
   padding: 18px 16px;
   display: flex;
   flex-direction: column;
@@ -3240,46 +3352,155 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   color: rgba(255, 255, 255, 0.55);
 }
 
-/* Кнопка «У меня есть промокод»: габариты кнопки заказа (64px, 528px,
- * Montserrat 16/500), чёрный фон — вторичное действие. */
-.promo-open-btn {
+/* Модалка ввода: та же строка ввода, что была на карточке. */
+.promo-sheet-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  pointer-events: auto;
+}
+
+.promo-sheet-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgba(21, 26, 37, 0.3);
+  opacity: 1;
+  cursor: pointer;
+}
+
+.promo-sheet {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 460px);
+  max-height: calc(100dvh - 20px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 12px 22px max(26px, env(safe-area-inset-bottom));
+  border-radius: 28px 28px 0 0;
+  background: var(--customer-surface, #ffffff);
+  box-shadow: 0 -12px 50px rgba(28, 42, 64, 0.08);
+}
+
+.promo-sheet__handle {
+  width: 38px;
+  height: 5px;
+  margin: 0 auto 25px;
+  border-radius: var(--customer-radius-pill, 999px);
+  background: #e1e4e9;
+}
+
+.promo-sheet__top {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 10px;
-  width: 100%;
-  min-height: 62px;
-  padding: 12px;
-  border: none;
-  border-radius: 999px;
-  background: #111111;
-  color: #ffffff;
-  font-family: "Montserrat", sans-serif;
-  font-weight: 500;
-  font-size: 14px;
-  line-height: 18px;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.promo-sheet__badge {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: var(--customer-radius-control, 14px);
+  background: linear-gradient(135deg, #fff1ed, #ffe0d8);
+  color: #d33125;
+}
+
+.promo-sheet__badge svg {
+  width: 27px;
+  height: 27px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.promo-sheet__close {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--customer-bg, #f5f7fa);
+  color: #818894;
+  font-size: 24px;
+  line-height: 1;
   cursor: pointer;
-  box-sizing: border-box;
-  touch-action: manipulation;
-  -webkit-tap-highlight-color: transparent;
-  user-select: none;
-  -webkit-user-select: none;
 }
 
-.promo-open-btn:active {
-  transform: scale(0.985);
+.promo-sheet > h2 {
+  margin: 0;
+  color: var(--customer-ink, #191919);
+  font-family: var(--customer-font-heading, "Montserrat", sans-serif);
+  font-size: 28px;
+  line-height: 34px;
+  font-weight: 700;
 }
 
-.promo-open-btn__label {
-  letter-spacing: 0.01em;
-  white-space: nowrap;
+.promo-sheet__subtitle {
+  margin: 8px 0 20px;
+  color: var(--customer-muted, #5c6470);
+  font-family: var(--customer-font-body, -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif);
+  font-size: 15px;
+  line-height: 21px;
 }
 
-/* Модалка ввода: та же строка ввода, что была на карточке. */
+.promo-sheet .promo-modal-input-row {
+  border-radius: var(--customer-radius-control, 14px);
+}
+
+.promo-input-clear {
+  flex: 0 0 30px;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--customer-bg, #f5f7fa);
+  color: var(--customer-subtle, #8a93a0);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.promo-sheet-enter-active,
+.promo-sheet-leave-active {
+  transition: opacity 0.3s ease-out;
+}
+
+.promo-sheet-enter-active .promo-sheet,
+.promo-sheet-leave-active .promo-sheet {
+  transition: transform 0.3s ease-out;
+}
+
+.promo-sheet-enter-from,
+.promo-sheet-leave-to {
+  opacity: 0;
+}
+
+.promo-sheet-enter-from .promo-sheet,
+.promo-sheet-leave-to .promo-sheet {
+  transform: translateY(100%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .promo-sheet-enter-active,
+  .promo-sheet-leave-active,
+  .promo-sheet-enter-active .promo-sheet,
+  .promo-sheet-leave-active .promo-sheet {
+    transition: none;
+  }
+}
+
 .promo-modal-input-row {
   display: flex;
   align-items: center;
-  background: #ffffff;
+  background: var(--customer-surface, #ffffff);
   border: 1px solid #e6e9ed;
   border-radius: 16px;
   height: 64px;
@@ -3313,7 +3534,7 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   padding: 4.85cqw 4.7cqw;
   border: 0;
   border-radius: 5.25cqw;
-  background: #fff;
+  background: var(--customer-surface, #ffffff);
 }
 
 .promo-warning__icon {
@@ -3376,7 +3597,7 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   font-weight: 400;
   font-size: 16px;
   line-height: 19px;
-  color: #191919;
+  color: var(--customer-ink, #191919);
   background: transparent;
 }
 
@@ -3394,7 +3615,7 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   gap: 10px;
   background: linear-gradient(98.83deg, #f50302 0%, #c20b0c 119.75%);
   border: none;
-  border-radius: 528px;
+  border-radius: var(--customer-radius-pill, 999px);
   font-family: -apple-system, "SF Pro Display", sans-serif;
   font-weight: 400;
   font-size: 14px;
@@ -3417,7 +3638,7 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
 .promo-applied-row {
   display: flex;
   align-items: center;
-  background: #ffffff;
+  background: var(--customer-surface, #ffffff);
   border: 1px solid #e6e9ed;
   border-radius: 16px;
   height: 64px;
@@ -3463,13 +3684,13 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   min-height: 48px;
   padding: 12px 18px;
   border: 1px solid #e6e9ed;
-  border-radius: 528px;
-  background: #ffffff;
+  border-radius: var(--customer-radius-pill, 999px);
+  background: var(--customer-surface, #ffffff);
   font-family: "Montserrat", sans-serif;
   font-weight: 500;
   font-size: 14px;
   line-height: 18px;
-  color: #191919;
+  color: var(--customer-ink, #191919);
   cursor: pointer;
   box-sizing: border-box;
 }
@@ -3503,8 +3724,8 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   position: relative;
   overflow: hidden;
   padding: 22px 24px 20px;
-  border-radius: 32px;
-  background: linear-gradient(106.76deg, #f50302 -2.64%, #a90f0e 85.78%);
+  border-radius: var(--customer-radius-card, 24px);
+  background: var(--customer-red-gradient);
   color: #ffffff;
   box-shadow: 0 8px 16px rgba(97, 1, 0, 0.16);
 }
@@ -3716,7 +3937,7 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
 }
 
 .loyalty-line-button--applied {
-  background: #ffffff;
+  background: var(--customer-surface, #ffffff);
   border-color: #ffffff;
   color: #c41515;
 }
@@ -3865,13 +4086,13 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  background: #fff;
+  background: var(--customer-surface, #ffffff);
   box-shadow: 0 1px 3px #20253026;
   transition: transform 0.24s cubic-bezier(0.2, 0.8, 0.3, 1);
 }
 
 .payment-switch input:checked + .payment-switch-track {
-  background: linear-gradient(110deg, #f00, #a40c12);
+  background: var(--customer-red-gradient);
 }
 
 .payment-switch input:checked + .payment-switch-track .payment-switch-knob {
@@ -4011,6 +4232,182 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   }
 }
 
+/* Переключатель «Способ получения» из макета
+   navalivay-delivery-switch.html. Отдельная карточка под итогами
+   заказа: .checkout-content задаёт gap 16px, поэтому собственный
+   внешний отступ не нужен.
+   Три варианта в ряд. Средняя колонка чуть шире остальных: подпись
+   «Яндекс» короче прочих, но эта ячейка несёт самую крупную иконку
+   автомобиля, и колонка под неё сохранена от макета. */
+.delivery-choice {
+  margin: 0;
+  padding: 16px;
+  border: 0;
+  min-width: 0;
+  background: var(--customer-surface, #ffffff);
+  border-radius: var(--customer-radius-card-small, 20px);
+}
+
+.delivery-choice__legend {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Инпут спрятан визуально, но остаётся в потоке внутри label и
+   получает клики — так работает и тап по подписи, и стрелки с
+   клавиатуры. display:none здесь нельзя: он убивает фокус. */
+.delivery-choice__input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Без серой подложки: три варианта лежат прямо на белой карточке.
+   Зазор между кнопками отделяет их друг от друга, а фон группы
+   больше не нужен.
+   Колонки строго равные: при разных ширинах (1fr / 1.28fr / 1.1fr)
+   пара «иконка + подпись» центрировалась внутри своей колонки и
+   короткая подпись «Яндекс» уезжала к середине ряда, пока соседи
+   стояли у своих краёв. Равные колонки дают всем одинаковый воздух. */
+/* Заголовок блока: тем же шрифтом, что подпись «Оплатить заказ
+   картой» в строке оплаты, чтобы блок читался как часть того же
+   экрана, а не как отдельный элемент. */
+.delivery-choice__title {
+  margin: 0 0 8px;
+  padding-inline: 0;
+  color: #25262a;
+  font-family: -apple-system, "SF Pro Display", sans-serif;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+/* Три ячейки с воздухом между ними: зазор даёт разделение, чтобы
+   кнопки не читались одним сплошным полем. 6px — предел: при 8px
+   подписи «Заберу сам» и «Наш курьер» перестают влезать в ячейку
+   на 393px и обрезаются. */
+.delivery-choice__options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  padding: 0;
+  background: transparent;
+  border-radius: 0;
+}
+
+/* Воздух внутри ячейки одинаковый у всех вариантов. Пара
+   «иконка + подпись» выставлена по одной оси: иконка занимает свою
+   фиксированную колонку, подпись стартует сразу за ней, а свободное
+   место делится поровну слева и справа (margin: auto у группы).
+   Так короткая подпись «Яндекс» не уезжает к середине ряда и не
+   выглядит приклеенной к чужому краю. */
+.delivery-choice__label {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 8px;
+  border-radius: var(--customer-radius-control, 14px);
+  /* Неактивная ячейка: лёгкая заливка и рамка дают границу, по
+     которой видно саму кнопку. Без них подписи висели на белом
+     фоне бесформенным рядом. */
+  background: var(--customer-bg, #f5f7fa);
+  border: 1.5px solid transparent;
+  font-family: var(--customer-font-body);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--customer-muted, #5c6470);
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.2s, color 0.2s, box-shadow 0.2s, border-color 0.2s;
+}
+
+/* Иконка и подпись прижаты к левому краю ячейки: так содержимое всех
+   трёх вариантов и заголовок блока стоят на одной вертикали. Раньше
+   группа центрировалась (margin: auto), и «Заберу сам» выглядел
+   сдвинутым вправо относительно заголовка. */
+.delivery-choice__ico {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 16px;
+}
+
+.delivery-choice__text {
+  min-width: 0;
+}
+
+.delivery-choice__ico svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Выбранный вариант: заливка фирменным градиентом и белый текст.
+   Инпут — ребёнок своего label, поэтому подсветку получает ровно та
+   кнопка, на которой стоит :checked. */
+.delivery-choice__label:has(.delivery-choice__input:checked) {
+  background: var(--customer-red-gradient);
+  border-color: var(--customer-red-end, #a90f0e);
+  color: #ffffff;
+  box-shadow: 0 4px 12px rgba(197, 42, 37, 0.22);
+}
+
+/* Иконка активного варианта чуть плотнее: градиент делает штрих
+   тоньше на глаз. */
+.delivery-choice__label:has(.delivery-choice__input:checked)
+  .delivery-choice__ico
+  svg {
+  stroke-width: 2;
+}
+
+.delivery-choice__label:has(.delivery-choice__input:focus-visible) {
+  outline: 2px solid #147be8;
+  outline-offset: 2px;
+}
+
+@media (max-width: 360px) {
+  .delivery-choice {
+    padding-inline: 8px;
+  }
+
+  .delivery-choice__ico svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  .delivery-choice__label {
+    padding-inline: 2px;
+    gap: 3px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .delivery-choice__label {
+    transition: none;
+  }
+}
+
 .total-value-with-payment {
   display: flex;
   align-items: baseline;
@@ -4068,7 +4465,7 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   font-weight: 500;
   font-size: 15px;
   line-height: 18px;
-  color: #656b75;
+  color: var(--customer-muted, #5c6470);
 }
 
 /* Кэшбэк и «Итого» — одна смысловая группа, поэтому расстояние
@@ -4097,7 +4494,7 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   font-weight: 700;
   font-size: 19px;
   line-height: 23px;
-  color: #18191b;
+  color: var(--customer-ink, #191919);
 }
 
 /* Сумма кэшбэка — тем же начертанием и кеглем, что итоговая
@@ -4143,9 +4540,9 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(100deg, #e32d18 0%, #982119 100%);
+  background: var(--customer-red-gradient);
   border: none;
-  border-radius: 999px;
+  border-radius: var(--customer-radius-action, 18px);
   font-family: "Montserrat", sans-serif;
   font-weight: 500;
   font-size: 14px;
@@ -4189,8 +4586,8 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
 }
 
 .user-info-card {
-  background: #ffffff;
-  border-radius: 20px;
+  background: var(--customer-surface, #ffffff);
+  border-radius: var(--customer-radius-card-small, 20px);
   padding: 24px 16px;
 }
 
@@ -4199,14 +4596,14 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   font-weight: 700;
   font-size: 16px;
   line-height: 20px;
-  color: #191919;
+  color: var(--customer-ink, #191919);
   margin: 0 0 16px;
 }
 
 .user-info-input-row {
   display: flex;
   align-items: center;
-  background: #ffffff;
+  background: var(--customer-surface, #ffffff);
   border: 1px solid #e6e9ed;
   border-radius: 16px;
   height: 64px;
@@ -4229,7 +4626,7 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   font-weight: 400;
   font-size: 16px;
   line-height: 19px;
-  color: #191919;
+  color: var(--customer-ink, #191919);
   background: transparent;
 }
 
@@ -4291,13 +4688,13 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
 
 .username-warning-primary {
   border: none;
-  background: linear-gradient(90deg, #f50302 0%, #a90f0e 100%);
+  background: var(--customer-red-gradient);
   color: #ffffff;
 }
 
 .username-warning-secondary {
   border: 1px solid #fdba74;
-  background: #ffffff;
+  background: var(--customer-surface, #ffffff);
   color: #9a3412;
 }
 
@@ -4315,7 +4712,7 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  color: #191919;
+  color: var(--customer-ink, #191919);
   font-family: -apple-system, "SF Pro Display", sans-serif;
   font-weight: 500;
   font-size: 16px;
@@ -4339,8 +4736,8 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   width: 100%;
   min-height: 64px;
   border: none;
-  border-radius: 528px;
-  background: linear-gradient(90deg, #f50302 0%, #a90f0e 100%);
+  border-radius: var(--customer-radius-action, 18px);
+  background: var(--customer-red-gradient);
   color: #ffffff;
   font-family: "Montserrat", sans-serif;
   font-weight: 500;
@@ -4364,7 +4761,7 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   min-height: 48px;
   border: 1px solid #e5e7eb;
   border-radius: 14px;
-  background: #fff;
+  background: var(--customer-surface, #ffffff);
   color: #30343b;
   font-weight: 600;
   cursor: pointer;
@@ -4374,7 +4771,7 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
 .card-payment-choice--active {
   color: #fff !important;
   border-color: #f50302 !important;
-  background: linear-gradient(90deg, #f50302 0%, #a90f0e 100%) !important;
+  background: var(--customer-red-gradient) !important;
 }
 
 /* ===== Виджет оплаты картой =====
@@ -4384,7 +4781,7 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   margin-top: 12px;
   border: 1px solid #e5e7eb;
   border-radius: 18px;
-  background: #ffffff;
+  background: var(--customer-surface, #ffffff);
   padding: 16px;
   display: flex;
   flex-direction: column;
@@ -4402,7 +4799,7 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   width: 42px;
   height: 42px;
   border-radius: 13px;
-  background: linear-gradient(110deg, #f50302 0%, #a90f0e 100%);
+  background: var(--customer-red-gradient);
   color: #ffffff;
   display: inline-flex;
   align-items: center;
@@ -4422,7 +4819,7 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
   font-weight: 700;
   font-size: 15.5px;
   line-height: 20px;
-  color: #191919;
+  color: var(--customer-ink, #191919);
 }
 
 .card-widget__limit-note {
@@ -4446,12 +4843,12 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
 }
 
 .card-widget__state--pause {
-  background: linear-gradient(106.76deg, #f50302 -2.64%, #a90f0e 85.78%);
+  background: var(--customer-red-gradient);
   border: none;
 }
 
 .card-widget__state--blocked {
-  background: linear-gradient(106.76deg, #f50302 -2.64%, #a90f0e 85.78%);
+  background: var(--customer-red-gradient);
   border: none;
 }
 
@@ -4483,7 +4880,7 @@ async function submitOrder(paymentMethod: "cash" | "card" = "cash") {
 }
 
 .card-widget__state-dot--ok {
-  background: #ffffff;
+  background: var(--customer-surface, #ffffff);
 }
 
 /* Дата следующей доступной оплаты — всегда отдельной строкой. */

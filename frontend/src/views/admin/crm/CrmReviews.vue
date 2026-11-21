@@ -1,60 +1,32 @@
 <template>
-  <div class="min-h-screen bg-gray-50 px-4 py-6 sm:px-6 lg:px-8">
-    <div class="mx-auto w-full max-w-7xl space-y-6">
-      <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+  <div class="crm-reviews-page">
+    <div class="crm-reviews-content">
+      <header class="crm-reviews-head">
         <div>
-          <h1 class="text-2xl font-bold text-gray-900 sm:text-3xl">Отзывы</h1>
-          <p class="mt-2 text-sm text-gray-600">Модерация, ответы, быстрые теги и розыгрыш</p>
+          <h1 class="crm-reviews-title">Отзывы</h1>
+          <p class="crm-reviews-subtitle">
+            Модерация: отзывы, которые покупатели оставили после покупки.
+          </p>
         </div>
-      </div>
 
-      <div
-        class="flex gap-2 overflow-x-auto pb-1"
-        role="tablist"
-        aria-label="Разделы отзывов"
-      >
         <button
-          v-for="tab in tabs"
-          :key="tab.id"
-          :id="`reviews-tab-${tab.id}`"
+          v-if="pendingCount"
           type="button"
-          role="tab"
-          :aria-selected="activeTab === tab.id"
-          :aria-controls="`reviews-panel-${tab.id}`"
-          class="inline-flex shrink-0 items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
-          :class="
-            activeTab === tab.id
-              ? 'border-blue-200 bg-white text-blue-700 shadow-md ring-1 ring-blue-100'
-              : 'border-slate-200/70 bg-white/70 text-slate-600 hover:border-slate-300 hover:bg-white hover:text-slate-900'
-          "
-          @click="requestTabChange(tab.id)"
+          class="crm-reviews-counter"
+          aria-label="`Отзывов ждёт модерации: ${pendingCount}`"
         >
-          {{ tab.label }}
-          <span
-            v-if="tab.id === 'moderation' && pendingCount"
-            class="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700"
-          >
-            {{ pendingCount }}
-          </span>
-          <span
-            v-if="tab.id === 'replies' && unansweredCount"
-            class="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800"
-          >
-            {{ unansweredCount }}
-          </span>
+          {{ pendingCount }}
+          <span>в очереди</span>
         </button>
-      </div>
+      </header>
 
-      <!-- Модерация -->
       <section
-        v-if="activeTab === 'moderation'"
         id="reviews-panel-moderation"
-        role="tabpanel"
-        aria-labelledby="reviews-tab-moderation"
-        class="rounded-2xl border border-slate-200/60 bg-white p-5 shadow-sm"
+        aria-label="Отзывы на модерации"
+        class="crm-reviews-panel"
       >
-        <div class="flex items-center justify-between gap-3">
-          <h2 class="text-lg font-semibold text-slate-900">На модерации</h2>
+        <div class="crm-reviews-panel-head">
+          <h2>На модерации</h2>
           <CrmButton
             variant="secondary"
             size="sm"
@@ -69,684 +41,121 @@
 
         <p class="mt-2 text-xs text-slate-400">В очереди до 200 штук.</p>
 
-        <div v-if="loading && pendingReviews.length === 0" class="py-8 text-center text-slate-500">
-          Загрузка...
+        <div v-if="loading && pendingReviews.length === 0" class="crm-reviews-loading">
+          <span class="crm-review-spinner" aria-hidden="true" />
+          Загружаем очередь…
         </div>
-        <div v-else-if="pendingReviews.length === 0" class="py-8 text-center text-slate-500">
-          <p>Очередь пуста.</p>
-          <p class="mt-1 text-sm">Появятся после выдачи заказа.</p>
+        <div v-else-if="pendingReviews.length === 0" class="crm-reviews-empty">
+          <span class="crm-reviews-empty-symbol" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M20 6.5 9.5 17 4 11.5" />
+            </svg>
+          </span>
+          <b>Очередь пуста</b>
+          <span>Отзывы появятся здесь после выдачи заказа клиенту.</span>
         </div>
+
         <div
           v-else
-          class="relative mt-4 space-y-4"
-          :class="{ 'pointer-events-none opacity-60': loading }"
+          class="crm-reviews-queue"
+          :class="{ 'crm-reviews-queue--busy': loading }"
         >
           <article
             v-for="review in pendingReviews"
             :key="review.id"
-            class="rounded-xl border border-slate-200/70 p-4"
+            class="crm-review-card"
           >
-            <div class="flex flex-wrap items-center gap-2 text-sm text-slate-600">
-              <RouterLink
-                v-if="review.order_id"
-                :to="`/admin/crm/orders/${review.order_id}`"
-                class="font-semibold text-blue-700 hover:underline"
-              >
-                Заказ №{{ review.order_number }}
-              </RouterLink>
-              <strong v-else class="text-slate-900">Заказ №{{ review.order_number }}</strong>
-              <span>{{ review.group_name }}</span>
-              <span aria-label="Оценка">{{ "★".repeat(review.rating) }}</span>
-              <span v-if="review.created_at" class="text-xs text-slate-400">
-                {{ formatReviewDate(review.created_at) }}
+            <!-- Верх карточки: оценка крупно, товар и автор рядом. -->
+            <header class="crm-review-head">
+              <span class="crm-review-score" :class="scoreClass(review.rating)">
+                <b>{{ review.rating }}</b>
+                <span class="crm-review-score-max">/5</span>
               </span>
-            </div>
-            <p class="mt-2 whitespace-pre-wrap text-sm text-slate-800">{{ review.body_text }}</p>
-            <p class="mt-1 text-xs text-slate-500">
-              {{ review.first_name }}
-              <span v-if="review.telegram_username">@{{ review.telegram_username }}</span>
-              <span v-else>нет Telegram</span>
-              <span v-if="review.purchased_variant_name">· {{ review.purchased_variant_name }}</span>
-            </p>
-            <div class="mt-3 flex flex-wrap gap-2">
-              <CrmButton
-                variant="success"
-                :loading="moderatingId === review.id"
-                loading-label="Сохраняем..."
+
+              <div class="crm-review-who">
+                <RouterLink
+                  v-if="review.order_id"
+                  :to="`/admin/crm/orders/${review.order_id}`"
+                  class="crm-review-order"
+                >
+                  Заказ №{{ review.order_number }}
+                </RouterLink>
+                <strong v-else-if="review.order_number" class="crm-review-order crm-review-order--plain">
+                  Заказ №{{ review.order_number }}
+                </strong>
+
+                <p class="crm-review-product">
+                  {{ review.group_name }}
+                  <span v-if="review.purchased_variant_name" class="crm-review-variant">
+                    · {{ review.purchased_variant_name }}
+                  </span>
+                </p>
+
+                <p class="crm-review-author">
+                  {{ review.first_name || "Без имени" }}
+                  <span v-if="review.telegram_username" class="crm-review-username">
+                    @{{ review.telegram_username }}
+                  </span>
+                  <span v-else class="crm-review-notelegram">нет Telegram</span>
+                </p>
+              </div>
+
+              <div class="crm-review-aside">
+                <div class="crm-review-stars" :aria-label="`${review.rating} из 5`">
+                  <span v-for="star in 5" :key="star" :class="{ 'is-off': star > review.rating }">★</span>
+                </div>
+                <time v-if="review.created_at" class="crm-review-date">
+                  {{ formatReviewDate(review.created_at) }}
+                </time>
+              </div>
+            </header>
+
+            <!-- Текст отзыва читается как цитата на светлой подложке. -->
+            <blockquote class="crm-review-body">
+              <template v-if="review.body_text?.trim()">{{ review.body_text }}</template>
+              <em v-else class="crm-review-body-empty">
+                Клиент поставил оценку без комментария
+              </em>
+            </blockquote>
+
+            <!-- Решение: одобрение — главное действие, отклонение тише. -->
+            <footer class="crm-review-actions">
+              <button
+                type="button"
+                class="crm-review-approve"
+                :disabled="moderatingId === review.id"
                 @click="requestModerate(review, 'approve')"
               >
-                Одобрить
-              </CrmButton>
-              <CrmButton
-                variant="muted"
+                <svg
+                  v-if="moderatingId !== review.id"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M20 6.5 9.5 17 4 11.5" />
+                </svg>
+                <span v-else class="crm-review-spinner" aria-hidden="true" />
+                {{ moderatingId === review.id ? "Сохраняем…" : "Одобрить" }}
+              </button>
+
+              <button
+                type="button"
+                class="crm-review-reject"
                 :disabled="moderatingId === review.id"
                 @click="requestModerate(review, 'reject')"
               >
                 Отклонить
-              </CrmButton>
-            </div>
+              </button>
+            </footer>
           </article>
         </div>
       </section>
 
-      <!-- Ответы -->
-      <section
-        v-if="activeTab === 'replies'"
-        id="reviews-panel-replies"
-        role="tabpanel"
-        aria-labelledby="reviews-tab-replies"
-        class="rounded-2xl border border-slate-200/60 bg-white p-5 shadow-sm"
-      >
-        <div class="flex flex-wrap items-center justify-between gap-3">
-          <h2 class="text-lg font-semibold text-slate-900">Ответы менеджера</h2>
-          <CrmButton
-            variant="secondary"
-            size="sm"
-            refresh-icon
-            :loading="approvedLoading"
-            loading-label="Обновляем..."
-            @click="requestLoadApprovedReviews"
-          >
-            Обновить
-          </CrmButton>
-        </div>
-        <p class="mt-1 text-sm text-slate-500">
-          Клиент увидит после одобрения отзыва.
-        </p>
-
-        <div class="mt-4 flex gap-2" role="group" aria-label="Фильтр ответов">
-          <CrmButton
-            variant="filter"
-            size="sm"
-            :pressed="replyFilter === 'all'"
-            @click="replyFilter = 'all'"
-          >
-            Все
-          </CrmButton>
-          <CrmButton
-            variant="filter"
-            size="sm"
-            :pressed="replyFilter === 'unanswered'"
-            @click="replyFilter = 'unanswered'"
-          >
-            Без ответа
-            <span
-              v-if="unansweredCount"
-              class="ml-1 rounded-full bg-amber-100 px-1.5 text-xs text-amber-800"
-            >
-              {{ unansweredCount }}
-            </span>
-          </CrmButton>
-        </div>
-
-        <p class="mt-2 text-xs text-slate-400">До 200 одобренных.</p>
-
-        <div v-if="approvedLoading && approvedReviews.length === 0" class="py-6 text-center text-slate-500">
-          Загрузка...
-        </div>
-        <div v-else-if="approvedReviews.length === 0" class="py-6 text-center text-slate-500">
-          <p>Одобренных отзывов пока нет.</p>
-          <p class="mt-1 text-sm">Сначала одобри в модерации.</p>
-        </div>
-        <div v-else-if="filteredApprovedReviews.length === 0" class="py-6 text-center text-slate-500">
-          <p>Все одобренные отзывы уже с ответом.</p>
-        </div>
-        <div
-          v-else
-          class="relative mt-4 space-y-4"
-          :class="{ 'pointer-events-none opacity-60': approvedLoading }"
-        >
-          <article
-            v-for="review in filteredApprovedReviews"
-            :key="review.id"
-            class="rounded-xl border border-slate-100 bg-slate-50 p-4"
-          >
-            <div class="flex flex-wrap items-center gap-2 text-sm text-slate-600">
-              <RouterLink
-                v-if="review.order_id"
-                :to="`/admin/crm/orders/${review.order_id}`"
-                class="font-semibold text-blue-700 hover:underline"
-              >
-                Заказ №{{ review.order_number }}
-              </RouterLink>
-              <strong v-else-if="review.order_number" class="text-slate-900">
-                Заказ №{{ review.order_number }}
-              </strong>
-              <strong class="text-slate-900">{{ review.group_name }}</strong>
-              <span aria-label="Оценка">{{ "★".repeat(review.rating) }}</span>
-              <span v-if="review.created_at" class="text-xs text-slate-400">
-                {{ formatReviewDate(review.created_at) }}
-              </span>
-            </div>
-            <p class="mt-1 text-xs text-slate-500">
-              {{ review.first_name }}
-              <span v-if="review.telegram_username">@{{ review.telegram_username }}</span>
-              <span v-else>нет Telegram</span>
-              <span v-if="review.purchased_variant_name">· {{ review.purchased_variant_name }}</span>
-            </p>
-            <p class="mt-2 whitespace-pre-wrap text-sm text-slate-700">{{ review.body_text }}</p>
-            <p v-if="review.manager_reply" class="mt-2 text-sm text-slate-600">
-              <span class="font-medium">Текущий ответ:</span> {{ review.manager_reply }}
-            </p>
-            <div class="mt-3 flex flex-col gap-2 sm:flex-row">
-              <textarea
-                v-model="replyDrafts[review.id]"
-                rows="3"
-                class="flex-1 rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                placeholder="Ответ от лица магазина"
-              />
-              <div class="flex flex-col gap-1 sm:w-44">
-                <CrmButton
-                  variant="primary"
-                  :disabled="!replyDrafts[review.id]?.trim()"
-                  :loading="savingReplyId === review.id"
-                  loading-label="Сохраняем..."
-                  :title="replyDrafts[review.id]?.trim() ? '' : 'Нужен текст ответа'"
-                  @click="saveReply(review.id)"
-                >
-                  Сохранить ответ
-                </CrmButton>
-                <p v-if="!replyDrafts[review.id]?.trim()" class="text-xs text-slate-500">
-                  Нужен текст ответа
-                </p>
-              </div>
-            </div>
-          </article>
-        </div>
-      </section>
-
-      <!-- Быстрые теги -->
-      <section
-        v-if="activeTab === 'tags'"
-        id="reviews-panel-tags"
-        role="tabpanel"
-        aria-labelledby="reviews-tab-tags"
-        class="rounded-2xl border border-slate-200/60 bg-white p-5 shadow-sm"
-      >
-        <div class="flex items-center justify-between gap-3">
-          <h2 class="text-lg font-semibold text-slate-900">Быстрые теги</h2>
-          <CrmButton
-            variant="secondary"
-            size="sm"
-            refresh-icon
-            :loading="quickTagsLoading"
-            loading-label="Обновляем..."
-            @click="loadQuickTags"
-          >
-            Обновить
-          </CrmButton>
-        </div>
-
-        <p class="mt-3 text-sm text-slate-500">
-          Клиент выбирает звёзды, пишет отзыв вручную и при желании нажимает кнопки в блоке «Дополнительно».
-          Текст в поле отзыва не подставляется — теги сохраняются отдельно и показываются рядом с отзывом.
-        </p>
-
-        <form
-          class="mt-4 grid gap-3 rounded-xl border border-dashed border-slate-200 p-4 sm:grid-cols-2"
-          @submit.prevent="createQuickTag"
-        >
-          <label class="block text-sm">
-            <span class="font-medium text-slate-700">Категория</span>
-            <select
-              v-model="newTag.category_key"
-              class="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2.5"
-            >
-              <option v-for="key in categoryKeys" :key="key" :value="key">
-                {{ categoryLabel(key) }}
-              </option>
-            </select>
-          </label>
-          <label class="block text-sm">
-            <span class="font-medium text-slate-700">Звёзды</span>
-            <select
-              v-model.number="newTag.star_rating"
-              class="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2.5"
-            >
-              <option v-for="star in 5" :key="star" :value="star">{{ star }}</option>
-            </select>
-          </label>
-          <label class="block text-sm sm:col-span-2">
-            <span class="font-medium text-slate-700">Текст кнопки</span>
-            <input
-              v-model="newTag.label"
-              type="text"
-              placeholder="Например: Очень вкусно"
-              class="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2.5"
-            />
-            <span class="mt-1 block text-xs text-slate-500">
-              Так кнопка будет выглядеть у клиента в Telegram.
-            </span>
-          </label>
-          <p v-if="!canCreateTag" class="text-xs text-slate-500 sm:col-span-2">
-            Укажите текст кнопки.
-          </p>
-          <div class="sm:col-span-2">
-            <CrmButton
-              type="submit"
-              variant="primary"
-              :disabled="!canCreateTag"
-              :loading="creatingTag"
-              loading-label="Добавляем..."
-              block
-            >
-              Добавить тег
-            </CrmButton>
-          </div>
-        </form>
-
-        <div v-if="quickTagsLoading && quickTags.length === 0" class="py-6 text-center text-slate-500">
-          Загрузка...
-        </div>
-        <div v-else-if="quickTags.length === 0" class="py-6 text-center text-slate-500">
-          <p>Тегов пока нет.</p>
-          <p class="mt-1 text-sm">Создай первый выше.</p>
-        </div>
-        <div
-          v-else
-          class="relative mt-4 space-y-3 sm:hidden"
-          :class="{ 'pointer-events-none opacity-60': quickTagsLoading }"
-        >
-          <article
-            v-for="tag in quickTags"
-            :key="`card-${tag.id}`"
-            class="rounded-xl border border-slate-200/70 p-4 text-sm"
-          >
-            <p class="font-medium text-slate-900">{{ tag.label }}</p>
-            <p class="mt-1 text-slate-600">{{ categoryLabel(tag.category_key) }} · {{ tag.star_rating }} ★</p>
-            <div class="mt-3 flex items-center justify-between">
-              <label class="inline-flex items-center gap-2 text-slate-700">
-                <input
-                  type="checkbox"
-                  :checked="Boolean(tag.is_active)"
-                  :disabled="togglingTagId === tag.id"
-                  :aria-label="`Тег ${tag.label} активен`"
-                  @change="toggleTagActive(tag)"
-                />
-                Активен
-              </label>
-              <CrmButton
-                variant="danger"
-                size="sm"
-                :loading="deletingTagId === tag.id"
-                loading-label="Удаляем..."
-                @click="requestDeleteTag(tag)"
-              >
-                Удалить
-              </CrmButton>
-            </div>
-          </article>
-        </div>
-        <div
-          v-if="quickTags.length"
-          class="relative mt-4 hidden overflow-x-auto sm:block"
-          :class="{ 'pointer-events-none opacity-60': quickTagsLoading }"
-        >
-          <table class="min-w-full text-left text-sm">
-            <thead>
-              <tr class="border-b border-slate-200 text-slate-500">
-                <th class="px-2 py-2">Категория</th>
-                <th class="px-2 py-2">★</th>
-                <th class="px-2 py-2">Текст кнопки</th>
-                <th class="px-2 py-2">Активен</th>
-                <th class="px-2 py-2" />
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="tag in quickTags" :key="tag.id" class="border-b border-slate-100">
-                <td class="px-2 py-2">{{ categoryLabel(tag.category_key) }}</td>
-                <td class="px-2 py-2">{{ tag.star_rating }}</td>
-                <td class="px-2 py-2">{{ tag.label }}</td>
-                <td class="px-2 py-2">
-                  <label class="inline-flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      :checked="Boolean(tag.is_active)"
-                      :disabled="togglingTagId === tag.id"
-                      :aria-label="`Тег ${tag.label} активен`"
-                      @change="toggleTagActive(tag)"
-                    />
-                    <span class="sr-only">Активен</span>
-                  </label>
-                </td>
-                <td class="px-2 py-2 text-right">
-                  <CrmButton
-                    variant="danger"
-                    size="sm"
-                    :loading="deletingTagId === tag.id"
-                    loading-label="Удаляем..."
-                    @click="requestDeleteTag(tag)"
-                  >
-                    Удалить
-                  </CrmButton>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <!-- Розыгрыш -->
-      <section
-        v-if="activeTab === 'draw'"
-        id="reviews-panel-draw"
-        role="tabpanel"
-        aria-labelledby="reviews-tab-draw"
-        class="rounded-2xl border border-slate-200/60 bg-white p-5 shadow-sm"
-      >
-        <div class="flex flex-wrap items-center justify-between gap-3">
-          <h2 class="text-lg font-semibold text-slate-900">Розыгрыш месяца</h2>
-          <CrmButton
-            variant="secondary"
-            size="sm"
-            refresh-icon
-            :loading="drawsLoading"
-            loading-label="Обновляем..."
-            @click="loadDraws"
-          >
-            Обновить
-          </CrmButton>
-        </div>
-
-        <div
-          class="mt-4 rounded-xl border border-violet-100 bg-gradient-to-r from-violet-50/80 to-fuchsia-50/50 p-4 text-sm"
-          role="status"
-        >
-          <p class="font-semibold text-violet-950">
-            Текущий период: {{ currentPeriodLabel }}
-          </p>
-          <p class="mt-1 text-violet-900/90">
-            Учитываются одобренные отзывы с {{ periodStartLabel }}.
-          </p>
-          <p class="mt-1 text-violet-900/90">
-            Автоматический розыгрыш: {{ autoScheduleLabel }}
-          </p>
-          <p v-if="currentPeriodDrawn" class="mt-2 font-medium text-emerald-800">
-            Розыгрыш за {{ currentPeriodLabel }} завершён.
-          </p>
-          <div class="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
-            <CrmButton
-              variant="primary"
-              size="sm"
-              :loading="runningDraw"
-              :disabled="currentPeriodDrawn"
-              loading-label="Запускаем..."
-              @click="requestRunDraw"
-            >
-              Запустить досрочно
-            </CrmButton>
-            <p class="text-xs text-violet-800/80">
-              По расписанию розыгрыш запускается автоматически. Досрочный запуск используйте при необходимости.
-            </p>
-          </div>
-          <button
-            v-if="crmStore.isDrawBannerDismissed && crmStore.latestMonthlyDraw"
-            type="button"
-            class="mt-3 text-xs font-medium text-violet-700 underline decoration-violet-300 underline-offset-2 hover:text-violet-950"
-            @click="crmStore.clearDrawAcknowledgement()"
-          >
-            Вернуть уведомление на доске заказов
-          </button>
-        </div>
-
-        <div
-          v-if="draws.length"
-          class="relative mt-4 space-y-3"
-          :class="{ 'pointer-events-none opacity-60': drawsLoading }"
-        >
-          <article
-            v-for="draw in draws"
-            :key="draw.id"
-            class="rounded-xl border border-slate-100 bg-slate-50 p-4 text-sm"
-          >
-            <div class="flex flex-wrap items-start justify-between gap-2">
-              <div>
-                <p class="font-medium text-slate-900">{{ formatPeriodKey(draw.period_key) }}</p>
-                <p class="mt-1 text-xs text-slate-500">{{ formatDrawStatus(draw) }}</p>
-              </div>
-              <p v-if="draw.drawn_at" class="text-xs text-slate-400">
-                {{ formatDrawDate(draw.drawn_at) }}
-              </p>
-            </div>
-            <ul v-if="draw.winners.length" class="mt-3 space-y-2 text-slate-700">
-              <li
-                v-for="winner in draw.winners"
-                :key="winner.id"
-                class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200/70 bg-white px-3 py-2"
-              >
-                <span>
-                  <span class="font-medium text-slate-900">Место {{ winner.seat_number }}:</span>
-                  {{ formatWinnerLabel(winner) }}
-                </span>
-                <CrmButton
-                  variant="soft"
-                  size="sm"
-                  :loading="rerollingKey === `${draw.id}-${winner.seat_number}`"
-                  loading-label="Переразыгрываем..."
-                  @click="requestReroll(draw, winner.seat_number)"
-                >
-                  Переразыграть
-                </CrmButton>
-              </li>
-            </ul>
-            <p v-else class="mt-3 rounded-lg border border-dashed border-slate-200 bg-white px-3 py-2 text-slate-500">
-              Одобренных отзывов за период нет. Победители не определены.
-            </p>
-          </article>
-        </div>
-        <div v-else-if="drawsLoading" class="mt-4 py-6 text-center text-slate-500">
-          Загрузка...
-        </div>
-        <div
-          v-else
-          class="mt-4 rounded-xl border border-dashed border-slate-200 bg-slate-50/50 px-4 py-6 text-center text-sm text-slate-500"
-        >
-          <p class="font-medium text-slate-700">История розыгрышей пуста</p>
-          <p class="mt-1">
-            Первый розыгрыш запланирован на {{ autoScheduleLabel }}. Досрочный запуск доступен кнопкой выше.
-          </p>
-        </div>
-      </section>
-
-      <!-- Настройки -->
-      <section
-        v-if="activeTab === 'settings'"
-        id="reviews-panel-settings"
-        role="tabpanel"
-        aria-labelledby="reviews-tab-settings"
-        class="rounded-2xl border border-slate-200/60 bg-white p-5 shadow-sm"
-        :class="{ 'pb-24': settingsDirty }"
-      >
-        <div class="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h2 class="text-lg font-semibold text-slate-900">Параметры отзывов</h2>
-            <p class="mt-1 text-sm text-slate-500">
-              Пауза, текст розыгрыша, имя и аватар в ответах.
-            </p>
-          </div>
-          <div class="flex flex-wrap items-center gap-2">
-            <CrmButton
-              variant="secondary"
-              size="sm"
-              refresh-icon
-              :loading="settingsLoading"
-              loading-label="Обновляем..."
-              @click="requestLoadSettings"
-            >
-              Обновить
-            </CrmButton>
-          </div>
-        </div>
-
-        <div v-if="settingsLoading && !settingsLoaded" class="mt-6 space-y-4">
-          <div v-for="n in 3" :key="n" class="h-24 animate-pulse rounded-xl bg-slate-100" />
-        </div>
-
-        <div v-else class="mt-6 lg:grid lg:grid-cols-[1fr_280px] lg:gap-6">
-          <div class="space-y-4">
-            <section class="rounded-xl border border-slate-200 bg-white p-4">
-              <h3 class="text-sm font-semibold text-slate-900">Для покупателей</h3>
-              <p class="mt-1 text-xs text-slate-500">
-                Показывается при оставлении отзыва в Telegram.
-              </p>
-
-              <label class="mt-4 block text-sm">
-                <span class="font-medium text-slate-700">Пауза между отзывами</span>
-                <div class="mt-1 flex items-center gap-2">
-                  <input
-                    v-model.number="settings.cooldown_days"
-                    type="number"
-                    min="1"
-                    max="365"
-                    class="w-24 rounded-xl border px-3 py-2.5"
-                    :class="settingsValidationErrors.cooldown_days ? 'border-red-300' : 'border-slate-300'"
-                  />
-                  <span class="text-slate-500">дней</span>
-                </div>
-                <span class="mt-1 block text-xs text-slate-500">
-                  Один отзыв на линейку товара.
-                </span>
-                <span v-if="settingsValidationErrors.cooldown_days" class="mt-1 block text-xs text-red-600">
-                  {{ settingsValidationErrors.cooldown_days }}
-                </span>
-              </label>
-
-              <label class="mt-4 block text-sm">
-                <span class="font-medium text-slate-700">Текст про розыгрыш</span>
-                <input
-                  v-model="settings.lottery_hint_text"
-                  type="text"
-                  maxlength="120"
-                  class="mt-1 w-full rounded-xl border px-3 py-2.5"
-                  :class="settingsValidationErrors.lottery_hint_text ? 'border-red-300' : 'border-slate-300'"
-                  placeholder="Каждый месяц разыгрываем 5 подарков среди авторов отзывов"
-                />
-                <span class="mt-1 flex justify-between text-xs text-slate-500">
-                  <span>В карточке заказа и в подсказке к отзыву.</span>
-                  <span>{{ settings.lottery_hint_text.length }}/120</span>
-                </span>
-                <span v-if="settingsValidationErrors.lottery_hint_text" class="mt-1 block text-xs text-red-600">
-                  {{ settingsValidationErrors.lottery_hint_text }}
-                </span>
-              </label>
-            </section>
-
-            <section class="rounded-xl border border-slate-200 bg-white p-4">
-              <h3 class="text-sm font-semibold text-slate-900">Профиль ответов менеджера</h3>
-              <p class="mt-1 text-xs text-slate-500">
-                Как подписываем ответы клиентам.
-              </p>
-
-              <div class="mt-4 grid gap-4 sm:grid-cols-2">
-                <label class="block text-sm">
-                  <span class="font-medium text-slate-700">Имя в ответах</span>
-                  <input
-                    v-model="settings.manager_display_name"
-                    type="text"
-                    class="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2.5"
-                    placeholder="Костя"
-                  />
-                </label>
-
-                <label class="block text-sm">
-                  <span class="font-medium text-slate-700">Ссылка на аватар</span>
-                  <input
-                    v-model="settings.manager_avatar_url"
-                    type="text"
-                    class="mt-1 w-full rounded-xl border px-3 py-2.5"
-                    :class="settingsValidationErrors.manager_avatar_url ? 'border-red-300' : 'border-slate-300'"
-                    placeholder="/favicon.png"
-                    @input="avatarPreviewError = false"
-                  />
-                  <span class="mt-1 block text-xs text-slate-500">
-                    Можно указать путь вида /favicon.png или полную ссылку на картинку. Лучше квадрат 64 на 64 пикселя.
-                  </span>
-                  <span v-if="settingsValidationErrors.manager_avatar_url" class="mt-1 block text-xs text-red-600">
-                    {{ settingsValidationErrors.manager_avatar_url }}
-                  </span>
-                  <div class="mt-2 flex items-center gap-2">
-                    <img
-                      :src="managerAvatarPreviewUrl"
-                      alt=""
-                      class="h-12 w-12 rounded-full border border-slate-200 bg-slate-50 object-cover"
-                      @error="avatarPreviewError = true"
-                    />
-                    <span class="text-xs text-slate-500">так увидит клиент</span>
-                  </div>
-                </label>
-              </div>
-            </section>
-          </div>
-
-          <aside class="mt-6 hidden lg:block">
-            <div class="sticky top-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <h3 class="text-sm font-semibold text-slate-900">Что видит клиент</h3>
-
-              <div class="mt-4 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
-                <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Подсказка к отзыву</p>
-                <p class="mt-2 text-sm font-semibold text-slate-900">{{ previewDockTitle }}</p>
-                <p class="mt-1 text-xs text-slate-600">{{ previewDockMetaLine }}</p>
-              </div>
-
-              <div class="mt-3 rounded-xl border border-slate-200 bg-white p-3">
-                <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Карточка заказа</p>
-                <p class="mt-2 text-sm font-medium text-slate-900">Отзывы по заказу</p>
-                <p class="mt-1 text-sm text-slate-600">
-                  {{ settings.lottery_hint_text.trim() || "текст не задан" }}
-                </p>
-              </div>
-
-              <div class="mt-3 rounded-xl border border-slate-200 bg-white p-3">
-                <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Ответ менеджера</p>
-                <div class="mt-2 flex items-start gap-2">
-                  <img
-                    :src="managerAvatarPreviewUrl"
-                    alt=""
-                    class="h-10 w-10 shrink-0 rounded-full border border-slate-200 object-cover"
-                    @error="avatarPreviewError = true"
-                  />
-                  <div>
-                    <p class="text-sm font-medium text-slate-900">{{ previewManagerName }}</p>
-                    <p class="mt-1 text-sm italic text-slate-500">
-                      «Спасибо за отзыв! Рады, что понравилось.»
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </aside>
-        </div>
-      </section>
     </div>
-
-    <Transition name="toast-slide">
-      <div
-        v-if="settingsDirty && activeTab === 'settings'"
-        class="fixed inset-x-0 bottom-0 z-50 border-t border-slate-200 bg-white/95 px-4 py-3 shadow-lg backdrop-blur"
-      >
-        <div class="mx-auto flex w-full max-w-7xl items-center justify-between gap-3">
-          <p class="flex items-center gap-2 text-sm text-slate-700">
-            <span class="h-2 w-2 rounded-full bg-amber-500" />
-            Есть несохранённые изменения
-          </p>
-          <div class="flex items-center gap-2">
-            <CrmButton variant="ghost" size="sm" @click="resetSettingsToBaseline">
-              Сбросить
-            </CrmButton>
-            <CrmButton
-              variant="primary"
-              size="sm"
-              :disabled="hasValidationErrors"
-              :loading="savingSettings"
-              loading-label="Сохраняем..."
-              @click="saveSettings"
-            >
-              Сохранить
-            </CrmButton>
-          </div>
-        </div>
-      </div>
-    </Transition>
 
     <!-- Confirm: модерация -->
     <Transition name="modal-fade">
@@ -785,198 +194,6 @@
       </div>
     </Transition>
 
-    <!-- Confirm: розыгрыш -->
-    <Transition name="modal-fade">
-      <div
-        v-if="confirmRunDraw"
-        class="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
-        v-safe-backdrop-close="() => (confirmRunDraw = false)"
-      >
-        <div
-          class="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="reviews-confirm-draw-title"
-          @keydown.esc="confirmRunDraw = false"
-        >
-          <h3 id="reviews-confirm-draw-title" class="mb-2 text-base font-semibold text-slate-900">
-            Запустить розыгрыш досрочно?
-          </h3>
-          <p class="mb-4 text-sm text-slate-600">
-            Будут выбраны 5 победителей за {{ currentPeriodLabel }} из одобренных отзывов текущего месяца.
-            Повторный запуск за этот период недоступен.
-          </p>
-          <div class="flex justify-end gap-2">
-            <CrmButton variant="ghost" size="sm" @click="confirmRunDraw = false">
-              Отмена
-            </CrmButton>
-            <CrmButton variant="primary" size="sm" @click="runDrawConfirmed">
-              Запустить досрочно
-            </CrmButton>
-          </div>
-        </div>
-      </div>
-    </Transition>
-
-    <!-- Confirm: переразыгрыш -->
-    <Transition name="modal-fade">
-      <div
-        v-if="confirmReroll"
-        class="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
-        v-safe-backdrop-close="() => (confirmReroll = null)"
-      >
-        <div
-          class="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="reviews-confirm-reroll-title"
-          @keydown.esc="confirmReroll = null"
-        >
-          <h3 id="reviews-confirm-reroll-title" class="mb-2 text-base font-semibold text-slate-900">
-            Переразыграть место?
-          </h3>
-          <p class="mb-4 text-sm text-slate-600">
-            Место {{ confirmReroll.seatNumber }} за {{ confirmReroll.periodLabel }} получит нового победителя.
-          </p>
-          <div class="flex justify-end gap-2">
-            <CrmButton variant="ghost" size="sm" @click="confirmReroll = null">
-              Отмена
-            </CrmButton>
-            <CrmButton variant="soft" size="sm" @click="rerollConfirmed">
-              Переразыграть
-            </CrmButton>
-          </div>
-        </div>
-      </div>
-    </Transition>
-
-    <!-- Confirm: обновление ответов с черновиками -->
-    <Transition name="modal-fade">
-      <div
-        v-if="confirmRefreshReplies"
-        class="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
-        v-safe-backdrop-close="() => (confirmRefreshReplies = false)"
-      >
-        <div
-          class="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="reviews-confirm-refresh-replies-title"
-          @keydown.esc="confirmRefreshReplies = false"
-        >
-          <h3 id="reviews-confirm-refresh-replies-title" class="mb-2 text-base font-semibold text-slate-900">
-            Обновить список ответов?
-          </h3>
-          <p class="mb-4 text-sm text-slate-600">
-            Есть несохранённые ответы. После обновления черновики пропадут.
-          </p>
-          <div class="flex justify-end gap-2">
-            <CrmButton variant="ghost" size="sm" @click="confirmRefreshReplies = false">
-              Оставить черновики
-            </CrmButton>
-            <CrmButton variant="primary" size="sm" @click="refreshRepliesConfirmed">
-              Обновить список
-            </CrmButton>
-          </div>
-        </div>
-      </div>
-    </Transition>
-
-    <!-- Confirm: уйти с несохранёнными настройками -->
-    <Transition name="modal-fade">
-      <div
-        v-if="confirmLeaveSettings"
-        class="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
-        v-safe-backdrop-close="cancelLeaveSettings"
-      >
-        <div
-          class="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="reviews-confirm-leave-settings-title"
-          @keydown.esc="cancelLeaveSettings"
-        >
-          <h3 id="reviews-confirm-leave-settings-title" class="mb-2 text-base font-semibold text-slate-900">
-            Есть несохранённые настройки
-          </h3>
-          <p class="mb-4 text-sm text-slate-600">
-            Изменения не сохранены. Уйти без сохранения?
-          </p>
-          <div class="flex justify-end gap-2">
-            <CrmButton variant="ghost" size="sm" @click="cancelLeaveSettings">
-              Остаться
-            </CrmButton>
-            <CrmButton variant="primary" size="sm" @click="leaveSettingsConfirmed">
-              Уйти без сохранения
-            </CrmButton>
-          </div>
-        </div>
-      </div>
-    </Transition>
-
-    <!-- Confirm: обновить настройки с несохранёнными изменениями -->
-    <Transition name="modal-fade">
-      <div
-        v-if="confirmRefreshSettings"
-        class="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
-        v-safe-backdrop-close="() => (confirmRefreshSettings = false)"
-      >
-        <div
-          class="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="reviews-confirm-refresh-settings-title"
-          @keydown.esc="confirmRefreshSettings = false"
-        >
-          <h3 id="reviews-confirm-refresh-settings-title" class="mb-2 text-base font-semibold text-slate-900">
-            Обновить настройки?
-          </h3>
-          <p class="mb-4 text-sm text-slate-600">
-            Несохранённые изменения будут потеряны.
-          </p>
-          <div class="flex justify-end gap-2">
-            <CrmButton variant="ghost" size="sm" @click="confirmRefreshSettings = false">
-              Оставить как есть
-            </CrmButton>
-            <CrmButton variant="primary" size="sm" @click="refreshSettingsConfirmed">
-              Обновить
-            </CrmButton>
-          </div>
-        </div>
-      </div>
-    </Transition>
-
-    <!-- Confirm: удаление тега -->
-    <Transition name="modal-fade">
-      <div
-        v-if="confirmDeleteTag"
-        class="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
-        v-safe-backdrop-close="() => (confirmDeleteTag = null)"
-      >
-        <div
-          class="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="reviews-confirm-delete-tag-title"
-          @keydown.esc="confirmDeleteTag = null"
-        >
-          <h3 id="reviews-confirm-delete-tag-title" class="mb-2 text-base font-semibold text-slate-900">
-            Удалить быстрый тег?
-          </h3>
-          <p class="mb-4 text-sm text-slate-600">
-            Тег «{{ confirmDeleteTag.label }}» для {{ categoryLabel(confirmDeleteTag.category_key) }} будет удалён без восстановления.
-          </p>
-          <div class="flex justify-end gap-2">
-            <CrmButton variant="ghost" size="sm" @click="confirmDeleteTag = null">
-              Оставить
-            </CrmButton>
-            <CrmButton variant="danger-solid" size="sm" @click="deleteTagConfirmed">
-              Удалить тег
-            </CrmButton>
-          </div>
-        </div>
-      </div>
-    </Transition>
 
     <Transition name="toast-slide">
       <div
@@ -1009,20 +226,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import CrmButton from "@/components/admin/crm/CrmButton.vue";
 import { useAdminStore } from "@/stores/admin";
 import { useCrmStore } from "@/stores/crm";
-import { buildReviewDockMetaLine, buildReviewDockTitle } from "@/utils/reviewDockCopy";
 import { vSafeBackdropClose } from "@/directives/safeBackdropClose";
-import {
-  formatReviewDrawPeriodKey,
-  getCurrentReviewDrawPeriodKey,
-  getReviewDrawAutoScheduleLabel,
-  getReviewDrawPeriodStartLabel,
-} from "@/utils/reviewDrawPeriod";
 
-type ReviewTabId = "moderation" | "replies" | "tags" | "draw" | "settings";
+/* Раздел остался один — модерация. Ответы, теги, розыгрыш и настройки
+   убраны: задержек между отзывами больше нет, а вместо розыгрыша будет
+   кэшбэк (логику напишем позже). */
 type ToastKind = "success" | "error" | "info";
 
 interface ToastMessage {
@@ -1044,267 +256,28 @@ interface ReviewItem {
   created_at?: string;
 }
 
-interface QuickTag {
-  id: string;
-  category_key: string;
-  star_rating: number;
-  label: string;
-
-  is_active?: number | boolean;
-}
-
-interface DrawWinner {
-  id: string;
-  seat_number: number;
-  telegram_username?: string;
-  first_name?: string;
-  customer_id?: string | number;
-}
-
-interface MonthlyDraw {
-  id: string;
-  period_key: string;
-  drawn_at?: string;
-  status?: string;
-  winners: DrawWinner[];
-}
-
-const tabs: Array<{ id: ReviewTabId; label: string }> = [
-  { id: "moderation", label: "Модерация" },
-  { id: "replies", label: "Ответы" },
-  { id: "tags", label: "Быстрые теги" },
-  { id: "draw", label: "Розыгрыш" },
-  { id: "settings", label: "Настройки" },
-];
-
-const CATEGORY_LABELS: Record<string, string> = {
-  liquids: "Жидкости",
-  snus: "Снюс",
-  consumables: "Расходники",
-  disposables: "Одноразки",
-  devices: "Устройства",
-  other: "Прочее",
-};
-
 const adminStore = useAdminStore();
 const crmStore = useCrmStore();
 
-const activeTab = ref<ReviewTabId>("moderation");
-const replyFilter = ref<"all" | "unanswered">("unanswered");
-
 const loading = ref(false);
-const approvedLoading = ref(false);
-const quickTagsLoading = ref(false);
-const savingSettings = ref(false);
-const settingsLoading = ref(false);
-const settingsLoaded = ref(false);
-const avatarPreviewError = ref(false);
-const creatingTag = ref(false);
-const runningDraw = ref(false);
-const drawsLoading = ref(false);
-
 const moderatingId = ref<string | null>(null);
-const savingReplyId = ref<string | null>(null);
-const togglingTagId = ref<string | null>(null);
-const deletingTagId = ref<string | null>(null);
-const rerollingKey = ref<string | null>(null);
 
 const pendingCount = ref(0);
 const pendingReviews = ref<ReviewItem[]>([]);
-const approvedReviews = ref<ReviewItem[]>([]);
-const quickTags = ref<QuickTag[]>([]);
-const draws = ref<MonthlyDraw[]>([]);
-const replyDrafts = reactive<Record<string, string>>({});
-
-const categoryKeys = Object.keys(CATEGORY_LABELS);
-interface ReviewSettingsState {
-  cooldown_days: number;
-  lottery_hint_text: string;
-  manager_display_name: string;
-  manager_avatar_url: string;
-}
-
-const settings = ref<ReviewSettingsState>({
-  cooldown_days: 90,
-  lottery_hint_text: "",
-  manager_display_name: "",
-  manager_avatar_url: "/favicon.png",
-});
-const settingsBaseline = ref<ReviewSettingsState>({ ...settings.value });
-const newTag = ref({
-  category_key: "liquids",
-  star_rating: 5,
-  label: "",
-});
-
 const toast = ref<ToastMessage | null>(null);
 let toastTimer: ReturnType<typeof setTimeout> | null = null;
 
 const confirmModerate = ref<{ review: ReviewItem; action: "approve" | "reject" } | null>(null);
-const confirmRunDraw = ref(false);
-const confirmReroll = ref<{ drawId: string; seatNumber: number; periodLabel: string } | null>(null);
-const confirmDeleteTag = ref<QuickTag | null>(null);
-const confirmRefreshReplies = ref(false);
-const confirmLeaveSettings = ref(false);
-const confirmRefreshSettings = ref(false);
-const pendingTabChange = ref<ReviewTabId | null>(null);
 
-const unansweredCount = computed(
-  () => approvedReviews.value.filter((review) => !review.manager_reply?.trim()).length,
-);
 
-const filteredApprovedReviews = computed(() => {
-  if (replyFilter.value === "unanswered") {
-    return approvedReviews.value.filter((review) => !review.manager_reply?.trim());
-  }
-  return approvedReviews.value;
-});
-
-const currentPeriodKey = computed(() => getCurrentReviewDrawPeriodKey());
-const currentPeriodLabel = computed(() => formatReviewDrawPeriodKey(currentPeriodKey.value));
-const periodStartLabel = computed(() => getReviewDrawPeriodStartLabel());
-const autoScheduleLabel = computed(() => getReviewDrawAutoScheduleLabel());
-const currentPeriodDrawn = computed(() =>
-  draws.value.some((draw) => draw.period_key === currentPeriodKey.value),
-);
-
-const canCreateTag = computed(
-  () => Boolean(newTag.value.label.trim()),
-);
-
-const previewDockTitle = computed(() => buildReviewDockTitle("Ваш заказ"));
-
-const previewDockMetaLine = computed(() =>
-  buildReviewDockMetaLine({
-    order_number: 12345,
-    lottery_hint_text: settings.value.lottery_hint_text,
-    pending_review_count: 1,
-  }),
-);
-
-const previewManagerName = computed(
-  () => settings.value.manager_display_name.trim() || "Менеджер магазина",
-);
-
-const managerAvatarPreviewUrl = computed(() => {
-  if (avatarPreviewError.value) return "/favicon.png";
-  const url = settings.value.manager_avatar_url.trim();
-  return url || "/favicon.png";
-});
-
-function isValidAvatarUrl(value: string) {
-  const trimmed = value.trim();
-  if (!trimmed) return true;
-  if (trimmed.startsWith("/")) return true;
-  return /^https?:\/\/.+/i.test(trimmed);
-}
-
-function serializeSettingsSnapshot(source: ReviewSettingsState) {
-  return JSON.stringify({
-    cooldown_days: Number(source.cooldown_days) || 90,
-    lottery_hint_text: source.lottery_hint_text.trim(),
-    manager_display_name: source.manager_display_name.trim(),
-    manager_avatar_url: source.manager_avatar_url.trim(),
-  });
-}
-
-const settingsDirty = computed(
-  () => serializeSettingsSnapshot(settings.value) !== serializeSettingsSnapshot(settingsBaseline.value),
-);
-
-const settingsValidationErrors = computed(() => ({
-  cooldown_days:
-    !Number.isFinite(settings.value.cooldown_days) || settings.value.cooldown_days < 1
-      ? "Укажите не меньше 1 дня"
-      : settings.value.cooldown_days > 365
-        ? "Укажите не больше 365 дней"
-        : "",
-  lottery_hint_text:
-    settings.value.lottery_hint_text.length > 120 ? "Сократите текст до 120 символов" : "",
-  manager_avatar_url: isValidAvatarUrl(settings.value.manager_avatar_url)
-    ? ""
-    : "Укажите путь вида /favicon.png или ссылку, начинающуюся с https://",
-}));
-
-const hasValidationErrors = computed(() =>
-  Object.values(settingsValidationErrors.value).some(Boolean),
-);
-
-function requestTabChange(tabId: ReviewTabId) {
-  if (activeTab.value === "settings" && settingsDirty.value && tabId !== "settings") {
-    pendingTabChange.value = tabId;
-    confirmLeaveSettings.value = true;
-    return;
-  }
-  activeTab.value = tabId;
-}
-
-function cancelLeaveSettings() {
-  confirmLeaveSettings.value = false;
-  pendingTabChange.value = null;
-}
-
-function leaveSettingsConfirmed() {
-  resetSettingsToBaseline();
-  confirmLeaveSettings.value = false;
-  if (pendingTabChange.value) {
-    activeTab.value = pendingTabChange.value;
-    pendingTabChange.value = null;
-  }
-}
-
-function resetSettingsToBaseline() {
-  applySettingsPayload(settingsBaseline.value);
-}
-
-function applySettingsPayload(payload: Partial<ReviewSettingsState> & Record<string, unknown>) {
-  settings.value = {
-    cooldown_days: Number(payload.cooldown_days) || 90,
-    lottery_hint_text: payload.lottery_hint_text || "",
-    manager_display_name: payload.manager_display_name || "",
-    manager_avatar_url: payload.manager_avatar_url || "/favicon.png",
-  };
-  settingsBaseline.value = { ...settings.value };
-  avatarPreviewError.value = false;
-}
-
-function categoryLabel(key: string) {
-  return CATEGORY_LABELS[key] || key;
-}
-
-function formatPeriodKey(periodKey: string) {
-  return formatReviewDrawPeriodKey(periodKey);
-}
-
-function formatDrawDate(value?: string) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString("ru-RU", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function formatDrawStatus(draw: MonthlyDraw) {
-  const winnerCount = draw.winners?.length || 0;
-  if (winnerCount > 0) {
-    return `Завершён. ${formatDrawWinnerCount(winnerCount)}`;
-  }
-  return "Завершён. Одобренных отзывов за период не было";
-}
-
-function formatDrawWinnerCount(count: number) {
-  const mod10 = count % 10;
-  const mod100 = count % 100;
-  if (mod10 === 1 && mod100 !== 11) return `${count} победитель`;
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) {
-    return `${count} победителя`;
-  }
-  return `${count} победителей`;
+/**
+ * Цвет оценки в карточке: низкие оценки должны бросаться в глаза,
+ * высокие — читаться спокойно. Только оформление.
+ */
+function scoreClass(rating: number): string {
+  if (rating <= 2) return "crm-review-score--low";
+  if (rating === 3) return "crm-review-score--mid";
+  return "crm-review-score--high";
 }
 
 function formatReviewDate(value: string) {
@@ -1319,45 +292,16 @@ function formatReviewDate(value: string) {
   });
 }
 
-function formatWinnerLabel(winner: DrawWinner) {
-  if (winner.telegram_username) return `@${winner.telegram_username}`;
-  if (winner.first_name) return winner.first_name;
-  return "победитель без Telegram";
-}
 
+/* Только то, что может вернуть модерация: ответы, розыгрыш и
+   настройки из раздела убраны. */
 const API_ERROR_MESSAGES: Record<string, string> = {
   not_found: "Запись не найдена. Обновите список.",
-  reply_required: "Нужен текст ответа.",
   missing_fields: "Не все поля заполнены.",
   invalid_star_rating: "Оценка должна быть от 1 до 5.",
-  invalid_cooldown_days: "Пауза между отзывами должна быть не меньше 1 дня.",
-  draw_already_exists: "Розыгрыш за этот месяц уже проведён.",
-  draw_not_found: "Розыгрыш не найден. Обновите список.",
-  seat_not_found: "Место в розыгрыше не найдено.",
-  no_eligible_tickets: "Нет подходящих участников для переразыгрыша.",
-  invalid_seat_number: "Некорректный номер места.",
   failed: "Не удалось выполнить операцию. Попробуйте ещё раз.",
 };
 
-function hasDirtyReplyDrafts() {
-  return approvedReviews.value.some((review) => {
-    const draft = replyDrafts[review.id]?.trim() || "";
-    const saved = review.manager_reply?.trim() || "";
-    return draft !== saved;
-  });
-}
-
-function syncReplyDrafts(reviews: ReviewItem[]) {
-  for (const review of reviews) {
-    const saved = review.manager_reply || "";
-    const current = replyDrafts[review.id];
-    const currentTrimmed = current?.trim() || "";
-    const savedTrimmed = saved.trim();
-    if (current === undefined || currentTrimmed === savedTrimmed) {
-      replyDrafts[review.id] = saved;
-    }
-  }
-}
 
 function showToast(kind: ToastKind, text: string) {
   toast.value = { kind, text };
@@ -1395,65 +339,6 @@ function authHeaders() {
   };
 }
 
-async function loadSettings() {
-  settingsLoading.value = true;
-  try {
-    const response = await fetch("/api/admin/crm/review-settings", { headers: authHeaders() });
-    if (!response.ok) {
-      showToast("error", await parseApiError(response, "Не удалось загрузить настройки."));
-      return;
-    }
-    applySettingsPayload(await response.json());
-    settingsLoaded.value = true;
-  } finally {
-    settingsLoading.value = false;
-  }
-}
-
-function requestLoadSettings() {
-  if (settingsDirty.value) {
-    confirmRefreshSettings.value = true;
-    return;
-  }
-  void loadSettings();
-}
-
-async function refreshSettingsConfirmed() {
-  confirmRefreshSettings.value = false;
-  await loadSettings();
-}
-
-function buildSettingsPatchBody() {
-  return { ...settings.value };
-}
-
-async function performSaveSettings() {
-  if (hasValidationErrors.value) {
-    showToast("error", "Сначала поправь ошибки в форме.");
-    return false;
-  }
-  savingSettings.value = true;
-  try {
-    const response = await fetch("/api/admin/crm/review-settings", {
-      method: "PATCH",
-      headers: authHeaders(),
-      body: JSON.stringify(buildSettingsPatchBody()),
-    });
-    if (!response.ok) {
-      showToast("error", await parseApiError(response, "Не удалось сохранить настройки."));
-      return false;
-    }
-    applySettingsPayload(await response.json());
-    showToast("success", "Настройки сохранены.");
-    return true;
-  } finally {
-    savingSettings.value = false;
-  }
-}
-
-async function saveSettings() {
-  await performSaveSettings();
-}
 
 async function loadReviews() {
   loading.value = true;
@@ -1477,72 +362,6 @@ async function loadReviews() {
     }
   } finally {
     loading.value = false;
-  }
-}
-
-async function loadDraws() {
-  drawsLoading.value = true;
-  try {
-    const response = await fetch("/api/admin/crm/review-monthly-draws", { headers: authHeaders() });
-    if (!response.ok) {
-      showToast("error", await parseApiError(response, "Не удалось загрузить розыгрыши."));
-      return;
-    }
-    const data = await response.json();
-    draws.value = data.items || [];
-    const latestDraw = draws.value[0];
-    if (latestDraw?.id) {
-      crmStore.markDrawAsSeen(latestDraw.id);
-    }
-  } finally {
-    drawsLoading.value = false;
-  }
-}
-
-async function loadApprovedReviews(options?: { force?: boolean }) {
-  if (!options?.force && hasDirtyReplyDrafts()) {
-    confirmRefreshReplies.value = true;
-    return;
-  }
-
-  approvedLoading.value = true;
-  try {
-    const response = await fetch("/api/admin/crm/product-reviews?status=approved", {
-      headers: authHeaders(),
-    });
-    if (!response.ok) {
-      showToast("error", await parseApiError(response, "Не удалось загрузить одобренные отзывы."));
-      return;
-    }
-    const data = await response.json();
-    approvedReviews.value = data.items || [];
-    syncReplyDrafts(approvedReviews.value);
-  } finally {
-    approvedLoading.value = false;
-  }
-}
-
-function requestLoadApprovedReviews() {
-  void loadApprovedReviews();
-}
-
-async function refreshRepliesConfirmed() {
-  confirmRefreshReplies.value = false;
-  await loadApprovedReviews({ force: true });
-}
-
-async function loadQuickTags() {
-  quickTagsLoading.value = true;
-  try {
-    const response = await fetch("/api/admin/crm/review-quick-tags", { headers: authHeaders() });
-    if (!response.ok) {
-      showToast("error", await parseApiError(response, "Не удалось загрузить быстрые теги."));
-      return;
-    }
-    const data = await response.json();
-    quickTags.value = data.items || [];
-  } finally {
-    quickTagsLoading.value = false;
   }
 }
 
@@ -1572,163 +391,18 @@ async function moderateConfirmed() {
         ? `Отзыв к заказу №${review.order_number} одобрен.`
         : `Отзыв к заказу №${review.order_number} отклонён.`,
     );
-    await Promise.all([loadReviews(), loadApprovedReviews({ force: true })]);
+    // Обновляем очередь: одобренный отзыв уходит из неё, а счётчик
+    // в шапке пересчитывается.
+    await loadReviews();
   } finally {
     moderatingId.value = null;
   }
 }
 
-async function saveReply(id: string) {
-  const reply = replyDrafts[id]?.trim();
-  if (!reply) return;
-
-  savingReplyId.value = id;
-  try {
-    const response = await fetch(`/api/admin/crm/product-reviews/${id}/reply`, {
-      method: "POST",
-      headers: authHeaders(),
-      body: JSON.stringify({ reply }),
-    });
-    if (!response.ok) {
-      showToast("error", await parseApiError(response, "Не удалось сохранить ответ."));
-      return;
-    }
-    showToast("success", "Ответ сохранён.");
-    await loadApprovedReviews({ force: true });
-  } finally {
-    savingReplyId.value = null;
-  }
-}
-
-async function createQuickTag() {
-  creatingTag.value = true;
-  try {
-    const response = await fetch("/api/admin/crm/review-quick-tags", {
-      method: "POST",
-      headers: authHeaders(),
-      body: JSON.stringify(newTag.value),
-    });
-    if (!response.ok) {
-      showToast("error", await parseApiError(response, "Не удалось создать тег."));
-      return;
-    }
-    newTag.value.label = "";
-    showToast("success", "Быстрый тег добавлен.");
-    await loadQuickTags();
-  } finally {
-    creatingTag.value = false;
-  }
-}
-
-async function toggleTagActive(tag: QuickTag) {
-  togglingTagId.value = tag.id;
-  try {
-    const response = await fetch(`/api/admin/crm/review-quick-tags/${tag.id}`, {
-      method: "PATCH",
-      headers: authHeaders(),
-      body: JSON.stringify({ is_active: !tag.is_active }),
-    });
-    if (!response.ok) {
-      showToast("error", await parseApiError(response, "Не удалось изменить статус тега."));
-      return;
-    }
-    showToast("success", `Тег «${tag.label}» ${tag.is_active ? "выключен" : "включён"}.`);
-    await loadQuickTags();
-  } finally {
-    togglingTagId.value = null;
-  }
-}
-
-function requestDeleteTag(tag: QuickTag) {
-  confirmDeleteTag.value = tag;
-}
-
-async function deleteTagConfirmed() {
-  const tag = confirmDeleteTag.value;
-  if (!tag) return;
-  confirmDeleteTag.value = null;
-
-  deletingTagId.value = tag.id;
-  try {
-    const response = await fetch(`/api/admin/crm/review-quick-tags/${tag.id}`, {
-      method: "DELETE",
-      headers: authHeaders(),
-    });
-    if (!response.ok) {
-      showToast("error", await parseApiError(response, "Не удалось удалить тег."));
-      return;
-    }
-    showToast("success", `Тег «${tag.label}» удалён.`);
-    await loadQuickTags();
-  } finally {
-    deletingTagId.value = null;
-  }
-}
-
-function requestRunDraw() {
-  confirmRunDraw.value = true;
-}
-
-async function runDrawConfirmed() {
-  confirmRunDraw.value = false;
-  runningDraw.value = true;
-  try {
-    const response = await fetch("/api/admin/crm/review-monthly-draws/run", {
-      method: "POST",
-      headers: authHeaders(),
-      body: JSON.stringify({}),
-    });
-    if (!response.ok) {
-      showToast("error", await parseApiError(response, "Не удалось запустить розыгрыш."));
-      return;
-    }
-    showToast("success", `Розыгрыш за ${currentPeriodLabel.value} завершён.`);
-    await loadDraws();
-  } finally {
-    runningDraw.value = false;
-  }
-}
-
-function requestReroll(draw: MonthlyDraw, seatNumber: number) {
-  confirmReroll.value = {
-    drawId: draw.id,
-    seatNumber,
-    periodLabel: formatPeriodKey(draw.period_key),
-  };
-}
-
-async function rerollConfirmed() {
-  const payload = confirmReroll.value;
-  if (!payload) return;
-  confirmReroll.value = null;
-
-  const key = `${payload.drawId}-${payload.seatNumber}`;
-  rerollingKey.value = key;
-  try {
-    const response = await fetch(`/api/admin/crm/review-monthly-draws/${payload.drawId}/reroll`, {
-      method: "POST",
-      headers: authHeaders(),
-      body: JSON.stringify({ seat_number: payload.seatNumber }),
-    });
-    if (!response.ok) {
-      showToast("error", await parseApiError(response, "Не удалось переразыграть место."));
-      return;
-    }
-    showToast("success", `Место ${payload.seatNumber} переразыграно.`);
-    await loadDraws();
-  } finally {
-    rerollingKey.value = null;
-  }
-}
 
 onMounted(async () => {
-  await Promise.all([
-    loadSettings(),
-    loadReviews(),
-    loadApprovedReviews({ force: true }),
-    loadQuickTags(),
-    loadDraws(),
-  ]);
+  // Раздел один: грузим очередь модерации и счётчик.
+  await loadReviews();
 });
 
 onUnmounted(() => {
@@ -1756,5 +430,443 @@ onUnmounted(() => {
   transform: translateY(12px);
 }
 
+/* ===== Страница отзывов в языке CRM =====
+   Чернильный текст, мягкие карточки с тенью, синий градиент на главном
+   действии — как на эталонной странице заказов. */
+.crm-reviews-page {
+  --crm-reference-primary: linear-gradient(100deg, #05b8ff, #185dff);
+
+  min-width: 0;
+  width: 100%;
+  color: #081b4b;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+}
+
+.crm-reviews-content {
+  width: 100%;
+  max-width: none;
+}
+
+.crm-reviews-page * {
+  box-sizing: border-box;
+}
+
+/* Стандарт CRM: фокус видно на любом интерактивном элементе. */
+.crm-reviews-page button:focus-visible,
+.crm-reviews-page a:focus-visible {
+  outline: 2px solid #0958ff;
+  outline-offset: 3px;
+}
+
+.crm-reviews-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 22px;
+}
+
+.crm-reviews-title {
+  margin: 0;
+  color: #081b4b;
+  font-size: 37px;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  line-height: 1.1;
+}
+
+.crm-reviews-subtitle {
+  margin: 8px 0 0;
+  color: #7584a7;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* Счётчик очереди — заметный акцент в шапке. */
+.crm-reviews-counter {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 7px;
+  flex-shrink: 0;
+  padding: 11px 18px;
+  border: 0;
+  border-radius: 13px;
+  background: linear-gradient(115deg, #ff685a, #fa104f);
+  color: #ffffff;
+  font-family: inherit;
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1;
+  box-shadow: 0 8px 18px #fa104f38;
+}
+
+.crm-reviews-counter span {
+  font-size: 11px;
+  font-weight: 650;
+  opacity: 0.9;
+}
+
+.crm-reviews-panel {
+  padding: 22px;
+  border-radius: 19px;
+  background: #ffffff;
+  box-shadow: 0 12px 35px #20386908;
+}
+
+.crm-reviews-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.crm-reviews-panel-head h2 {
+  margin: 0;
+  color: #081b4b;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.crm-reviews-hint {
+  margin: 8px 0 0;
+  color: #8898b5;
+  font-size: 11px;
+  line-height: normal;
+}
+
+.crm-reviews-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 34px 0;
+  color: #7584a7;
+  font-size: 13px;
+}
+
+/* Пустое состояние — как в эталоне: пунктир и круглая иконка. */
+.crm-reviews-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 34px 18px;
+  border: 1px dashed #dce6f4;
+  border-radius: 13px;
+  color: #8493b0;
+  font-size: 12px;
+  line-height: normal;
+  text-align: center;
+}
+
+.crm-reviews-empty-symbol {
+  display: grid;
+  place-items: center;
+  width: 57px;
+  height: 57px;
+  margin-bottom: 2px;
+  border-radius: 50%;
+  background: #f4f7fd;
+  color: #4d6089;
+}
+
+.crm-reviews-empty-symbol svg {
+  width: 26px;
+  height: 26px;
+}
+
+.crm-reviews-empty b {
+  color: #64799e;
+  font-size: 13px;
+}
+
+.crm-reviews-empty > span:last-child {
+  max-width: 260px;
+}
+
+.crm-reviews-queue {
+  display: grid;
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.crm-reviews-queue--busy {
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+.crm-review-card {
+  display: grid;
+  gap: 12px;
+  padding: 16px 18px 14px;
+  border: 1px solid #eaf0f9;
+  /* 19px — радиус карточек в стандарте CRM (как у колонок доски). */
+  border-radius: 19px;
+  background: #ffffff;
+  box-shadow: 0 10px 30px #20386908;
+  transition: box-shadow 0.16s ease, border-color 0.16s ease;
+}
+
+.crm-review-card:hover {
+  border-color: #dbe6f7;
+  box-shadow: 0 14px 36px #20386912;
+}
+
+.crm-review-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+/* Крупная оценка — главный акцент карточки. */
+.crm-review-score {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  align-content: center;
+  flex-shrink: 0;
+  width: 58px;
+  height: 58px;
+  /* 13px — стандартный радиус интерактивных элементов CRM. */
+  border-radius: 13px;
+  color: #ffffff;
+}
+
+.crm-review-score b {
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.crm-review-score-max {
+  font-size: 11px;
+  font-weight: 650;
+  opacity: 0.75;
+}
+
+.crm-review-score--high {
+  background: linear-gradient(135deg, #18b86d, #0f9b58);
+  box-shadow: 0 8px 16px #18b86d35;
+}
+
+.crm-review-score--mid {
+  background: linear-gradient(135deg, #ffb020, #ff7a1a);
+  box-shadow: 0 8px 16px #ff9a1f35;
+}
+
+.crm-review-score--low {
+  background: linear-gradient(115deg, #ff685a, #fa104f);
+  box-shadow: 0 8px 16px #fa104f35;
+}
+
+.crm-review-who {
+  flex: 1;
+  min-width: 0;
+}
+
+.crm-review-order {
+  display: inline-block;
+  color: #1759ed;
+  font-size: 12px;
+  font-weight: 750;
+  line-height: normal;
+  text-decoration: none;
+}
+
+.crm-review-order:hover {
+  text-decoration: underline;
+}
+
+.crm-review-order--plain {
+  color: #081b4b;
+}
+
+.crm-review-product {
+  margin: 6px 0 0;
+  color: #081b4b;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.crm-review-variant {
+  color: #7584a7;
+  font-weight: 600;
+}
+
+.crm-review-author {
+  margin: 4px 0 0;
+  color: #7584a7;
+  font-size: 11px;
+  line-height: normal;
+}
+
+.crm-review-username {
+  color: #1759ed;
+  font-weight: 650;
+}
+
+.crm-review-notelegram {
+  color: #9ba8c0;
+}
+
+.crm-review-aside {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.crm-review-stars {
+  display: flex;
+  gap: 2px;
+  color: #ffb020;
+  font-size: 14px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.crm-review-stars .is-off {
+  color: #dbe3ef;
+}
+
+.crm-review-date {
+  color: #9ba8c0;
+  font-size: 11px;
+  line-height: normal;
+  white-space: nowrap;
+}
+
+.crm-review-body {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #f7faff;
+  color: #102456;
+  font-size: 13px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.crm-review-body-empty {
+  color: #9ba8c0;
+}
+
+.crm-review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.crm-review-approve,
+.crm-review-reject {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 43px;
+  padding: 13px 21px;
+  border: 0;
+  border-radius: 12px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 750;
+  line-height: normal;
+  cursor: pointer;
+  transition: filter 0.15s ease;
+}
+
+.crm-review-approve {
+  min-width: 160px;
+  background: var(--crm-reference-primary);
+  color: #ffffff;
+  box-shadow: 0 8px 16px #148cff30;
+}
+
+.crm-review-approve svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.crm-review-reject {
+  background: linear-gradient(#f7faff, #e9f0fa);
+  color: #233e70;
+}
+
+.crm-review-approve:hover:not(:disabled),
+.crm-review-reject:hover:not(:disabled) {
+  filter: brightness(1.04);
+}
+
+.crm-review-approve:disabled,
+.crm-review-reject:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.crm-review-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: crm-reviews-spin 0.7s linear infinite;
+}
+
+@keyframes crm-reviews-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 1120px) {
+  .crm-reviews-title {
+    font-size: 30px;
+  }
+}
+
+@media (max-width: 700px) {
+  .crm-reviews-head {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .crm-reviews-title {
+    font-size: 30px;
+  }
+
+  .crm-review-head {
+    flex-wrap: wrap;
+  }
+
+  .crm-review-aside {
+    flex-direction: row;
+    align-items: flex-start;
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  .crm-review-actions > button {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .crm-review-card,
+  .crm-review-approve,
+  .crm-review-reject {
+    transition: none;
+  }
+
+  .crm-review-spinner {
+    animation: none;
+  }
+}
 
 </style>

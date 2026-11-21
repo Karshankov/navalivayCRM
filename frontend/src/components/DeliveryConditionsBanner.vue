@@ -54,7 +54,7 @@ function close() {
   width: 100%;
   border-radius: 16px;
   overflow: hidden;
-  background: #f5f7fa;
+  background: var(--customer-bg, #f5f7fa);
 }
 
 .delivery-conditions-image img {
@@ -62,11 +62,11 @@ function close() {
   width: 100%;
   max-height: min(56vh, 520px);
   object-fit: contain;
-  background: #ffffff;
+  background: var(--customer-surface, #ffffff);
 }
 
 .delivery-conditions-fallback {
-  color: #191919;
+  color: var(--customer-ink, #191919);
   font-family: -apple-system, "SF Pro Display", sans-serif;
   font-weight: 500;
   font-size: 16px;
@@ -81,8 +81,8 @@ function close() {
   width: 100%;
   min-height: 64px;
   border: none;
-  border-radius: 528px;
-  background: linear-gradient(90deg, #f50302 0%, #a90f0e 100%);
+  border-radius: var(--customer-radius-pill, 999px);
+  background: var(--customer-red-gradient);
   color: #ffffff;
   font-family: "Montserrat", sans-serif;
   font-weight: 500;

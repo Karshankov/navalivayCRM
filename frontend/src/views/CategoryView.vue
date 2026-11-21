@@ -1,5 +1,5 @@
 <template>
-  <div class="min-h-screen" style="background: #f5f7fa">
+  <div class="min-h-screen customer-page-surface">
     <SmokeParticles :count="4" area="full" />
 
     <!-- Хедер категории удалён: название показывают кнопки быстрой
@@ -1240,11 +1240,11 @@ watch(
   }
 }
 
-/* Плашка консультации: хедер категории удалён — залипает прямо
-   под закреплённой верхней панелью (TopCartBar). */
+/* Плашка консультации: хедер категории удалён, а верхняя панель
+   (TopCartBar) убрана — залипает к самому верху экрана. */
 .compatibility-notice-sticky {
   position: sticky;
-  top: var(--app-topbar-offset, 0px);
+  top: 0;
   z-index: 19;
   padding: 0 16px 16px;
   margin: 0 0 16px;
@@ -1265,7 +1265,7 @@ watch(
 /* Liquid Showcase Container */
 .liquid-showcase-container {
   padding: 8px;
-  background: #f5f7fa;
+  background: var(--customer-bg, #f5f7fa);
 }
 
 /* Group List Container - для устройств */
@@ -1327,12 +1327,12 @@ watch(
 /* Group focus panel */
 .group-focus-panel {
   position: relative;
-  border-radius: 28px;
+  border-radius: var(--customer-radius-card, 24px);
   overflow: hidden;
-  border: 3px solid var(--navalivay-black);
-  background: var(--navalivay-white);
+  border: 0;
+  background: var(--customer-surface, #ffffff);
   min-height: 240px;
-  box-shadow: var(--navalivay-shadow);
+  box-shadow: var(--customer-shadow-card, 0 8px 24px rgba(31, 41, 55, 0.08));
 }
 
 .group-focus-media {
@@ -1382,7 +1382,7 @@ watch(
   font-size: clamp(1.6rem, 3vw, 2.1rem);
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--navalivay-black);
+  color: var(--customer-ink, #191919);
 }
 
 .group-focus-meta {
@@ -1431,45 +1431,44 @@ watch(
   align-items: center;
   gap: 0.5rem;
   padding: 0.55rem 1rem;
-  border-radius: 9999px;
   font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  border: 3px solid var(--navalivay-black);
-  transition: all 0.2s ease;
-  background: var(--navalivay-white);
+  border: 1px solid var(--customer-border, #e6e9ed);
+  border-radius: var(--customer-radius-action, 18px);
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+  background: var(--customer-surface, #ffffff);
 }
 
 .back-chip:hover {
-  transform: translate(-2px, -2px);
-  box-shadow: var(--navalivay-shadow);
+  border-color: var(--customer-red-start, #f50302);
+  background: var(--customer-bg, #f5f7fa);
 }
 
 /* Product card styles */
 .product-card {
-  border-radius: 22px;
+  border-radius: var(--customer-radius-card, 24px);
   overflow: visible;
-  border: 3px solid var(--navalivay-black);
-  background: var(--navalivay-white);
-  transition:
-    transform 0.25s ease,
-    box-shadow 0.25s ease;
+  border: 1px solid var(--customer-border, #e6e9ed);
+  background: var(--customer-surface, #ffffff);
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+  box-shadow: var(--customer-shadow-card, 0 8px 24px rgba(31, 41, 55, 0.08));
   cursor: pointer;
 }
 
 .product-card:hover {
-  transform: translate(-4px, -4px);
-  box-shadow: var(--navalivay-shadow-hover);
+  transform: translateY(-2px);
+  box-shadow: 0 12px 28px rgba(31, 41, 55, 0.12);
 }
 
 .product-card-media {
   width: 100%;
   padding-bottom: 100%;
   position: relative;
-  background: #f3f3f3;
+  background: var(--customer-bg, #f5f7fa);
   overflow: hidden;
-  border-radius: 20px 20px 0 0;
+  border-radius: var(--customer-radius-card, 24px) var(--customer-radius-card, 24px) 0 0;
 }
 
 .product-card-badges {
@@ -1487,8 +1486,8 @@ watch(
   align-items: center;
   justify-content: center;
   padding: 0.35rem 0.75rem;
-  border-radius: 9999px;
-  background: #e60000;
+  border-radius: var(--customer-radius-pill, 999px);
+  background: var(--customer-red-gradient);
   border: 2px solid #ffffff;
   font-size: 0.65rem;
   font-weight: 900;
@@ -1532,18 +1531,16 @@ watch(
 .product-card-title {
   font-weight: 800;
   font-size: 0.9rem;
-  color: var(--navalivay-black);
+  color: var(--customer-ink, #191919);
   line-height: 1.35;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  font-family: var(--customer-font-body, -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif);
 }
 
 .product-card-variant {
   font-size: 0.75rem;
   font-weight: 600;
   color: var(--navalivay-gray);
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+  font-family: var(--customer-font-body, -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif);
 }
 
 .product-card-price {
@@ -1560,12 +1557,12 @@ watch(
 }
 
 .product-card-price-currency {
-  color: var(--navalivay-black);
+  color: var(--customer-ink, #191919);
 }
 
 /* Deep styles for liquid components */
 :deep(.liquid-ungrouped) {
-  border-radius: 24px;
+  border-radius: var(--customer-radius-card, 24px);
   border: 3px dashed var(--navalivay-black);
   background: rgba(255, 255, 255, 0.9);
   padding: 1.5rem 1.4rem 1.8rem;
@@ -1576,7 +1573,7 @@ watch(
   text-transform: uppercase;
   letter-spacing: 0.08em;
   font-size: 1rem;
-  color: var(--navalivay-black);
+  color: var(--customer-ink, #191919);
   margin-bottom: 1rem;
 }
 

@@ -193,24 +193,21 @@ console.log('\n--- R-API3: manager reply persisted ---');
   ok(reply.data.manager_display_name, 'manager display name returned');
 }
 
-console.log('\n--- R-API4: settings round-trip ---');
+console.log('\n--- R-API4: настройки отзывов ---');
 {
   const patch = await requestJson('/api/admin/crm/review-settings', {
     method: 'PATCH',
     headers: authHeaders(),
-    body: JSON.stringify({
-      cooldown_days: 40,
-      dev_test_mode: true,
-      lottery_hint_text: 'Тест подарков',
-    }),
+    body: JSON.stringify({ dev_test_mode: true }),
   });
   ok(patch.response.status === 200, 'settings patch 200');
-  ok(patch.data.cooldown_days === 40, 'cooldown persisted');
   ok(patch.data.dev_test_mode === true, 'dev mode persisted');
 
   const get = await requestJson('/api/admin/crm/review-settings', { headers: authHeaders() });
-  ok(get.data.cooldown_days === 40, 'settings get matches');
+  ok(get.data.dev_test_mode === true, 'settings get matches');
   ok(typeof get.data.manager_avatar_url === 'string', 'manager avatar url in settings');
+  // Задержка между отзывами убрана: всегда ноль, настройкой не меняется.
+  ok(get.data.cooldown_days === 0, 'задержка всегда нулевая');
 }
 
 console.log('\n--- A-API6: reject pending review ---');
@@ -244,27 +241,6 @@ console.log('\n--- A-API8: invalid token → 401 ---');
     headers: { Authorization: 'Bearer invalid.token.here' },
   });
   ok(response.status === 401, 'invalid token 401');
-}
-
-console.log('\n--- R-API5: monthly draw run + duplicate blocked ---');
-{
-  seedPendingReview();
-  db.prepare(`UPDATE product_reviews SET status = 'approved', approved_at = DATETIME('now') WHERE id = 'rev1'`).run();
-
-  const draw = await requestJson('/api/admin/crm/review-monthly-draws/run', {
-    method: 'POST',
-    headers: authHeaders(),
-    body: JSON.stringify({}),
-  });
-  ok(draw.response.status === 200, 'draw run 200');
-  ok(draw.data.draw?.winners?.length >= 1, 'at least one winner');
-
-  const dup = await requestJson('/api/admin/crm/review-monthly-draws/run', {
-    method: 'POST',
-    headers: authHeaders(),
-    body: JSON.stringify({}),
-  });
-  ok(dup.response.status === 409, 'duplicate draw 409');
 }
 
 console.log('\n--- R-API6: quick tags CRUD + public visibility ---');
@@ -350,57 +326,6 @@ console.log('\n--- A-API10: reply to missing review → 404 ---');
     body: JSON.stringify({ reply: 'Спасибо!' }),
   });
   ok(reply.response.status === 404, 'reply missing review 404');
-}
-
-function seedExtraApprovedDrawCustomers() {
-  for (let i = 2; i <= 6; i += 1) {
-    db.prepare(
-      `INSERT INTO customers (id, telegram_id, telegram_username, first_name, created_at, updated_at)
-       VALUES (?, ?, ?, ?, DATETIME('now'), DATETIME('now'))`,
-    ).run(`cust${i}`, `${i}${i}${i}`, `buyer${i}`, `Buyer${i}`);
-    db.prepare(
-      `INSERT INTO orders (id, order_number, customer_id, status, total_amount, final_amount, created_at, updated_at)
-       VALUES (?, ?, ?, 'delivered', 10, 10, DATETIME('now'), DATETIME('now'))`,
-    ).run(`ord${i}`, 1000 + i, `cust${i}`);
-    db.prepare(
-      `INSERT INTO product_reviews (
-        id, customer_id, order_id, group_id, rating, body_text, quick_tag_ids,
-        status, created_at, updated_at, approved_at
-      ) VALUES (?, ?, ?, 'grp1', 5, ?, '[]', 'approved', DATETIME('now'), DATETIME('now'), DATETIME('now'))`,
-    ).run(`rev${i}`, `cust${i}`, `ord${i}`, `Отзыв ${i} для розыгрыша CRM тестов`);
-  }
-}
-
-console.log('\n--- R-API8: monthly draws list + reroll HTTP ---');
-{
-  seedPendingReview();
-  db.prepare(`UPDATE product_reviews SET status = 'approved', approved_at = DATETIME('now') WHERE id = 'rev1'`).run();
-  seedExtraApprovedDrawCustomers();
-
-  const draw = await requestJson('/api/admin/crm/review-monthly-draws/run', {
-    method: 'POST',
-    headers: authHeaders(),
-    body: JSON.stringify({}),
-  });
-  const drawId = draw.data?.draw?.id;
-  ok(drawId, 'draw id for reroll');
-
-  const list = await requestJson('/api/admin/crm/review-monthly-draws', { headers: authHeaders() });
-  ok(Array.isArray(list.data?.items) && list.data.items.length >= 1, 'draw list non-empty');
-
-  const reroll = await requestJson(`/api/admin/crm/review-monthly-draws/${drawId}/reroll`, {
-    method: 'POST',
-    headers: authHeaders(),
-    body: JSON.stringify({ seat_number: 1 }),
-  });
-  ok(reroll.response.status === 200, 'reroll seat 200');
-
-  const badSeat = await requestJson(`/api/admin/crm/review-monthly-draws/${drawId}/reroll`, {
-    method: 'POST',
-    headers: authHeaders(),
-    body: JSON.stringify({ seat_number: 9 }),
-  });
-  ok(badSeat.response.status === 400 && badSeat.data?.error === 'invalid_seat_number', 'invalid seat 400');
 }
 
 console.log('\n--- R-API5: QA settings + disable ---');

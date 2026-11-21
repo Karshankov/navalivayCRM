@@ -159,7 +159,7 @@ onBeforeUnmount(() => {
 
   background: rgba(245, 247, 250, 0.08);
   border: none;
-  border-radius: 512px;
+  border-radius: var(--customer-radius-pill, 999px);
 
   color: #ffffff;
   cursor: pointer;

@@ -78,11 +78,13 @@ describe("App shell visibility", () => {
     wrapper.unmount();
   });
 
-  it("shows review prompt modal host on home", async () => {
+  it("не показывает старую модалку «Оцените заказ» — её заменяет строка на главной", async () => {
     const wrapper = mountApp();
     await flushPromises();
 
-    expect(wrapper.find("review-prompt-modal-stub").exists()).toBe(true);
+    // Полноэкранная модалка убрана: приглашение к отзыву живёт
+    // строкой «Как вам …?» под «Нам доверяют».
+    expect(wrapper.find("review-prompt-modal-stub").exists()).toBe(false);
 
     wrapper.unmount();
   });

@@ -207,7 +207,7 @@ onMounted(() => {
 <style scoped>
 .order-history-page {
   min-height: 100vh;
-  background: #f5f7fa;
+  background: var(--customer-bg, #f5f7fa);
 }
 
 .order-history-header {
@@ -230,7 +230,7 @@ onMounted(() => {
   height: 40px;
   border: none;
   border-radius: 50%;
-  background: #ffffff;
+  background: var(--customer-surface, #ffffff);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -244,7 +244,7 @@ onMounted(() => {
   font-weight: 700;
   font-size: 20px;
   line-height: 24px;
-  color: #191919;
+  color: var(--customer-ink, #191919);
 }
 
 .order-history-container {
@@ -264,7 +264,7 @@ onMounted(() => {
   font-family: -apple-system, "SF Pro Display", sans-serif;
   font-size: 14px;
   line-height: 18px;
-  color: #5c6470;
+  color: var(--customer-muted, #5c6470);
 }
 
 .order-history-loader {
@@ -285,11 +285,11 @@ onMounted(() => {
 .order-history-retry,
 .order-history-more {
   border: none;
-  border-radius: 999px;
+  border-radius: var(--customer-radius-action, 18px);
   min-height: 44px;
   padding: 0 18px;
-  background: #ffffff;
-  color: #191919;
+  background: var(--customer-surface, #ffffff);
+  color: var(--customer-ink, #191919);
   font-family: "Montserrat", sans-serif;
   font-size: 14px;
   font-weight: 600;
@@ -309,8 +309,8 @@ onMounted(() => {
 .order-history-card {
   width: 100%;
   border: none;
-  border-radius: 20px;
-  background: #ffffff;
+  border-radius: var(--customer-radius-card-small, 20px);
+  background: var(--customer-surface, #ffffff);
   padding: 14px 16px;
   display: flex;
   flex-direction: column;
@@ -335,7 +335,7 @@ onMounted(() => {
   font-size: 15px;
   line-height: 19px;
   font-weight: 700;
-  color: #191919;
+  color: var(--customer-ink, #191919);
 }
 
 .order-history-card__amount {
@@ -344,7 +344,7 @@ onMounted(() => {
   font-size: 15px;
   line-height: 19px;
   font-weight: 700;
-  color: #191919;
+  color: var(--customer-ink, #191919);
   white-space: nowrap;
 }
 
@@ -372,7 +372,7 @@ onMounted(() => {
   border: 2px solid #ffffff;
   margin-left: -12px;
   overflow: hidden;
-  background: #f5f7fa;
+  background: var(--customer-bg, #f5f7fa);
   box-shadow: 0 1px 4px rgba(15, 23, 42, 0.08);
 }
 
@@ -386,7 +386,7 @@ onMounted(() => {
   border-radius: 10px;
   border: 2px solid #ffffff;
   margin-left: -12px;
-  background: #f5f7fa;
+  background: var(--customer-bg, #f5f7fa);
   box-shadow: 0 1px 4px rgba(15, 23, 42, 0.08);
 }
 

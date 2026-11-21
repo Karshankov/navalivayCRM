@@ -21,7 +21,7 @@ import { loyaltyRouter } from './routes/loyalty.js';
 import { wheelRouter } from './routes/wheel.js';
 import { remindersRouter } from './routes/reminders.js';
 import { archiveOldDeliveredOrders, scheduleArchiving } from './cleanup-delivered-orders.js';
-import { scheduleReviewMonthlyDraw } from './utils/schedule-review-monthly-draw.js';
+
 import { startAutoNotifyRetryWorker } from './utils/auto-notify-retry.js';
 import { startSignificanceNotifyWorker } from './utils/significance-notify.js';
 import { startReferralWelcomeNotificationWorker } from './utils/referral-welcome-notify.js';
@@ -99,8 +99,8 @@ archiveOldDeliveredOrders();
 // Планируем ежедневную архивацию в полночь
 scheduleArchiving();
 
-// Авто-розыгрыш отзывов: последний день месяца в 21:00 по Минску
-scheduleReviewMonthlyDraw();
+/* Авто-розыгрыш отзывов убран: розыгрышей больше не будет, вместо
+   них планируется кэшбэк (логику напишем позже). */
 
 // Повтор авто-уведомлений при временной недоступности userbot
 startAutoNotifyRetryWorker();

@@ -1,6 +1,29 @@
 <template>
-  <div class="min-h-screen" style="background: #f5f7fa">
+  <div class="min-h-screen customer-page-surface">
     <SmokeParticles :count="4" area="full" />
+
+    <!-- Вход в профиль из navalivay-profile-comment.html: первая строка
+         экрана, выше баннера. В обычном потоке — при прокрутке уходит
+         вместе с контентом, ничего не закреплено. Открывает тот же
+         /profile, что и прежняя кнопка в верхней панели. -->
+    <div v-if="!wholesaleStore.isWholesale" class="profile-entry-section">
+      <button
+        type="button"
+        class="nvl-profile-entry"
+        aria-label="Открыть мой профиль"
+        @click="openProfile"
+      >
+        <span class="nvl-profile-entry__avatar" aria-hidden="true">
+          <img v-if="userStore.photoUrl" :src="userStore.photoUrl" alt="" />
+          <template v-else>{{ profileInitial }}</template>
+        </span>
+        <span class="nvl-profile-entry__copy">
+          <strong class="nvl-profile-entry__name">{{ userStore.displayName }}</strong>
+          <span class="nvl-profile-entry__subtitle">Мои заказы и настройки</span>
+        </span>
+        <span class="nvl-profile-entry__action">Профиль ›</span>
+      </button>
+    </div>
 
     <!-- Баннер -->
     <div v-if="!wholesaleStore.isWholesale && catalogStore.banners.length" class="mb-0 relative banner-wrapper">
@@ -106,18 +129,131 @@
           <span class="assortment__label">Наш ассортимент</span>
         </button>
       </section>
+
+      <!-- Плитка отзывов из navalivay-reviews-3.html: сразу под
+           подписью «Наш ассортимент». Оценка и количество — реальные,
+           с сервера (общий поток одобренных отзывов по всем товарам).
+           Нажатие открывает панель со списком отзывов. -->
+      <section class="review-entry" aria-label="Нам доверяют">
+        <button
+          type="button"
+          class="review-entry__wide"
+          aria-label="Открыть отзывы клиентов"
+          @click="reviewsPanelOpen = true"
+        >
+          <span class="review-entry__art-wrap">
+            <img
+              class="review-entry__art"
+              src="/shortcuts/reviews-art.png"
+              alt=""
+              width="1280"
+              height="1280"
+              loading="lazy"
+              decoding="async"
+            />
+          </span>
+          <span class="review-entry__copy">
+            <h2 class="review-entry__title">Нам доверяют</h2>
+            <span class="review-entry__score">
+              <span class="review-entry__star" aria-hidden="true">★</span>
+              {{ reviewsAverageLabel }}
+              <span class="review-entry__sub">{{ reviewsCountLabel }}</span>
+            </span>
+            <!-- Вознаграждение за отзывы: визуальный пример из макета.
+                 Логику начисления подключим отдельно. -->
+            <span class="review-reward">
+              <span class="reward-line">
+                <span>Оставьте ещё <b>10 отзывов</b></span>
+                <span class="reward-promise">
+                  Начислим
+                  <span class="reward-value">
+                    3 BYN кэшбэка
+                    <img
+                      class="reward-coin"
+                      src="/shortcuts/reviews-coin.png"
+                      alt=""
+                      width="19"
+                      height="19"
+                      loading="lazy"
+                      decoding="async"
+                    />
+                  </span>
+                </span>
+              </span>
+            </span>
+          </span>
+          <span class="review-entry__arrow" aria-hidden="true">›</span>
+        </button>
+
+        <!-- Строка «Как вам …?»: показывается, только когда есть
+             покупка без отзыва. Оценил — сервер перестаёт отдавать
+             промпт, и строка исчезает вместе с возможностью нажать. -->
+        <button
+          v-if="reviewPrompt"
+          type="button"
+          class="quick-trigger"
+          :aria-label="`Оценить покупку: ${reviewPromptTitle}`"
+          @click="openReviewForm"
+        >
+          <span class="quick-trigger__photo" aria-hidden="true">
+            <img
+              v-if="reviewPromptImage && !reviewPromptImageBroken"
+              :src="reviewPromptImage"
+              alt=""
+              @error="reviewPromptImageBroken = true"
+            />
+            <svg v-else viewBox="0 0 48 48">
+              <rect x="8" y="7" width="32" height="34" rx="7" />
+              <circle cx="18" cy="18" r="3" />
+              <path d="m9 33 10-9 8 7 5-5 7 8" />
+            </svg>
+          </span>
+          <span class="quick-trigger__copy">
+            <span class="quick-trigger__line">Как вам {{ reviewPromptTitle }}?</span>
+            <span class="animated-stars" aria-hidden="true">
+              <i>★</i><i>★</i><i>★</i><i>★</i><i>★</i>
+            </span>
+          </span>
+          <span class="quick-trigger__arrow" aria-hidden="true">›</span>
+        </button>
+      </section>
+
+      <!-- Панель со списком отзывов: выезжает снизу, тянется за полоску
+           и шапку, закрывается по маске, крестику, Escape и свайпу вниз. -->
+      <ReviewsFeedPanel
+        :open="reviewsPanelOpen"
+        @close="reviewsPanelOpen = false"
+      />
+
+      <!-- Форма оценки покупки: открывается из строки «Как вам …?». -->
+      <ReviewFormPanel
+        :open="reviewFormOpen"
+        :order-id="reviewPrompt?.order_id ?? null"
+        :group-id="reviewPrompt?.group_id ?? null"
+        :title="reviewPromptTitle"
+        :image-url="reviewPromptImage"
+        :has-next="pendingReviewCount > 1"
+        :pending-count="pendingReviewCount"
+        @close="reviewFormOpen = false"
+        @submitted="handleReviewSubmitted"
+      />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, nextTick, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 
 import { useCatalogStore } from "@/stores/catalog";
 import { useCartStore } from "@/stores/cart";
 import { useWholesaleStore } from "@/stores/wholesale";
 import { useFavoritesStore } from "@/stores/favorites";
+import { useUserStore } from "@/stores/user";
+import { useReviewsFeed } from "@/composables/useReviewsFeed";
+import { withTelegramAuthHeaders } from "@/utils/telegramAuth";
+import ReviewsFeedPanel from "@/components/reviews/ReviewsFeedPanel.vue";
+import ReviewFormPanel from "@/components/reviews/ReviewFormPanel.vue";
 import HomeShortcuts from "@/components/HomeShortcuts.vue";
 import SmokeParticles from "@/components/SmokeParticles.vue";
 import BannerCarousel from "@/components/BannerCarousel.vue";
@@ -131,8 +267,113 @@ const catalogStore = useCatalogStore();
 const cartStore = useCartStore();
 const wholesaleStore = useWholesaleStore();
 const favoritesStore = useFavoritesStore();
+const userStore = useUserStore();
 const router = useRouter();
 const activeOrder = ref<CustomerActiveOrder | null>(null);
+
+/** Плитка отзывов и панель со списком: оценка и количество приходят
+ *  с сервера, отдельного счётчика на клиенте нет. */
+const {
+  averageLabel: reviewsAverageLabel,
+  countLabel: reviewsCountLabel,
+  load: loadReviewsFeed,
+} = useReviewsFeed();
+const reviewsPanelOpen = ref(false);
+
+/** Покупка без отзыва: строка «Как вам …?» показывается только при ней.
+ *  Сервер сам решает, есть ли что оценивать (getReviewPromptForCustomer),
+ *  поэтому после отправки отзыва промпт пропадает и строка исчезает. */
+interface ReviewPrompt {
+  show: boolean;
+  reason: string;
+  order_id?: string;
+  group_id?: string;
+  group_name?: string | null;
+  purchased_variant_name?: string | null;
+  pending_review_count?: number;
+}
+
+const reviewPrompt = ref<ReviewPrompt | null>(null);
+const reviewPromptImageBroken = ref(false);
+const reviewFormOpen = ref(false);
+
+/**
+ * Название товара в строке. В макете это просто название линейки
+ * («Как вам Catsville?»), поэтому основой берём группу.
+ * Вкус добавляем, только когда он несёт смысл: у устройств и
+ * картриджей variant_name — цвет или сопротивление («Black»,
+ * «Xros 0.6 Ω»), и в названии он лишний.
+ */
+const reviewPromptTitle = computed(() => {
+  const prompt = reviewPrompt.value;
+  if (!prompt) return "";
+  const group = (prompt.group_name || "").trim();
+  const variant = (prompt.purchased_variant_name || "").trim();
+
+  if (!group) return variant;
+  if (!variant || variant === group) return group;
+
+  // Цвет, сопротивление и прочие технические пометки не показываем.
+  const technical = /[Ωω]|\d+\s*(мл|ml|мг|mg|w|вт|mm|мм)|^(black|white|blue|red|green|grey|gray|purple|pink|silver|gold|space|matte|classic|dark|light|teal|rose|pastel|flowing|carbon|mist|ss|titanium|stone|арбузный|земляничный|виноградный|персиковый|клубничный|вишнёвый|вишневый|манго|яблочный|лимонный)/i;
+  if (technical.test(variant)) return group;
+
+  return `${group} — ${variant}`;
+});
+
+/** Обложка группы по тому же адресу, что и в списке отзывов. */
+const reviewPromptImage = computed(() => {
+  const groupId = reviewPrompt.value?.group_id;
+  return groupId ? `/api/category-groups/${encodeURIComponent(groupId)}/cover` : null;
+});
+
+async function loadReviewPrompt() {
+  try {
+    const response = await fetch("/api/reviews/prompt", {
+      headers: withTelegramAuthHeaders(),
+    });
+    if (!response.ok) {
+      reviewPrompt.value = null;
+      return;
+    }
+    const data = (await response.json()) as ReviewPrompt;
+    reviewPrompt.value = data.show ? data : null;
+    reviewPromptImageBroken.value = false;
+  } catch {
+    reviewPrompt.value = null;
+  }
+}
+
+function openReviewForm() {
+  if (!reviewPrompt.value) return;
+  reviewFormOpen.value = true;
+}
+
+/** Сколько покупок ещё ждёт оценки (с сервера). */
+const pendingReviewCount = computed(() => Number(reviewPrompt.value?.pending_review_count || 0));
+
+/** Отзыв отправлен: перечитываем промпт. Окно не закрываем — если
+ *  есть следующая позиция, форма обновится на месте с затуханием.
+ *  Если покупок больше нет, промпт придёт пустой, строка исчезнет,
+ *  и окно закроется. */
+async function handleReviewSubmitted() {
+  await loadReviewPrompt();
+  if (!reviewPrompt.value) {
+    reviewFormOpen.value = false;
+  }
+}
+
+/** Переход в профиль — тот же маршрут, что был у кнопки в верхней
+ *  панели (goToProfile в TopCartBar.vue). Новый экран не заводим. */
+function openProfile() {
+  router.push("/profile");
+}
+
+/** Инициал для аватара, когда фото нет: первая буква имени, как «К»
+ *  в макете. Пусто — если имя ещё не загрузилось. */
+const profileInitial = computed(() => {
+  const name = userStore.displayName?.trim() ?? "";
+  return name ? name.charAt(0).toUpperCase() : "";
+});
 
 const remainingWholesaleMinimum = computed(() =>
   wholesaleStore.remainingToMinimum(cartStore.countableWholesaleUnits, cartStore.totalAmount),
@@ -204,6 +445,13 @@ async function refreshHomeState() {
 onMounted(async () => {
   await refreshHomeState();
 
+  // Оценка и количество отзывов на плитке: тянем сразу, чтобы числа
+  // не появлялись позже остального экрана.
+  void loadReviewsFeed();
+
+  // Строка «Как вам …?»: сервер решает, есть ли покупка без отзыва.
+  void loadReviewPrompt();
+
   // Избранное грузим один раз за сессию: сердечки и страница берут из стора.
   if (!favoritesStore.isLoaded) {
     void favoritesStore.fetchFavorites();
@@ -221,6 +469,458 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+/* ===== Плитка отзывов (navalivay-reviews-3.html) =====
+   Перенесены .review-entry, .quick-trigger, .animated-stars и их
+   финальные значения из макета: размеры, шрифт Montserrat и
+   анимация звёзд. Интерактив (переход, модалка, отправка) не
+   переносился — это только визуальная часть. */
+.review-entry {
+  margin-top: 16px;
+  overflow: hidden;
+  border-radius: 21px;
+  background: var(--customer-surface, #ffffff);
+}
+
+.review-entry__wide {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  /* Кнопка обязана занимать всю ширину карточки: без width она
+     сжималась по содержимому, и стрелка вставала не под стрелкой
+     нижней строки, а сразу после текста. */
+  width: 100%;
+  box-sizing: border-box;
+  /* 125px — высота из макета для варианта с блоком вознаграждения;
+     с прежними 98px текст вознаграждения сжимался. */
+  min-height: 125px;
+  padding: 7px 12px 7px 9px;
+}
+
+.review-entry__art-wrap {
+  flex: none;
+}
+
+.review-entry__art {
+  display: block;
+  width: 80px;
+  height: 80px;
+  object-fit: contain;
+}
+
+.review-entry__copy {
+  flex: 1;
+  min-width: 0;
+  font-family: "Montserrat", sans-serif;
+}
+
+.review-entry__title {
+  /* text-align: left обязателен: h2 наследует центрирование от
+     кнопки, и при её полной ширине заголовок уезжал в середину. */
+  margin: 0 0 6px;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: left;
+  color: #101114;
+}
+
+.review-entry__score {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 28px;
+  font-weight: 650;
+  line-height: 1;
+  /* Разрядка снята: с -0.6px звёздочка съезжала влево и не совпадала
+     с началом заголовка и строки вознаграждения. */
+  color: #17191d;
+}
+
+.review-entry__star {
+  font-family: Arial, sans-serif;
+  font-size: 28px;
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: 0;
+  color: #d42a20;
+}
+
+.review-entry__sub {
+  align-self: center;
+  margin: 0 0 0 1px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.25;
+  color: #626873;
+}
+
+/* ===== Вознаграждение за отзывы =====
+   Перенесено из макета: «Оставьте ещё N отзывов» и обещание кэшбэка
+   с иконкой монеты. Пока это визуальный пример — начисление не
+   подключено, числа статичны, как в макете. */
+.review-reward {
+  display: block;
+  margin-top: 9px;
+}
+
+.review-reward .reward-line {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  font-size: 10px;
+  line-height: 1.45;
+  /* Разрядка снята: с -0.2px строка «Оставьте ещё» начиналась левее
+     заголовка и блок читался со сбитым левым краем. */
+  color: #818691;
+}
+
+.reward-line b {
+  font-weight: 600;
+  color: #555b65;
+}
+
+.reward-promise {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #818691;
+}
+
+.reward-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: #1683ef;
+}
+
+.reward-coin {
+  display: block;
+  flex: none;
+  align-self: center;
+  width: 19px;
+  height: 19px;
+  margin: 0;
+  object-fit: contain;
+  transform: translateY(-1px);
+}
+
+.review-entry__arrow {
+  flex: none;
+  /* Прижата к правому краю строки — на одной вертикали со стрелкой
+     нижнего блока «Как вам …». */
+  margin-left: auto;
+  font-size: 28px;
+  line-height: 1;
+  color: #656b75;
+}
+
+/* Нижняя строка «Как вам …?» со звёздами. */
+.quick-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  /* Кнопка обязана занимать всю ширину карточки: без width она
+     сжималась по содержимому, и стрелка вставала сразу за текстом,
+     а не у правого края. */
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 70px;
+  padding: 12px;
+  border: 0;
+  border-top: 1px solid #f0f1f5;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.quick-trigger:active {
+  background: #fafbfc;
+}
+
+.quick-trigger:focus-visible {
+  outline: 2px solid #d02a23;
+  outline-offset: -2px;
+}
+
+.quick-trigger__photo {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 34px;
+  height: 39px;
+  border: 1px solid #e9ebf0;
+  border-radius: 9px;
+  background: #f8f9fb;
+  color: #c0c5ce;
+}
+
+.quick-trigger__photo svg {
+  width: 26px;
+  height: 26px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.quick-trigger__photo img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.quick-trigger__copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.quick-trigger__line {
+  font-family: "Montserrat", sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.3px;
+  white-space: nowrap;
+  color: #101114;
+}
+
+.quick-trigger__arrow {
+  flex: none;
+  font-size: 25px;
+  line-height: 1;
+  color: #858b95;
+}
+
+/* Звёзды «приглашения»: поочерёдная волна, как в макете. */
+.animated-stars {
+  display: flex;
+  gap: 4px;
+}
+
+.animated-stars i {
+  display: block;
+  font-style: normal;
+  font-size: 20px;
+  line-height: 1;
+  color: #dce0e7;
+  animation: star-invite 3.8s ease-in-out infinite;
+}
+
+.animated-stars i:nth-child(2) { animation-delay: 0.17s; }
+.animated-stars i:nth-child(3) { animation-delay: 0.34s; }
+.animated-stars i:nth-child(4) { animation-delay: 0.51s; }
+.animated-stars i:nth-child(5) { animation-delay: 0.68s; }
+
+@keyframes star-invite {
+  0%, 8%, 82%, 100% {
+    color: #dce0e7;
+    transform: scale(1);
+  }
+  24%, 60% {
+    color: #d72b21;
+    transform: scale(1.06);
+  }
+}
+
+@media (max-width: 350px) {
+  .review-entry__wide {
+    min-height: 125px;
+    gap: 8px;
+    padding: 6px 12px 6px 8px;
+  }
+
+  .review-reward .reward-line {
+    font-size: 9px;
+  }
+
+  .review-reward {
+    margin-top: 7px;
+  }
+
+  .review-entry__art {
+    width: 62px;
+    height: 68px;
+  }
+
+  .review-entry__title {
+    font-size: 14px;
+    margin-bottom: 7px;
+  }
+
+  .review-entry__score {
+    font-size: 26px;
+    gap: 5px;
+  }
+
+  .review-entry__star {
+    font-size: 26px;
+  }
+
+  .review-entry__sub {
+    font-size: 10.5px;
+  }
+
+  .review-entry__arrow {
+    font-size: 26px;
+  }
+
+  .quick-trigger {
+    gap: 6px;
+    padding-inline: 10px;
+  }
+
+  .quick-trigger__photo {
+    width: 28px;
+    height: 34px;
+  }
+
+  .quick-trigger__line {
+    font-size: 10.5px;
+  }
+
+  .quick-trigger__arrow {
+    font-size: 21px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animated-stars i {
+    animation: none !important;
+    color: #dce0e7;
+  }
+}
+/* ===== /Плитка отзывов ===== */
+
+/* ===== Вход в профиль =====
+   Перенесено из navalivay-profile-component.html (BEGIN/END COMPONENT
+   STYLES). Позиционирование обычное, position: static из исходника
+   сохранён: строка не закрепляется и уходит при прокрутке.
+   Обёртка задаёт боковые отступы и фон: строка стоит выше баннера,
+   вне .main-content-wrapper, и без них прилипала бы к краям экрана. */
+.profile-entry-section {
+  position: relative;
+  z-index: 10;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: calc(12px + env(safe-area-inset-top, 0px)) 16px 0;
+  box-sizing: border-box;
+}
+.nvl-profile-entry {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  position: static;
+  width: 100%;
+  min-width: 0;
+  min-height: 70px;
+  margin: 0;
+  padding: 5px 0;
+  box-sizing: border-box;
+  border: 0;
+  background: transparent;
+  color: #080a0b;
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.nvl-profile-entry__avatar {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 38px;
+  height: 38px;
+  overflow: hidden;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: 50%;
+  background: #fff;
+  color: #4a4c53;
+  font-size: 19px;
+  font-weight: 500;
+}
+
+.nvl-profile-entry__avatar img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.nvl-profile-entry__copy {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.nvl-profile-entry__name {
+  display: block;
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.5px;
+  overflow-wrap: anywhere;
+}
+
+.nvl-profile-entry__subtitle {
+  display: block;
+  margin: 0;
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 1.25;
+  color: #8d919b;
+}
+
+.nvl-profile-entry__action {
+  display: block;
+  flex: none;
+  padding: 10px;
+  border-radius: 25px;
+  background: #fff;
+  color: #080a0b;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: normal;
+  white-space: nowrap;
+}
+
+.nvl-profile-entry:focus-visible {
+  outline: 2px solid #c52019;
+  outline-offset: 4px;
+  border-radius: 12px;
+}
+
+@media (max-width: 350px) {
+  .nvl-profile-entry__subtitle {
+    font-size: 9px;
+  }
+
+  .nvl-profile-entry__action {
+    padding: 9px 8px;
+    font-size: 10px;
+  }
+}
+/* ===== /Вход в профиль ===== */
+
 .banner-wrapper {
   overflow-x: hidden;
   overflow-y: visible;
@@ -234,7 +934,7 @@ onMounted(async () => {
 
 .wholesale-mode-card {
   background: linear-gradient(145deg, #191919 0%, #363636 100%);
-  border-radius: 20px;
+  border-radius: var(--customer-radius-card-small, 20px);
   padding: 18px 16px;
   display: flex;
   flex-direction: column;
@@ -275,9 +975,9 @@ onMounted(async () => {
 .active-order-banner {
   width: 100%;
   border: none;
-  border-radius: 24px;
+  border-radius: var(--customer-radius-card, 24px);
   padding: 20px 20px 22px;
-  background: linear-gradient(106.76deg, #f50302 -2.64%, #a90f0e 85.78%);
+  background: var(--customer-red-gradient);
   color: #ffffff;
   display: flex;
   align-items: flex-end;
@@ -325,12 +1025,12 @@ onMounted(async () => {
   min-width: 92px;
   min-height: 48px;
   padding: 0 18px;
-  border-radius: 999px;
+  border-radius: var(--customer-radius-action, 18px);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: #ffffff;
-  color: #191919;
+  background: var(--customer-surface, #ffffff);
+  color: var(--customer-ink, #191919);
   font-family: "Montserrat", sans-serif;
   font-size: 14px;
   font-weight: 600;
@@ -369,7 +1069,7 @@ onMounted(async () => {
   width: 100%;
   height: 122px;
   background: linear-gradient(150deg, #fff, #fcfcfd);
-  border-radius: 20px;
+  border-radius: var(--customer-radius-card-small, 20px);
   overflow: hidden;
   perspective: 700px;
 }
@@ -543,15 +1243,17 @@ onMounted(async () => {
   }
 }
 
-/* Подпись: 1в1 с плитками «Избранное»/«Часто покупают» —
-   Montserrat 600 (в демо был тонкий Arial-medium). */
+/* Заголовок витрины — как подпись плитки «Баланс кэшбэка» на этой
+   же главной (.home-shortcuts__label в HomeShortcuts.vue):
+   Montserrat / 600, но на 10% крупнее её 12px — 13px.
+   Раньше был Bebas Neue 26px. */
 .assortment__label {
   display: block;
   font-family: "Montserrat", sans-serif;
   font-size: 13px;
   font-weight: 600;
-  line-height: 17px;
-  letter-spacing: -0.25px;
+  line-height: 16px;
+  letter-spacing: 0.008em;
   margin-top: 9px;
   text-align: center;
   color: #000000;
@@ -591,12 +1293,12 @@ onMounted(async () => {
     transform: none !important;
   }
 }
-/* Main Content Wrapper: композиция главной центрируется в доступной
-   области под верхней панелью; если контента больше экрана, flex
-   естественно переходит в обычный поток без обрезки. */
+/* Main Content Wrapper: композиция главной занимает всю высоту экрана
+   (верхняя панель убрана, вычитать её высоту больше не нужно); если
+   контента больше экрана, flex переходит в обычный поток без обрезки. */
 .main-content-wrapper {
   max-width: 1280px;
-  min-height: calc(100dvh - var(--app-topbar-offset, 86px));
+  min-height: 100dvh;
   margin: 0 auto;
   padding: 24px 16px calc(24px + env(safe-area-inset-bottom, 0px));
   position: relative;

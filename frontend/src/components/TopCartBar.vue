@@ -216,11 +216,8 @@ onBeforeUnmount(() => {
      заметная многослойная тень, чтобы не сливалась с контентом. */
   background: rgba(255, 255, 255, 0.97);
   backdrop-filter: blur(12px);
-  border-radius: 14px;
-  box-shadow:
-    0 2px 8px rgba(28, 43, 69, 0.08),
-    0 6px 18px rgba(28, 43, 69, 0.1),
-    0 14px 32px rgba(28, 43, 69, 0.08);
+  border-radius: var(--customer-radius-control, 14px);
+  box-shadow: var(--customer-shadow-card, 0 8px 24px rgba(31, 41, 55, 0.08));
 }
 
 /* Корзина слева: овал красный при раскрытии, обычная иконка при пустой.
@@ -231,7 +228,7 @@ onBeforeUnmount(() => {
    Раскрытие — единая плавная волна без задержек внутри: овал,
    перекраска иконки и текст стартуют одновременно (expandedVisual
   уже отложен до прилёта миниатюры в композабле). */
-.nav-top-cart {
+ .nav-top-cart {
   position: relative;
   isolation: isolate;
   display: flex;
@@ -243,7 +240,7 @@ onBeforeUnmount(() => {
   height: 44px;
   padding: 0 14px;
   border: none;
-  border-radius: 999px;
+  border-radius: var(--customer-radius-control, 14px);
   background: transparent;
   overflow: hidden;
   cursor: pointer;
@@ -252,6 +249,7 @@ onBeforeUnmount(() => {
 
 .nav-top-cart--expanded {
   min-width: 178px;
+  border-radius: var(--customer-radius-action, 18px);
 }
 
 /* Пустая корзина: кнопка неактивна. Иконка приглушена, курсор и
@@ -262,7 +260,7 @@ onBeforeUnmount(() => {
 }
 
 .nav-top-cart--disabled .nav-top-cart__icon {
-  color: #080808;
+  color: var(--customer-ink, #191919);
   opacity: 0.4;
 }
 
@@ -280,7 +278,7 @@ onBeforeUnmount(() => {
   flex: none;
   margin-left: 0;
   fill: none;
-  color: #080808;
+  color: var(--customer-ink, #191919);
   stroke: currentColor;
   stroke-width: 1.5;
   stroke-linecap: round;
@@ -290,7 +288,7 @@ onBeforeUnmount(() => {
 }
 
 .nav-top-cart--expanded .nav-top-cart__icon {
-  color: #fff;
+  color: var(--customer-surface, #ffffff);
 }
 
 /* Красный овал: проявляется и растёт слева направо из центра
@@ -301,8 +299,8 @@ onBeforeUnmount(() => {
   position: absolute;
   z-index: -1;
   inset: 0;
-  border-radius: 999px;
-  background: linear-gradient(105deg, #ff0505, #b6090b);
+  border-radius: var(--customer-radius-action, 18px);
+  background: var(--customer-red-gradient, linear-gradient(106.76deg, #f50302 -2.64%, #a90f0e 85.78%));
   opacity: 0;
   transform: scaleX(0.55);
   transform-origin: 24px center;
@@ -332,7 +330,7 @@ onBeforeUnmount(() => {
   opacity: 0;
   transform: translateX(-4px);
   pointer-events: none;
-  color: #fff;
+  color: var(--customer-surface, #ffffff);
   transition:
     opacity 0.32s ease 0.18s,
     transform 0.36s cubic-bezier(0.2, 0.65, 0.3, 1) 0.12s;
@@ -344,7 +342,7 @@ onBeforeUnmount(() => {
 }
 
 .nav-top-cart__title {
-  font-family: "Montserrat", sans-serif;
+  font-family: var(--customer-font-heading, "Montserrat", sans-serif);
   font-size: 12px;
   font-weight: 600;
   line-height: 14px;
@@ -441,7 +439,7 @@ onBeforeUnmount(() => {
   font-weight: 400;
   letter-spacing: -0.15px;
   white-space: nowrap;
-  color: #080808;
+  color: var(--customer-ink, #191919);
 }
 
 .nav-top-profile__avatar {

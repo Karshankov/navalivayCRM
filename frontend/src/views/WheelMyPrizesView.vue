@@ -322,7 +322,7 @@ onMounted(async () => {
 <style scoped>
 .wheel-prizes-page {
   min-height: 100vh;
-  background: #f5f7fa;
+  background: var(--customer-bg, #f5f7fa);
   padding-bottom: 24px;
 }
 
@@ -339,7 +339,7 @@ onMounted(async () => {
   height: 36px;
   border-radius: 50%;
   border: none;
-  background: #ffffff;
+  background: var(--customer-surface, #ffffff);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -359,7 +359,7 @@ onMounted(async () => {
   font-family: 'Montserrat', sans-serif;
   font-weight: 700;
   font-size: 18px;
-  color: #1f2933;
+  color: var(--customer-ink, #191919);
   margin: 0;
 }
 
@@ -386,12 +386,12 @@ onMounted(async () => {
   flex: 0 0 auto;
   white-space: nowrap;
   padding: 10px 16px;
-  border-radius: 999px;
-  background: #ffffff;
+  border-radius: var(--customer-radius-pill, 999px);
+  background: var(--customer-surface, #ffffff);
   border: 1px solid rgba(15, 23, 42, 0.06);
   font-family: 'SF Pro Display', system-ui, sans-serif;
   font-size: 13px;
-  color: #5c6470;
+  color: var(--customer-muted, #5c6470);
   cursor: pointer;
   text-overflow: ellipsis;
   overflow: hidden;
@@ -401,7 +401,7 @@ onMounted(async () => {
    large red glows on customer surfaces; the gradient itself reads as
    "active" without an extra halo. */
 .wheel-prizes-tab--active {
-  background: linear-gradient(106.76deg, #f50302 -2.64%, #a90f0e 85.78%);
+  background: var(--customer-red-gradient);
   color: #ffffff;
   border-color: transparent;
 }
@@ -417,7 +417,7 @@ onMounted(async () => {
   margin: 32px 0;
   text-align: center;
   font-family: 'SF Pro Display', system-ui, sans-serif;
-  color: #5c6470;
+  color: var(--customer-muted, #5c6470);
 }
 
 .wheel-prize-row {
@@ -425,8 +425,8 @@ onMounted(async () => {
   align-items: center;
   gap: 12px;
   padding: 12px;
-  background: #ffffff;
-  border-radius: 20px;
+  background: var(--customer-surface, #ffffff);
+  border-radius: var(--customer-radius-card-small, 20px);
 }
 
 /* M6: visually mark prizes that are no longer usable (used or expired)
@@ -448,7 +448,7 @@ onMounted(async () => {
   align-items: center;
   height: 22px;
   padding: 0 10px;
-  border-radius: 999px;
+  border-radius: var(--customer-radius-pill, 999px);
   font-family: 'Montserrat', sans-serif;
   font-weight: 600;
   font-size: 10px;
@@ -458,7 +458,7 @@ onMounted(async () => {
 
 .wheel-prize-row__pill--used {
   background: rgba(15, 23, 42, 0.08);
-  color: #1f2933;
+  color: var(--customer-ink, #191919);
 }
 
 .wheel-prize-row__pill--expired {
@@ -474,7 +474,7 @@ onMounted(async () => {
   overflow: hidden;
   border: 2px solid #e2e5ea;
   border-radius: 19px;
-  background: #ffffff;
+  background: var(--customer-surface, #ffffff);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -522,14 +522,14 @@ onMounted(async () => {
   font-family: 'Montserrat', sans-serif;
   font-weight: 700;
   font-size: 15px;
-  color: #1f2933;
+  color: var(--customer-ink, #191919);
   margin: 0;
 }
 
 .wheel-prize-row__desc {
   font-family: 'SF Pro Display', system-ui, sans-serif;
   font-size: 13px;
-  color: #5c6470;
+  color: var(--customer-muted, #5c6470);
   margin: 0;
 }
 
@@ -577,7 +577,7 @@ onMounted(async () => {
   font-size: 11px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: #5c6470;
+  color: var(--customer-muted, #5c6470);
   flex-shrink: 0;
 }
 
@@ -606,7 +606,7 @@ onMounted(async () => {
   font-family: 'SF Pro Display', system-ui, sans-serif;
   font-size: 13px;
   padding: 10px 18px;
-  border-radius: 999px;
+  border-radius: var(--customer-radius-pill, 999px);
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.18);
   z-index: 200;
 }

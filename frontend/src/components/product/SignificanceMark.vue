@@ -321,7 +321,7 @@ onUnmounted(() => {
   font-weight: 700;
   font-size: 16px;
   line-height: 20px;
-  color: #191919;
+  color: var(--customer-ink, #191919);
   /* Полное название, переносится — без обрезаний. */
   overflow-wrap: anywhere;
 }
@@ -416,7 +416,7 @@ onUnmounted(() => {
   font-weight: 700;
   font-size: 18px;
   line-height: 23px;
-  color: #191919;
+  color: var(--customer-ink, #191919);
   min-width: 0;
 }
 
@@ -429,7 +429,7 @@ onUnmounted(() => {
 /* Текст «Подробнее» — HTML из редактора: типографика как в Word. */
 .sig-mark-sheet__text {
   margin: 0;
-  color: #191919;
+  color: var(--customer-ink, #191919);
   font-family: "Montserrat", sans-serif;
   font-size: 14px;
   line-height: 1.55;
@@ -448,21 +448,21 @@ onUnmounted(() => {
   margin: 14px 0 8px;
   font-size: 17px;
   font-weight: 700;
-  color: #191919;
+  color: var(--customer-ink, #191919);
 }
 
 .sig-mark-sheet__text :deep(h3) {
   margin: 12px 0 6px;
   font-size: 15px;
   font-weight: 700;
-  color: #191919;
+  color: var(--customer-ink, #191919);
 }
 
 .sig-mark-sheet__text :deep(h4) {
   margin: 10px 0 6px;
   font-size: 14px;
   font-weight: 700;
-  color: #191919;
+  color: var(--customer-ink, #191919);
 }
 
 .sig-mark-sheet__text :deep(ul),

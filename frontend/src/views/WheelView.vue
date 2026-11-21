@@ -625,7 +625,7 @@ onMounted(async () => {
 <style scoped>
 .wheel-page {
   min-height: 100vh;
-  background: #f5f7fa;
+  background: var(--customer-bg, #f5f7fa);
   padding-bottom: 24px;
 }
 
@@ -645,13 +645,13 @@ onMounted(async () => {
   height: 36px;
   border-radius: 50%;
   border: none;
-  background: #ffffff;
+  background: var(--customer-surface, #ffffff);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
-  color: #1f2933;
+  color: var(--customer-ink, #191919);
   font-family: 'Montserrat', sans-serif;
   font-weight: 600;
   font-size: 18px;
@@ -673,7 +673,7 @@ onMounted(async () => {
   font-weight: 700;
   font-size: 18px;
   line-height: 1.2;
-  color: #1f2933;
+  color: var(--customer-ink, #191919);
 }
 
 /* Сцена рулетки — белый блок на фоне страницы. */
@@ -691,7 +691,7 @@ onMounted(async () => {
 }
 
 .wheel-locked__card {
-  background: #ffffff;
+  background: var(--customer-surface, #ffffff);
   border-radius: 24px;
   padding: 24px 20px;
   box-shadow: 0 18px 36px rgba(15, 23, 42, 0.06);
@@ -713,7 +713,7 @@ onMounted(async () => {
   font-family: 'Montserrat', sans-serif;
   font-size: 22px;
   line-height: 1.2;
-  color: #1f2933;
+  color: var(--customer-ink, #191919);
 }
 
 .wheel-locked__text {
@@ -721,7 +721,7 @@ onMounted(async () => {
   font-family: 'SF Pro Display', system-ui, sans-serif;
   font-size: 15px;
   line-height: 1.4;
-  color: #5c6470;
+  color: var(--customer-muted, #5c6470);
 }
 
 .wheel-locked__cta {
@@ -729,7 +729,7 @@ onMounted(async () => {
   height: 48px;
   border: none;
   border-radius: 24px;
-  background: linear-gradient(106.76deg, #f50302 -2.64%, #a90f0e 85.78%);
+  background: var(--customer-red-gradient);
   color: #ffffff;
   font-family: 'Montserrat', sans-serif;
   font-weight: 700;
@@ -792,7 +792,7 @@ onMounted(async () => {
   position: absolute;
   inset: 0;
   width: 0%;
-  background: linear-gradient(106.76deg, #f50302 -2.64%, #a90f0e 85.78%);
+  background: var(--customer-red-gradient);
   transition: width 0.4s ease;
 }
 
@@ -814,7 +814,7 @@ onMounted(async () => {
   font-size: 14px;
   line-height: 1.3;
   text-align: center;
-  color: #1f2933;
+  color: var(--customer-ink, #191919);
   font-weight: 500;
 }
 
@@ -823,9 +823,9 @@ onMounted(async () => {
   width: calc(100% - 48px);
   margin: 0 auto;
   height: 64px;
-  border-radius: 32px;
+  border-radius: var(--customer-radius-action, 18px);
   border: none;
-  background: linear-gradient(106.76deg, #f50302 -2.64%, #a90f0e 85.78%);
+  background: var(--customer-red-gradient);
   color: #ffffff;
   font-family: 'Montserrat', sans-serif;
   font-weight: 700;
@@ -875,10 +875,10 @@ onMounted(async () => {
   align-items: center;
   gap: 14px;
   padding: 18px 20px;
-  background: #ffffff;
-  border-radius: 20px;
+  background: var(--customer-surface, #ffffff);
+  border-radius: var(--customer-radius-card-small, 20px);
   text-decoration: none;
-  color: #1f2933;
+  color: var(--customer-ink, #191919);
 }
 
 .wheel-main__row-icon {
@@ -887,7 +887,7 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #1f2933;
+  color: var(--customer-ink, #191919);
   font-family: 'Montserrat', sans-serif;
   font-weight: 600;
   font-size: 18px;
@@ -895,7 +895,7 @@ onMounted(async () => {
 }
 
 .wheel-main__row-icon--quiet {
-  color: #1f2933;
+  color: var(--customer-ink, #191919);
   background: transparent;
 }
 
@@ -903,7 +903,7 @@ onMounted(async () => {
   flex: 1 1 auto;
   font-family: 'SF Pro Display', system-ui, sans-serif;
   font-size: 15px;
-  color: #1f2933;
+  color: var(--customer-ink, #191919);
   font-weight: 500;
 }
 
@@ -911,7 +911,7 @@ onMounted(async () => {
   min-width: 26px;
   height: 26px;
   border-radius: 13px;
-  background: linear-gradient(106.76deg, #f50302 -2.64%, #a90f0e 85.78%);
+  background: var(--customer-red-gradient);
   color: #ffffff;
   display: inline-flex;
   align-items: center;
@@ -951,7 +951,7 @@ onMounted(async () => {
   font-family: 'SF Pro Display', system-ui, sans-serif;
   font-size: 12px;
   line-height: 15px;
-  color: #5c6470;
+  color: var(--customer-muted, #5c6470);
 }
 
 .wheel-result-body__prize-card {
@@ -965,7 +965,7 @@ onMounted(async () => {
   padding: 5px 5px 7px;
   border: 2px solid #e2e5ea;
   border-radius: 18px;
-  background: #ffffff;
+  background: var(--customer-surface, #ffffff);
   box-shadow: 0 12px 24px rgba(31, 41, 51, 0.08);
   margin-bottom: 0;
 }
@@ -976,7 +976,7 @@ onMounted(async () => {
   display: block;
   border-radius: 13px;
   object-fit: cover;
-  background: #f5f7fa;
+  background: var(--customer-bg, #f5f7fa);
 }
 
 .wheel-result-body__prize-fallback {
@@ -1014,7 +1014,7 @@ onMounted(async () => {
   font-weight: 700;
   font-size: 20px;
   line-height: 24px;
-  color: #1f2933;
+  color: var(--customer-ink, #191919);
   /* Название приза показывается целиком: перенос по словам. */
   overflow-wrap: break-word;
 }
@@ -1025,7 +1025,7 @@ onMounted(async () => {
   font-family: 'SF Pro Display', system-ui, sans-serif;
   font-size: 13px;
   line-height: 16px;
-  color: #5c6470;
+  color: var(--customer-muted, #5c6470);
   display: -webkit-box;
   -webkit-line-clamp: 2;
   line-clamp: 2;
@@ -1049,7 +1049,7 @@ onMounted(async () => {
   font-family: 'SF Pro Display', system-ui, sans-serif;
   font-size: 11px;
   line-height: 13px;
-  color: #5c6470;
+  color: var(--customer-muted, #5c6470);
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
@@ -1084,8 +1084,8 @@ onMounted(async () => {
   width: 100%;
   height: 44px;
   border: none;
-  border-radius: 22px;
-  background: linear-gradient(106.76deg, #f50302 -2.64%, #a90f0e 85.78%);
+  border-radius: var(--customer-radius-card-small, 20px);
+  background: var(--customer-red-gradient);
   color: #ffffff;
   font-family: 'Montserrat', sans-serif;
   font-weight: 700;
@@ -1102,7 +1102,7 @@ onMounted(async () => {
   .wheel-stage__cta {
     width: calc(100% - 32px);
     height: 56px;
-    border-radius: 28px;
+    border-radius: var(--customer-radius-action, 18px);
     font-size: 16px;
   }
 }
@@ -1124,7 +1124,7 @@ onMounted(async () => {
   font-family: 'SF Pro Display', system-ui, sans-serif;
   font-size: 14px;
   padding: 10px 18px;
-  border-radius: 999px;
+  border-radius: var(--customer-radius-pill, 999px);
   z-index: 200;
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.18);
 }
