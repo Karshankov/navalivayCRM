@@ -115,6 +115,9 @@ const priceLabel = computed(() => {
   z-index: 2;
   min-width: 0;
   padding-left: 12px;
+  /* Montserrat: плитка наследует системный шрифт от родителя,
+     а рядом лежащие плитки фильтров набраны им же. */
+  font-family: "Montserrat", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
 .nicobooster__title {
@@ -160,11 +163,13 @@ const priceLabel = computed(() => {
   letter-spacing: -0.1px;
 }
 
-/* Арт: 180×180 из макета, повёрнут и растворяется к тексту. */
+/* Арт: 180×180 из макета, повёрнут и растворяется к тексту.
+   Сдвинут влево от центра кнопки: справа остаётся место под кнопку,
+   а композиция читается ровнее. */
 .nicobooster__art {
   position: absolute;
   top: -33px;
-  right: 70px;
+  right: 37%;
   z-index: 1;
   width: 180px;
   height: 180px;
