@@ -1059,7 +1059,8 @@ function closeColorPreview() {
   box-sizing: border-box;
   background: #ffffff;
   border-radius: 20px;
-  padding: 16px;
+  /* Слева отступ меньше: фото прижато к краю, но не вплотную. */
+  padding: 16px 16px 16px 12px;
   margin-bottom: 0;
 }
 
@@ -1179,18 +1180,20 @@ function closeColorPreview() {
   box-shadow: 0 4px 10px rgba(230, 0, 0, 0.35);
 }
 
+/* Фото линейки: 75x88 — на 15% меньше прежних 88x104. Рамки нет:
+   светлый фон карточки и так отделяет картинку. */
 .liquid-line-image {
-  width: 88px;
-  height: 104px;
+  width: 75px;
+  height: 88px;
   background: #ffffff;
-  border: 1px solid #e6e9ed;
-  border-radius: 16px;
+  border: 0;
+  border-radius: 14px;
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
   box-sizing: border-box;
-  padding: 6px;
+  padding: 5px;
 }
 
 .liquid-line-image img {
@@ -1360,18 +1363,19 @@ function closeColorPreview() {
   flex-shrink: 0;
 }
 
+/* Фото вкуса: те же размеры, что у фото линейки — 75x88 без рамки. */
 .liquid-subline-image {
-  width: 88px;
-  height: 104px;
+  width: 75px;
+  height: 88px;
   background: #ffffff;
-  border: 1px solid #e6e9ed;
-  border-radius: 16px;
+  border: 0;
+  border-radius: 14px;
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
   box-sizing: border-box;
-  padding: 6px;
+  padding: 5px;
 }
 
 .liquid-subline-image img {
@@ -1727,14 +1731,14 @@ function closeColorPreview() {
 
 @media (max-width: 1024px) {
   .liquid-line-card {
-    padding: 16px;
+    padding: 16px 16px 16px 12px;
   }
 
   .liquid-line-image {
-    width: 88px;
-    height: 104px;
-    border-radius: 16px;
-    padding: 6px;
+    width: 75px;
+    height: 88px;
+    border-radius: 14px;
+    padding: 5px;
   }
 
   .liquid-line-image img {
@@ -1743,10 +1747,10 @@ function closeColorPreview() {
   }
 
   .liquid-subline-image {
-    width: 88px;
-    height: 104px;
-    border-radius: 16px;
-    padding: 6px;
+    width: 75px;
+    height: 88px;
+    border-radius: 14px;
+    padding: 5px;
   }
 
   .liquid-subline-image img {
@@ -1807,7 +1811,7 @@ function closeColorPreview() {
 
 @media (max-width: 768px) {
   .liquid-line-card {
-    padding: 16px;
+    padding: 16px 16px 16px 12px;
     border-radius: 20px;
     margin-bottom: 0;
   }
@@ -1825,10 +1829,10 @@ function closeColorPreview() {
   }
 
   .liquid-line-image {
-    width: 88px;
-    height: 104px;
-    border-radius: 16px;
-    padding: 6px;
+    width: 75px;
+    height: 88px;
+    border-radius: 14px;
+    padding: 5px;
   }
 
   .liquid-line-image img {
@@ -1837,10 +1841,10 @@ function closeColorPreview() {
   }
 
   .liquid-subline-image {
-    width: 88px;
-    height: 104px;
-    border-radius: 16px;
-    padding: 6px;
+    width: 75px;
+    height: 88px;
+    border-radius: 14px;
+    padding: 5px;
   }
 
   .liquid-subline-image img {
@@ -1931,7 +1935,7 @@ function closeColorPreview() {
 
 @media (max-width: 480px) {
   .liquid-line-card {
-    padding: 16px;
+    padding: 16px 16px 16px 12px;
     border-radius: 20px;
   }
 
@@ -1948,10 +1952,10 @@ function closeColorPreview() {
   }
 
   .liquid-line-image {
-    width: 88px;
-    height: 104px;
-    border-radius: 16px;
-    padding: 6px;
+    width: 75px;
+    height: 88px;
+    border-radius: 14px;
+    padding: 5px;
   }
 
   .liquid-line-image img {
@@ -1960,10 +1964,10 @@ function closeColorPreview() {
   }
 
   .liquid-subline-image {
-    width: 88px;
-    height: 104px;
-    border-radius: 16px;
-    padding: 6px;
+    width: 75px;
+    height: 88px;
+    border-radius: 14px;
+    padding: 5px;
   }
 
   .liquid-subline-image img {
