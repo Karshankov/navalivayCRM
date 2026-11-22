@@ -54,7 +54,7 @@
             @change="topChip.onClick()"
           />
           <span class="filter-tile__art filter-tile__art--top" aria-hidden="true" />
-          <span class="filter-tile__caption">Часто берут</span>
+          <span class="filter-tile__caption">Часто&nbsp;берут</span>
         </label>
       </div>
 
@@ -616,13 +616,14 @@ function clearSearch() {
 }
 
 /* ===== Подпись =====
-   Слева по центру высоты: 13px, вес 600, максимум 70px ширины. */
+   Слева по центру высоты: 13px, вес 600. Предел ширины подобран под
+   самый длинный текст в одну строку — «Часто берут» занимает 81px. */
 .filter-tile__caption {
   position: absolute;
   top: 50%;
   left: 10px;
   z-index: 3;
-  max-width: 70px;
+  max-width: 96px;
   color: inherit;
   font-size: 13px;
   font-weight: 600;

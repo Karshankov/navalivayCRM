@@ -47,14 +47,29 @@ describe("NicoboosterTile: плитка в стиле фильтров", () => {
     w2.unmount();
   });
 
-  it("пустая корзина — одна кнопка добавления", async () => {
+  it("пустая корзина — кнопка с ценой вместо плюса", async () => {
     const w = mountTile({ quantity: 0 });
 
-    console.log("кнопка добавления:", w.find("[data-test=nicobooster-add]").exists());
+    const btn = w.find("[data-test=nicobooster-add]");
+    console.log("текст кнопки: «" + btn.text().replace(/\s+/g, " ").trim() + "»");
+    console.log("цена в кнопке: «" + w.find(".nicobooster__add-price").text() + "»");
+    console.log("aria-label: " + btn.attributes("aria-label"));
     console.log("счётчик:", w.find(".nicobooster__count").exists());
 
-    expect(w.find("[data-test=nicobooster-add]").exists()).toBe(true);
+    // Покупателю видно цену ещё до нажатия — это главное в кнопке.
+    expect(btn.text()).toContain("Добавить за");
+    expect(w.find(".nicobooster__add-price").text()).toBe("4 BYN");
+    expect(btn.attributes("aria-label")).toContain("за 4 BYN");
     expect(w.find(".nicobooster__count").exists()).toBe(false);
+    w.unmount();
+  });
+
+  it("в кнопке та же цена, что в названии", async () => {
+    const w = mountTile({ product: product({ priceRub: 12.5 }) });
+    const inTitle = w.find(".nicobooster__price-value").text();
+    const inButton = w.find(".nicobooster__add-price").text();
+    console.log("в названии:", inTitle, "| в кнопке:", inButton);
+    expect(inButton).toBe(inTitle + " BYN");
     w.unmount();
   });
 

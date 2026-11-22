@@ -1287,8 +1287,10 @@ watch(
 }
 
 /* Liquid Showcase Container */
+/* Боковой отступ витрины убран: карточки внутри неё были на 6px уже
+   плиток фильтров, и колонка выглядела рваной. Вертикальный оставлен. */
 .liquid-showcase-container {
-  padding: 8px;
+  padding: 8px 0;
   background: var(--customer-bg, #f5f7fa);
 }
 
@@ -1301,7 +1303,7 @@ watch(
 
 @media (max-width: 768px) {
   .liquid-showcase-container {
-    padding: 6px;
+    padding: 6px 0;
   }
 
   .category-content {
@@ -1315,7 +1317,7 @@ watch(
 
 @media (max-width: 480px) {
   .liquid-showcase-container {
-    padding: 5px;
+    padding: 5px 0;
   }
 
   .category-content {
@@ -1329,7 +1331,7 @@ watch(
 
 @media (max-width: 360px) {
   .liquid-showcase-container {
-    padding: 4px;
+    padding: 4px 0;
   }
 
   .category-content {

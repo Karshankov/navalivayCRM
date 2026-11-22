@@ -49,13 +49,12 @@
           type="button"
           class="nicobooster__add"
           :class="{ 'is-disabled': !canAdd }"
-          aria-label="Добавить в корзину"
+          :aria-label="`Добавить никобустер в корзину за ${priceLabel} BYN`"
           data-test="nicobooster-add"
           @click.stop="emit('add', $event)"
         >
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M12 5v14M5 12h14" />
-          </svg>
+          Добавить за
+          <span class="nicobooster__add-price">{{ priceLabel }} BYN</span>
         </button>
       </div>
     </div>
@@ -194,7 +193,31 @@ const priceLabel = computed(() => {
   padding-right: 10px;
 }
 
-.nicobooster__add,
+/* Красная кнопка с ценой — вместо круглого плюса: покупателю видно,
+   сколько он платит, ещё до нажатия. */
+.nicobooster__add {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 34px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 11px;
+  background: linear-gradient(106.76deg, #f50302 -2.64%, #a90f0e 85.78%);
+  color: #ffffff;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: transform 0.16s ease, opacity 0.16s ease;
+}
+
+.nicobooster__add-price {
+  font-weight: 700;
+}
+
 .nicobooster__qty {
   display: grid;
   place-items: center;
@@ -203,18 +226,13 @@ const priceLabel = computed(() => {
   padding: 0;
   border: 0;
   border-radius: 50%;
-  background: linear-gradient(106.76deg, #f50302 -2.64%, #a90f0e 85.78%);
-  color: #ffffff;
+  background: #f1f3f7;
+  color: #3c4351;
   cursor: pointer;
   transition: transform 0.16s ease, opacity 0.16s ease;
 }
 
-.nicobooster__qty {
-  background: #f1f3f7;
-  color: #3c4351;
-}
-
-.nicobooster__add svg,
+/* У кнопок количества значок рисуем линией. */
 .nicobooster__qty svg {
   width: 16px;
   fill: none;
