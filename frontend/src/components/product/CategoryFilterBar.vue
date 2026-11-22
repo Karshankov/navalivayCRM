@@ -519,7 +519,8 @@ function clearSearch() {
   height: 50px;
   overflow: hidden;
   border: 1px solid transparent;
-  border-radius: 14px;
+  /* 15px — базовый радиус из макета; на узких экранах 14px. */
+  border-radius: 15px;
   background: #ffffff;
   color: #191919;
   font-family: inherit;
@@ -703,6 +704,11 @@ function clearSearch() {
 @media (max-width: 350px) {
   .filter-tiles {
     gap: 10px;
+  }
+
+  /* На узких экранах радиус мельче — так в макете. */
+  .filter-tile {
+    border-radius: 14px;
   }
 
   .filter-tile__caption {
