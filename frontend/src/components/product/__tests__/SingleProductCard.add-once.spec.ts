@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createPinia, setActivePinia } from "pinia";
 import { flushPromises, mount } from "@vue/test-utils";
 import SingleProductCard from "@/components/product/SingleProductCard.vue";
+import NicoboosterTile from "@/components/product/NicoboosterTile.vue";
 import CategoryView from "@/views/CategoryView.vue";
 import { useCartStore } from "@/stores/cart";
 import { useCatalogStore, type Product } from "@/stores/catalog";
@@ -18,7 +19,9 @@ function makeProduct(): Product {
     id: "p-1",
     categoryId: "cat-1",
     groupId: null,
-    title: "Liquid Cherry",
+    // Cross-sell рисуется плиткой никобустера, поэтому товар назван так:
+    // плитка ищет его по названию.
+    title: "Никобустер",
     priceRub: 25,
     description: "",
     images: ["/img/p1.png"],
@@ -85,6 +88,9 @@ describe("SingleProductCard → CategoryView: один клик = один то�
     // Cross-sell карточки рендерятся на витрине категории и
     // используют SingleProductCard — проверяем связку через них.
     const catalogStore = useCatalogStore();
+    /* Кросс-селл у никобустера приходит из другой категории, поэтому
+       задаём его и напрямую, и через загрузку: если экран решит
+       подтянуть список сам, он получит тот же товар, а не пустоту. */
     catalogStore.crossSellProducts = { liquids: [makeProduct()] };
     vi.spyOn(catalogStore, "fetchCrossSell").mockResolvedValue([makeProduct()]);
 
@@ -103,7 +109,14 @@ describe("SingleProductCard → CategoryView: один клик = один то�
     });
     await flushPromises();
 
-    const addBtn = wrapper.find(".single-qty-btn-add");
+    // Cross-sell теперь рисуется плиткой никобустера, а не карточкой:
+    // кнопка добавления у неё своя. Проверяем ту же связку с корзиной.
+    // Ищем через findComponent: кнопка лежит во вложенном компоненте,
+    // и обычный find по data-test до неё не достаёт.
+    const tile = wrapper.findComponent(NicoboosterTile);
+    expect(tile.exists()).toBe(true);
+
+    const addBtn = tile.find("[data-test=nicobooster-add]");
     expect(addBtn.exists()).toBe(true);
 
     await addBtn.trigger("click");
@@ -112,8 +125,14 @@ describe("SingleProductCard → CategoryView: один клик = один то�
     // Сумма в реальном состоянии корзины (показывается в верхней панели).
     expect(useCartStore().totalAmount).toBe(25);
 
+    // Товар в корзине: плитка показывает счётчик и кнопку «плюс».
+    await flushPromises();
+    const tileAfter = wrapper.findComponent(NicoboosterTile);
+    console.log("счётчик:", tileAfter.find(".nicobooster__count").text());
+
     // Повторное нажатие (инкремент) — тоже ровно +1.
-    await wrapper.find(".single-qty-btn-plus").trigger("click");
+    const plus = tileAfter.findAll(".nicobooster__qty");
+    await plus[plus.length - 1].trigger("click");
     expect(useCartStore().totalItems).toBe(2);
     expect(useCartStore().items[0]?.quantity).toBe(2);
 

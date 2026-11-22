@@ -35,20 +35,20 @@
             />
           </div>
 
-      <!-- Cross-sell товары (без заголовка, первыми) -->
+      <!-- Никобустер: сразу под плитками фильтров. Плитка в том же
+           ритме, что и они, с ценой и кнопкой добавления справа. -->
       <div
-        v-if="crossSellItems.length && !wholesaleStore.isWholesale"
+        v-if="nicoboosterProduct && !wholesaleStore.isWholesale"
         ref="crossSellContainer"
         class="category-content"
       >
-        <SingleProductCard
-          v-for="item in crossSellItems"
-          :key="item.id"
-          :product="item"
-          :quantity="getCrossSellQuantity(item.id)"
-          @add="handleCrossSellAdd(item, $event)"
-          @increment="handleCrossSellIncrement(item, $event)"
-          @decrement="decrementCrossSellQuantity(item)"
+        <NicoboosterTile
+          :product="nicoboosterProduct"
+          :quantity="getCrossSellQuantity(nicoboosterProduct.id)"
+          :can-add="canAddCrossSell(nicoboosterProduct)"
+          @add="handleCrossSellAdd(nicoboosterProduct, $event)"
+          @increment="handleCrossSellIncrement(nicoboosterProduct, $event)"
+          @decrement="decrementCrossSellQuantity(nicoboosterProduct)"
         />
       </div>
 
@@ -135,15 +135,9 @@
           class="liquid-showcase-container"
           ref="ungroupedContainer"
         >
-          <!-- NiCa Booster - always first -->
-          <SingleProductCard
-            v-if="nicaBoosterProduct"
-            :product="nicaBoosterProduct"
-            :quantity="getUngroupedQuantity(nicaBoosterProduct.id)"
-            @add="handleUngroupedAdd(nicaBoosterProduct, $event)"
-            @increment="handleUngroupedIncrement(nicaBoosterProduct, $event)"
-            @decrement="decrementUngroupedQuantity(nicaBoosterProduct)"
-          />
+          <!-- Никобустер здесь больше не показываем: он стоит плиткой
+               под фильтрами, выше витрины. Оставлять его и тут значило
+               бы дублировать одну кнопку на экране. -->
 
           <p
             v-if="!filteredLiquidGroups.length && liquidGroups.length"
@@ -333,6 +327,8 @@ import GroupLineItem from "@/components/product/GroupLineItem.vue";
 import CompatibilityNotice from "@/components/product/CompatibilityNotice.vue";
 import type { ProductMark } from "@/stores/catalog";
 import CategoryFilterBar from "@/components/product/CategoryFilterBar.vue";
+import NicoboosterTile from "@/components/product/NicoboosterTile.vue";
+// Остаётся для товаров без линейки: у них прежний вид карточки.
 import SingleProductCard from "@/components/product/SingleProductCard.vue";
 import { useProductCardLayout } from "@/composables/useProductCardLayout";
 import { useCategoryFilters } from "@/composables/useCategoryFilters";
@@ -742,10 +738,10 @@ const liquidStructure = computed(() => {
     }
   });
 
-  // Add NiCa Booster to ungrouped at the beginning if found
-  if (nicaBooster) {
-    ungrouped.unshift(nicaBooster);
-  }
+  /* Никобустер в витрину не добавляем: он стоит отдельной плиткой
+     под фильтрами, выше витрины. Иначе на экране было бы две кнопки
+     на один товар. */
+  void nicaBooster;
 
   return { groups: liquidGroups, ungrouped };
 });
@@ -866,6 +862,21 @@ watch(
 const crossSellItems = computed<Product[]>(() => {
   if (!props.slug) return [];
   return catalogStore.crossSellProducts[props.slug] ?? [];
+});
+
+/* Никобустер приходит кросс-селлом из другой категории: товар лежит
+   в расходниках, а предлагается в жидкостях. Ищем его в списке
+   кросс-селла, а не среди товаров категории — там его нет. */
+const nicoboosterProduct = computed<Product | null>(() => {
+  const items = crossSellItems.value;
+  return (
+    items.find(
+      (p) =>
+        p.title.toLowerCase().includes("никобустер") ||
+        p.title.toLowerCase().includes("nikobuster") ||
+        p.title.toLowerCase().includes("nica booster"),
+    ) ?? null
+  );
 });
 
 const activeGroupCard = computed(() => {
