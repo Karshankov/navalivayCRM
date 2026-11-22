@@ -17,13 +17,13 @@ describe("CategoryFilterBar: нативные плитки", () => {
     });
   }
 
-  it("рисует поиск, ТОП-5 и выбор крепости", async () => {
+  it("рисует поиск, «часто берут» и выбор крепости", async () => {
     const w = mountBar();
     await flushPromises();
 
     console.log("поиск:", w.find("[data-test=filter-search]").exists());
     console.log("плейсхолдер:", w.find("[data-test=filter-search]").attributes("placeholder"));
-    console.log("ТОП-5:", w.find("[data-test=filter-top]").exists());
+    console.log("часто берут:", w.find("[data-test=filter-top]").exists());
     console.log("крепость:", w.find("[data-test=filter-strength]").exists());
     console.log("тип поля крепости:", w.find("[data-test=filter-strength]").element.tagName);
 
@@ -45,7 +45,7 @@ describe("CategoryFilterBar: нативные плитки", () => {
     w.unmount();
   });
 
-  it("нажатие ТОП-5 отправляет toggle-top", async () => {
+  it("нажатие «часто берут» отправляет toggle-top", async () => {
     const w = mountBar();
     await flushPromises();
 

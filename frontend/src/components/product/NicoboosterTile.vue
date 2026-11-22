@@ -125,7 +125,9 @@ const priceLabel = computed(() => {
   align-items: baseline;
   gap: 5px;
   margin: 0;
-  color: #1c1d21;
+  /* Токен проекта, а не значение из макета: у соседних плиток тот же
+     цвет, иначе никобустер выглядит темнее. */
+  color: var(--customer-ink, #191919);
   font-size: 13px;
   font-weight: 600;
   line-height: 1.25;
@@ -240,7 +242,7 @@ const priceLabel = computed(() => {
 
 .nicobooster__count {
   min-width: 18px;
-  color: #1c1d21;
+  color: var(--customer-ink, #191919);
   font-size: 13px;
   font-weight: 700;
   text-align: center;

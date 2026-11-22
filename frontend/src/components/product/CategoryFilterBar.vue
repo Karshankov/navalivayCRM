@@ -39,8 +39,8 @@
     </label>
 
     <div class="filter-tiles">
-      <!-- «ТОП-5»: плитка с чекбоксом внутри. Выбранное состояние —
-           красная заливка, как у навигационных плиток. -->
+      <!-- «Часто берут»: плитка с чекбоксом внутри. Выбранное
+           состояние — красная заливка, как у навигационных плиток. -->
       <div v-if="topChip" class="filter-tile-slot">
         <label class="filter-tile filter-tile--top" :class="{ 'is-loading': topChip.loading }">
           <input
@@ -49,12 +49,12 @@
             name="top5"
             :checked="topChip.active"
             :disabled="topChip.loading"
-            aria-label="ТОП-5"
+            aria-label="Часто берут"
             data-test="filter-top"
             @change="topChip.onClick()"
           />
           <span class="filter-tile__art filter-tile__art--top" aria-hidden="true" />
-          <span class="filter-tile__caption">ТОП-5</span>
+          <span class="filter-tile__caption">Часто берут</span>
         </label>
       </div>
 
