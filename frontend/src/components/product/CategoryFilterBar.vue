@@ -367,6 +367,19 @@ function clearSearch() {
 </script>
 
 <style scoped>
+/* Шрифт задан на корне блока: подписи плиток и поле поиска наследовали
+   системный от родителя и выбивались из остального приложения. */
+.category-filter-bar {
+  font-family: "Montserrat", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+/* Системные поля не наследуют шрифт: задаём явно, иначе открытый
+   список крепости набран другим шрифтом, чем сама плитка. */
+.category-filter-bar input,
+.category-filter-bar select {
+  font-family: inherit;
+}
+
 /* ===== Поиск по вкусам =====
    Размеры и отступы взяты из присланного макета: высота 50px, радиус
    16px, отступ снизу 23px, внутренний 0 15px, зазор 10px. */
