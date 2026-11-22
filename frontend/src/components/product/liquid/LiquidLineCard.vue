@@ -39,11 +39,6 @@
             </div>
             <DiscountBadge v-if="hasDiscount && showPromoBadges" class="liquid-line-discount" />
           </div>
-          <p v-if="minPriceLabel" class="liquid-line-image-price" :class="{ discounted: oldPriceLabel }">
-            <span v-if="oldPriceLabel" class="liquid-line-image-price-old">{{ oldPriceLabel }}</span>
-            <span class="liquid-line-image-price-amount">{{ minPriceLabel }}</span>
-            <span class="liquid-line-image-price-currency">BYN</span>
-          </p>
         </div>
         <div class="liquid-line-info">
           <h3 class="liquid-line-title">{{ title }}</h3>
@@ -480,21 +475,6 @@ const wholeLineDiscounted = computed(
 const groupMinPrice = computed(() =>
   wholeLineDiscounted.value ? discountedMinPrice.value : baseMinPrice.value,
 );
-
-const minPriceLabel = computed(() => {
-  if (props.subgroups && props.subgroups.length > 0) return null;
-  if (groupMinPrice.value === null) return null;
-  return formatPrice(groupMinPrice.value);
-});
-
-/** Зачёркнутая цена на обложке — только у линейки, подешевевшей целиком. */
-const oldPriceLabel = computed(() => {
-  if (minPriceLabel.value === null) return null;
-  if (!wholeLineDiscounted.value) return null;
-  const oldPrice = Number(baseMinPrice.value ?? 0);
-  if (!oldPrice || oldPrice <= Number(groupMinPrice.value ?? 0)) return null;
-  return formatPrice(oldPrice);
-});
 
 /** Плашка: показываем, пока скидка есть хоть где-то в линейке или внутри неё. */
 const hasDiscount = computed(() =>
@@ -1029,12 +1009,6 @@ function closeColorPreview() {
  * разную высоту, и пара выглядит съехавшей. Отличается только цветом и
  * прозрачностью, чтобы взгляд цеплялся за новую цену.
  */
-.liquid-line-image-price-old {
-  color: #98a2b3;
-  opacity: 0.6;
-  text-decoration: line-through;
-}
-
 /* Старая цена и глубина скидки у позиции: одинаково у вкусов и у вариантов. */
 .liquid-price-old {
   margin-right: 6px;
@@ -1204,30 +1178,6 @@ function closeColorPreview() {
 
 .liquid-line-image-placeholder {
   background: #fafafa;
-}
-
-.liquid-line-image-price {
-  margin: 0;
-  display: inline-flex;
-  align-items: baseline;
-  justify-content: center;
-  gap: 4px;
-  font-family: "Montserrat", sans-serif;
-  font-style: normal;
-  font-weight: 700;
-  font-size: 16px;
-  line-height: 20px;
-  white-space: nowrap;
-  /* Цифры одной ширины: иначе 16 и 17 встают под обложкой с разным отступом. */
-  font-variant-numeric: tabular-nums;
-}
-
-.liquid-line-image-price-amount {
-  color: var(--navalivay-red, #d32f2f);
-}
-
-.liquid-line-image-price-currency {
-  color: #191919;
 }
 
 .liquid-line-info {
@@ -1764,11 +1714,6 @@ function closeColorPreview() {
     line-height: 20px;
   }
 
-  .liquid-line-image-price {
-    font-size: 16px;
-    line-height: 20px;
-  }
-
   .liquid-subline-title {
     font-size: 16px;
     line-height: 20px;
@@ -1860,11 +1805,6 @@ function closeColorPreview() {
   .liquid-line-title {
     font-size: 16px;
     line-height: 20px;
-  }
-
-  .liquid-line-image-price {
-    font-size: 15px;
-    line-height: 19px;
   }
 
   .liquid-subline-title {
@@ -1983,11 +1923,6 @@ function closeColorPreview() {
   .liquid-line-title {
     font-size: 16px;
     line-height: 20px;
-  }
-
-  .liquid-line-image-price {
-    font-size: 14px;
-    line-height: 18px;
   }
 
   .liquid-subline-title {
@@ -2117,11 +2052,6 @@ function closeColorPreview() {
   .liquid-line-title {
     font-size: 15px;
     line-height: 19px;
-  }
-
-  .liquid-line-image-price {
-    font-size: 13px;
-    line-height: 17px;
   }
 
   .liquid-subline-title {

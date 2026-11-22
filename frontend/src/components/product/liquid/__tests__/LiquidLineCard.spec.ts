@@ -53,10 +53,8 @@ describe("LiquidLineCard", () => {
     });
 
     expect(wrapper.find(".liquid-line-meta").text()).toBe("Крепость 20 мг");
-    expect(wrapper.find(".liquid-line-info .liquid-line-image-price").exists()).toBe(false);
-    expect(wrapper.find(".liquid-line-image-price").exists()).toBe(true);
-    expect(wrapper.find(".liquid-line-image-price-amount").text()).toBe("15");
-    expect(wrapper.find(".liquid-line-image-wrapper .liquid-line-image-price").exists()).toBe(true);
+    // Цена на обложке больше не показывается нигде в карточке.
+    expect(wrapper.find(".liquid-line-image-price").exists()).toBe(false);
   });
 
   it("рисует ленту новинки только когда линейка отмечена", () => {
@@ -107,8 +105,8 @@ describe("LiquidLineCard", () => {
       },
     });
 
-    expect(wrapper.find(".liquid-line-image-price-amount").text()).toBe("12");
-    expect(wrapper.find(".liquid-line-image-price-old").text()).toBe("16");
+    // Цены на обложке нет, но плашка скидки остаётся.
+    expect(wrapper.find(".liquid-line-image-price").exists()).toBe(false);
     // Числа на плашке нет: точная глубина скидки живёт бейджем у самой позиции.
     expect(wrapper.find(".liquid-line-discount").text()).toBe("Скидки");
   });
@@ -130,10 +128,8 @@ describe("LiquidLineCard", () => {
       },
     });
 
-    // Скидка на один вкус цену линейки не занижает: остальные продаются по 16,
-    // и обложка обязана называть цену, по которой линейку реально можно взять.
-    expect(wrapper.find(".liquid-line-image-price-amount").text()).toBe("16");
-    expect(wrapper.find(".liquid-line-image-price-old").exists()).toBe(false);
+    // Цены на обложке нет вовсе, но плашка скидки остаётся.
+    expect(wrapper.find(".liquid-line-image-price").exists()).toBe(false);
     expect(wrapper.find(".liquid-line-discount").exists()).toBe(true);
 
     // Зачёркнутая цена и процент живут в раскрытом списке, рядом со вкусом.
@@ -144,7 +140,7 @@ describe("LiquidLineCard", () => {
     expect(prices[0].find(".liquid-price-drop").text()).toBe("-25%");
   });
 
-  it("подешевела вся линейка — на обложке новая цена и зачёркнутая старая", () => {
+  it("подешевела вся линейка — на обложке цены нет", () => {
     const wrapper = mount(LiquidLineCard, {
       global: { plugins: [pinia], stubs: { ColorPreviewModal: true } },
       props: {
@@ -161,8 +157,8 @@ describe("LiquidLineCard", () => {
       },
     });
 
-    expect(wrapper.find(".liquid-line-image-price-amount").text()).toBe("12");
-    expect(wrapper.find(".liquid-line-image-price-old").text()).toBe("16");
+    // Цена не показывается ни в каком виде: ни новая, ни зачёркнутая.
+    expect(wrapper.find(".liquid-line-image-price").exists()).toBe(false);
   });
 
   it("показывает цену скидочного вкуса, даже когда она совпала с минимумом", () => {
@@ -227,7 +223,6 @@ describe("LiquidLineCard", () => {
       },
     });
 
-    expect(wrapper.find(".liquid-line-image-price-old").exists()).toBe(false);
     expect(wrapper.find(".liquid-line-discount").exists()).toBe(false);
   });
 
@@ -255,8 +250,8 @@ describe("LiquidLineCard", () => {
       },
     });
 
+    // Цены вкусов скрыты: они совпадают с общей ценой линейки.
     expect(wrapper.findAll(".liquid-flavor-price").length).toBe(0);
-    expect(wrapper.find(".liquid-line-image-price-amount").text()).toBe("15");
   });
 
   it("shows only differing flavor prices in red in the expanded list", () => {
@@ -312,7 +307,7 @@ describe("LiquidLineCard", () => {
     expect(wrapper.find(".liquid-line-image-price").exists()).toBe(false);
   });
 
-  it("shows price under the image when meta is absent", () => {
+  it("цены на обложке нет и когда крепость не указана", () => {
     const wrapper = mount(LiquidLineCard, {
       global: {
         plugins: [pinia],
@@ -333,7 +328,6 @@ describe("LiquidLineCard", () => {
       },
     });
 
-    expect(wrapper.find(".liquid-line-image-price").exists()).toBe(true);
-    expect(wrapper.find(".liquid-line-image-price-amount").text()).toBe("15");
+    expect(wrapper.find(".liquid-line-image-price").exists()).toBe(false);
   });
 });

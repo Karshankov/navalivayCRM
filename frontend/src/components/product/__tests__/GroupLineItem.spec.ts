@@ -96,7 +96,7 @@ describe("GroupLineItem", () => {
     expect(wrapper.find(".group-line-info .group-line-mark-wrapper").exists()).toBe(false);
   });
 
-  it("shows neutral parent hint on group rows with children and no direct reviews", async () => {
+  it("у линейки с дочерними строки отзывов нет", async () => {
     const wrapper = await mountLine({
       ...baseNode,
       id: "brand",
@@ -116,9 +116,9 @@ describe("GroupLineItem", () => {
     });
 
     expect(fetchGroupReviewSummaryMock).toHaveBeenCalledWith("brand");
-    expect(wrapper.text().toLowerCase()).toContain("отзывы у линеек ниже");
+    // У линейки с дочерними строки отзывов нет: отзывы живут на дочерних.
+    expect(wrapper.find(".review-rating-row").exists()).toBe(false);
     expect(wrapper.text().toLowerCase()).not.toContain("нет отзывов");
-    expect(wrapper.text().toLowerCase()).not.toContain("посмотреть отзывы");
   });
 
   it("shows rating and view-reviews action on leaf lines with reviews", async () => {
@@ -134,8 +134,10 @@ describe("GroupLineItem", () => {
     });
 
     expect(fetchGroupReviewSummaryMock).toHaveBeenCalledWith("blood");
+    // Строка отзывов: оценка, слово «отзывы» и реальное количество.
     expect(wrapper.text()).toContain("5");
-    expect(wrapper.text().toLowerCase()).toContain("посмотреть отзывы");
+    expect(wrapper.text().toLowerCase()).toContain("отзывы");
+    expect(wrapper.text()).toContain("·1");
   });
 
   it("shows empty review state on leaf lines without reviews", async () => {
