@@ -624,11 +624,13 @@ function clearSearch() {
   left: 10px;
   z-index: 3;
   max-width: 96px;
-  color: inherit;
+  /* Чёрный, как подпись «Наш ассортимент» на главной: та же шкала
+     и вес, отличается только начертание. */
+  color: #000000;
   font-size: 13px;
   font-weight: 600;
   line-height: 1.25;
-  letter-spacing: -0.15px;
+  letter-spacing: 0.008em;
   text-align: left;
   transform: translateY(-50%);
   pointer-events: none;

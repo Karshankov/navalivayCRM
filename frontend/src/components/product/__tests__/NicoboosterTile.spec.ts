@@ -20,30 +20,29 @@ describe("NicoboosterTile: плитка в стиле фильтров", () => {
     return mount(NicoboosterTile, { props: { product: product(), ...props } });
   }
 
-  it("показывает название, цену и подпись", async () => {
+  it("показывает название и подпись, без цены в названии", async () => {
     const w = mountTile();
 
-    console.log("название:", w.find(".nicobooster__title").text().replace(/\s+/g, " ").trim());
-    console.log("цена:", w.find(".nicobooster__price-value").text());
-    console.log("валюта:", w.find(".nicobooster__price-currency").text());
+    console.log("название:", w.find(".nicobooster__title").text().trim());
     console.log("подпись:", w.find(".nicobooster__note").text());
+    console.log("цена в названии:", w.find(".nicobooster__price").exists() ? "есть" : "убрана");
 
-    expect(w.find(".nicobooster__title").text()).toContain("Никобустер");
-    expect(w.find(".nicobooster__price-value").text()).toBe("4");
-    expect(w.find(".nicobooster__price-currency").text()).toBe("BYN");
+    expect(w.find(".nicobooster__title").text()).toBe("Никобустер");
     expect(w.find(".nicobooster__note").text()).toBe("+20мг к крепости");
+    // Цена живёт только в кнопке: в названии её больше нет.
+    expect(w.find(".nicobooster__price").exists()).toBe(false);
     w.unmount();
   });
 
   it("цена целая без хвоста нулей", async () => {
     const w = mountTile({ product: product({ priceRub: 4 }) });
-    console.log("4 →", w.find(".nicobooster__price-value").text());
-    expect(w.find(".nicobooster__price-value").text()).toBe("4");
+    console.log("4 →", w.find(".nicobooster__add-price").text());
+    expect(w.find(".nicobooster__add-price").text()).toBe("4 BYN");
     w.unmount();
 
     const w2 = mountTile({ product: product({ priceRub: 12.5 }) });
-    console.log("12.5 →", w2.find(".nicobooster__price-value").text());
-    expect(w2.find(".nicobooster__price-value").text()).toBe("12,50");
+    console.log("12.5 →", w2.find(".nicobooster__add-price").text());
+    expect(w2.find(".nicobooster__add-price").text()).toBe("12,50 BYN");
     w2.unmount();
   });
 
@@ -64,12 +63,11 @@ describe("NicoboosterTile: плитка в стиле фильтров", () => {
     w.unmount();
   });
 
-  it("в кнопке та же цена, что в названии", async () => {
-    const w = mountTile({ product: product({ priceRub: 12.5 }) });
-    const inTitle = w.find(".nicobooster__price-value").text();
+  it("цена в кнопке берётся из товара", async () => {
+    const w = mountTile({ product: product({ priceRub: 7 }) });
     const inButton = w.find(".nicobooster__add-price").text();
-    console.log("в названии:", inTitle, "| в кнопке:", inButton);
-    expect(inButton).toBe(inTitle + " BYN");
+    console.log("цена товара 7 → в кнопке:", inButton);
+    expect(inButton).toBe("7 BYN");
     w.unmount();
   });
 

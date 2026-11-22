@@ -5,13 +5,7 @@
          у правого края — кнопка добавления в корзину. -->
     <div class="nicobooster__tile">
       <div class="nicobooster__text">
-        <p class="nicobooster__title">
-          Никобустер
-          <span class="nicobooster__price">
-            <span class="nicobooster__price-value">{{ priceLabel }}</span>
-            <span class="nicobooster__price-currency">BYN</span>
-          </span>
-        </p>
+        <p class="nicobooster__title">Никобустер</p>
         <p class="nicobooster__note">+20мг к крепости</p>
       </div>
 
@@ -120,40 +114,13 @@ const priceLabel = computed(() => {
 }
 
 .nicobooster__title {
-  display: flex;
-  align-items: baseline;
-  gap: 5px;
   margin: 0;
-  /* Токен проекта, а не значение из макета: у соседних плиток тот же
-     цвет, иначе никобустер выглядит темнее. */
-  color: var(--customer-ink, #191919);
+  /* Чёрный, как подпись «Наш ассортимент» на главной. */
+  color: #000000;
   font-size: 13px;
   font-weight: 600;
   line-height: 1.25;
   letter-spacing: -0.15px;
-}
-
-.nicobooster__price {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 2px;
-  white-space: nowrap;
-}
-
-/* Цена красным — акцент, как в макете. */
-.nicobooster__price-value {
-  color: #d82319;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-/* Валюта того же веса, что сумма: рядом стоящие «4» и «BYN» при
-   разной жирности читались как разные по значимости. Мельче по
-   размеру — этого достаточно, чтобы не спорить с ценой. */
-.nicobooster__price-currency {
-  color: #d82319;
-  font-size: 10px;
-  font-weight: 700;
 }
 
 /* Подпись мелким серым: поясняет, зачем товар. */
@@ -199,14 +166,16 @@ const priceLabel = computed(() => {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  height: 34px;
-  padding: 0 12px;
+  height: 31px;
+  padding: 0 11px;
   border: 0;
-  border-radius: 11px;
+  border-radius: 10px;
   background: linear-gradient(106.76deg, #f50302 -2.64%, #a90f0e 85.78%);
   color: #ffffff;
-  font-family: inherit;
-  font-size: 12px;
+  /* Montserrat явно: кнопка — не поле ввода, шрифт не наследует
+     от системных элементов. */
+  font-family: "Montserrat", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 11px;
   font-weight: 600;
   line-height: 1;
   white-space: nowrap;
