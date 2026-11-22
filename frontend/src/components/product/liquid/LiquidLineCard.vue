@@ -1251,7 +1251,8 @@ function closeColorPreview() {
   font-weight: 700;
   font-size: 16px;
   line-height: 20px;
-  color: #191919;
+  /* Чуть светлее чернильного: заголовок не должен давить на фото. */
+  color: #3a3a3a;
   /* Длинные названия линеек переносятся по словам целиком — без обрезки
      многоточием и без уменьшения шрифта. max-width: 100% нужен, потому что
      info-колонка с align-items: flex-start не растягивает заголовок. */
@@ -1261,15 +1262,13 @@ function closeColorPreview() {
 
 .liquid-line-meta {
   margin: 0;
-  font-family:
-    "SF Pro Display",
-    -apple-system,
-    BlinkMacSystemFont,
-    sans-serif;
+  /* Montserrat, как у названия: строка читается одной семьёй.
+     Размер на 8% меньше прежних 14.4px, вес тоньше. */
+  font-family: "Montserrat", sans-serif;
   font-style: normal;
-  font-weight: 500;
-  font-size: 14.4px;
-  line-height: 17.3px;
+  font-weight: 400;
+  font-size: 13.2px;
+  line-height: 17px;
   color: #aab2bd;
 }
 
