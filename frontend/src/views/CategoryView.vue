@@ -16,15 +16,10 @@
         </div>
 
         <div class="main-content-wrapper">
-          <!-- Заголовок раздела: называет категорию и даёт воздух сверху,
-               чтобы поиск не упирался в край экрана. Меняется вместе
-               с переключением категории в быстрой навигации. -->
-          <header v-if="selectedCategory" class="category-heading">
-            <h1 class="category-heading__title">{{ selectedCategory.name }}</h1>
-            <p v-if="categoryHeadingSubtitle" class="category-heading__subtitle">
-              {{ categoryHeadingSubtitle }}
-            </p>
-          </header>
+          <!-- Воздух над поиском: категория и так названа активной
+               кнопкой в навигации снизу, дублировать её заголовком
+               незачем. Отступ просто отделяет шапку от края экрана. -->
+          <div class="category-top-space" aria-hidden="true" />
 
           <div v-if="showCategoryFilters" class="category-content">
             <CategoryFilterBar
@@ -464,21 +459,6 @@ const selectedCategory = computed<Category | null>(() => {
   return (
     categories.value.find((category) => category.slug === props.slug) ?? null
   );
-});
-
-/**
- * Подпись под заголовком раздела: сколько линеек ждёт внутри.
- * Считаем по группам категории, а не по товарам — покупателю важно
- * число линеек, а не позиций.
- */
-const categoryHeadingSubtitle = computed(() => {
-  const count = groupCards.value.length;
-  if (!count) return "";
-  const mod10 = count % 10;
-  const mod100 = count % 100;
-  if (mod10 === 1 && mod100 !== 11) return `${count} линейка`;
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return `${count} линейки`;
-  return `${count} линеек`;
 });
 
 /** Плашка консультации: категория расходников (картриджи, испарители, баки). */
@@ -1287,43 +1267,12 @@ watch(
   padding: 0 16px;
 }
 
-/* ===== Заголовок раздела =====
-   Заменяет удалённую шапку категории: называет раздел и отделяет
-   поиск от верхнего края экрана. */
-/* Боковые отступы совпадают с .category-content на каждом размере,
-   но заданы здесь: общий класс перебивал бы верхний отступ. */
-.category-heading {
-  padding: 22px 16px 0;
-  margin-bottom: 16px;
-}
-
-.category-heading__title {
-  margin: 0;
-  color: #101114;
-  font-family: "Montserrat", sans-serif;
-  font-size: 28px;
-  font-weight: 700;
-  line-height: 1.15;
-  letter-spacing: -0.5px;
-}
-
-.category-heading__subtitle {
-  margin: 6px 0 0;
-  color: #7d838f;
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 1.3;
-  letter-spacing: -0.2px;
-}
-
-@media (max-width: 360px) {
-  .category-heading {
-    padding: 18px 16px 0;
-  }
-
-  .category-heading__title {
-    font-size: 25px;
-  }
+/* ===== Воздух над поиском =====
+   Категория названа активной кнопкой в навигации снизу, поэтому
+   отдельный заголовок только дублировал её и съедал 77px высоты.
+   Оставляем отступ: поиск отделён от края, товары выше на экране. */
+.category-top-space {
+  height: 22px;
 }
 
 /* Liquid Showcase Container */
@@ -1344,13 +1293,12 @@ watch(
     padding: 6px;
   }
 
-  .category-content,
-  .category-heading {
+  .category-content {
     padding: 0 12px;
   }
 
-  .category-heading {
-    padding-top: 22px;
+  .category-top-space {
+    height: 20px;
   }
 }
 
@@ -1359,13 +1307,12 @@ watch(
     padding: 5px;
   }
 
-  .category-content,
-  .category-heading {
+  .category-content {
     padding: 0 10px;
   }
 
-  .category-heading {
-    padding-top: 20px;
+  .category-top-space {
+    height: 18px;
   }
 }
 
@@ -1374,13 +1321,12 @@ watch(
     padding: 4px;
   }
 
-  .category-content,
-  .category-heading {
+  .category-content {
     padding: 0 8px;
   }
 
-  .category-heading {
-    padding-top: 18px;
+  .category-top-space {
+    height: 16px;
   }
 }
 
