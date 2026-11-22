@@ -32,12 +32,12 @@ describe("CategoryFilterBar: подсказка в поиске", () => {
     console.log("сразу после старта: «" + hint(w) + "»");
     expect(hint(w)).toBe("");
 
-    // Первая фраза начинается через 400мс, дальше по 55мс на букву.
-    await vi.advanceTimersByTimeAsync(400 + 55 * 5);
+    // Первая фраза начинается через 400мс, дальше по 45мс на букву.
+    await vi.advanceTimersByTimeAsync(400 + 45 * 5);
     const partial = hint(w);
     console.log("через 5 букв: «" + partial + "»");
     expect(partial.length).toBeGreaterThan(0);
-    expect("можно найти тут по вкусу".startsWith(partial)).toBe(true);
+    expect("ищите по вкусу".startsWith(partial)).toBe(true);
 
     w.unmount();
   });
@@ -46,8 +46,8 @@ describe("CategoryFilterBar: подсказка в поиске", () => {
     const w = mountBar();
     await flushPromises();
 
-    const phrase = "можно найти тут по вкусу";
-    await vi.advanceTimersByTimeAsync(400 + 55 * phrase.length + 60);
+    const phrase = "ищите по вкусу";
+    await vi.advanceTimersByTimeAsync(400 + 45 * phrase.length + 60);
     console.log("допечатано: «" + hint(w) + "»");
     expect(hint(w)).toBe(phrase);
 
@@ -58,20 +58,68 @@ describe("CategoryFilterBar: подсказка в поиске", () => {
     const w = mountBar();
     await flushPromises();
 
-    const first = "можно найти тут по вкусу";
-    // Допечатать, выдержать паузу 1500мс, стереть.
-    await vi.advanceTimersByTimeAsync(400 + 55 * first.length + 10);
+    const first = "ищите по вкусу";
+    // Допечатать, выдержать паузу, стереть.
+    await vi.advanceTimersByTimeAsync(400 + 45 * first.length + 10);
     console.log("первая фраза: «" + hint(w) + "»");
     expect(hint(w)).toBe(first);
 
-    await vi.advanceTimersByTimeAsync(1500 + 32 * first.length + 40);
+    await vi.advanceTimersByTimeAsync(1600 + 22 * first.length + 40);
     console.log("после стирания: «" + hint(w) + "»");
 
     // Началась вторая фраза — «малина».
-    await vi.advanceTimersByTimeAsync(400 + 32 * 3);
+    await vi.advanceTimersByTimeAsync(400 + 22 * 3);
     const second = hint(w);
     console.log("вторая фраза печатается: «" + second + "»");
     expect("малина".startsWith(second)).toBe(true);
+
+    w.unmount();
+  });
+
+  it("длинная фраза про арбуз держится дольше короткой", async () => {
+    const w = mountBar();
+    await flushPromises();
+
+    const SHORT = "ищите по вкусу";
+    const LONG = "хотите что-то с арбузом? просто напишите";
+    const TYPE = 45, ERASE = 22, HOLD = 1600, HOLD_LONG = 2400;
+
+    /** Прокручивает время, пока фраза не допечатается целиком. */
+    const advanceToPhrase = async (text: string) => {
+      // Пока фраза короче нужной — идёт печать: шагаем по букве.
+      for (let i = 0; i < 400; i += 1) {
+        if (hint(w) === text) return true;
+        await vi.advanceTimersByTimeAsync(TYPE);
+      }
+      return false;
+    };
+
+    // Добираемся до длинной фразы: короткая + «малина» + старт длинной.
+    await vi.advanceTimersByTimeAsync(
+      400 + TYPE * SHORT.length + HOLD + ERASE * SHORT.length + 320,
+    );
+    await vi.advanceTimersByTimeAsync(400 + TYPE * "малина".length + HOLD + ERASE * "малина".length + 320);
+
+    const reached = await advanceToPhrase(LONG);
+    console.log("допечатана длинная: " + reached);
+    console.log("текст: «" + hint(w) + "»");
+    expect(reached).toBe(true);
+
+    // Короткой паузы не хватает: фраза всё ещё целая. Именно поэтому
+    // для длинных стоит отдельная, удлинённая пауза.
+    await vi.advanceTimersByTimeAsync(HOLD);
+    console.log("через " + HOLD + "мс (короткая пауза) целая: «" + hint(w).slice(0, 22) + "…»");
+    expect(hint(w)).toBe(LONG);
+
+    // Она держится и дальше — значит пауза действительно длиннее.
+    await vi.advanceTimersByTimeAsync(600);
+    console.log("ещё через 600мс: «" + hint(w).slice(0, 22) + "…»");
+    expect(hint(w).length).toBeGreaterThan(20);
+
+    // В конце концов стирается.
+    await vi.advanceTimersByTimeAsync(HOLD_LONG);
+    console.log("после долгой паузы стёрлась: «" + hint(w) + "»");
+    expect(hint(w).length).toBeLessThan(LONG.length);
 
     w.unmount();
   });

@@ -239,20 +239,20 @@ function onStrengthChange() {
    Работает только визуально: для скринридера у поля своя подпись,
    иначе он читал бы меняющийся текст как содержимое. */
 const HINT_PHRASES = [
-  "можно найти тут по вкусу",
+  "ищите по вкусу",
   "малина",
-  "хм…",
-  "арбуз",
+  "хотите что-то с арбузом? просто напишите",
   "вишня",
   "клубника",
 ];
 
 /** Скорость печати и стирания, пауза на прочтение. */
-const TYPE_MS = 55;
-const ERASE_MS = 32;
-const HOLD_MS = 1500;
-/** После «хм…» держим дольше: это задумчивость, а не пример. */
-const HOLD_LONG_MS = 1900;
+const TYPE_MS = 45;
+const ERASE_MS = 22;
+const HOLD_MS = 1600;
+/** Длинную фразу держим дольше: её надо успеть прочитать целиком. */
+const HOLD_LONG_MS = 2400;
+const LONG_PHRASE_LENGTH = 30;
 
 const searchQuery = ref("");
 const typedHint = ref("");
@@ -280,11 +280,11 @@ function tickHint() {
     typedHint.value = phrase.slice(0, charIndex);
 
     if (charIndex === phrase.length) {
-      // Фраза напечатана: держим её, потом стираем.
-      const isThoughtful = phrase === "хм…";
-      const hold = isThoughtful ? HOLD_LONG_MS : HOLD_MS;
-      isCarelessPause.value = isThoughtful;
-      scheduleHint(hold);
+      // Фраза напечатана: держим её, потом стираем. Длинную — дольше,
+      // иначе прочитать её не успевают.
+      const isLong = phrase.length >= LONG_PHRASE_LENGTH;
+      isCarelessPause.value = isLong;
+      scheduleHint(isLong ? HOLD_LONG_MS : HOLD_MS);
       erasing = true;
       return;
     }
