@@ -1,6 +1,9 @@
 <template>
-  <div class="group-line-card" :class="{ expanded: isExpanded }">
-    <NewLineupBadge v-if="node.isNew" />
+  <div
+    class="group-line-card"
+    :class="{ expanded: isExpanded, 'has-new-ribbon': node.isNew }"
+  >
+    <span v-if="node.isNew" class="new-ribbon">НОВИНКА</span>
     <button
       :id="headerId"
       type="button"
@@ -148,7 +151,6 @@ import { useCatalogStore, type Product } from "@/stores/catalog";
 import GroupLineItemContent from "@/components/product/GroupLineItemContent.vue";
 import { hasTelegramMiniAppUserContext } from "@/utils/telegramMiniAppContext";
 import FavoriteGroupHeart from "@/components/product/FavoriteGroupHeart.vue";
-import NewLineupBadge from "@/components/product/NewLineupBadge.vue";
 import DiscountBadge from "@/components/product/DiscountBadge.vue";
 import { getMinBasePriceForProducts, hasDiscountInTree } from "@/components/product/groupPrice";
 
@@ -425,6 +427,38 @@ onBeforeUnmount(() => {
 
 .group-line-card:last-of-type {
   margin-bottom: 0;
+}
+
+/* Хост ленты: угол должен обрезаться по скруглению карточки.
+   position и overflow заданы отдельно от .group-line-card: у неё
+   свой content-visibility, и совмещать их в одном правиле не стоит. */
+.group-line-card.has-new-ribbon {
+  position: relative;
+  overflow: hidden;
+}
+
+/* Угловая лента «Новинка»: свешивается из правого верхнего угла.
+   Нажатия не перехватывает — под ней кнопки карточки. */
+.new-ribbon {
+  position: absolute;
+  top: 26px;
+  right: -37px;
+  z-index: 2;
+  width: 147px;
+  padding: 6px 0;
+  background: linear-gradient(100deg, #ff0500 0%, #b40008 100%);
+  color: #ffffff;
+  font-family: "Montserrat", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: normal;
+  letter-spacing: 0.05em;
+  text-align: center;
+  transform: rotate(45deg);
+  transform-origin: center center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  pointer-events: none;
+  user-select: none;
 }
 
 /* Плашка лежит на обложке линейки, ровно как на карточке категории. */

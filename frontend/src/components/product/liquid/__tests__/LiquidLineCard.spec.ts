@@ -59,7 +59,7 @@ describe("LiquidLineCard", () => {
     expect(wrapper.find(".liquid-line-image-wrapper .liquid-line-image-price").exists()).toBe(true);
   });
 
-  it("рисует плашку новинки только когда линейка отмечена", () => {
+  it("рисует ленту новинки только когда линейка отмечена", () => {
     const mountCard = (isNew: boolean) =>
       mount(LiquidLineCard, {
         global: { plugins: [pinia], stubs: { ColorPreviewModal: true } },
@@ -76,20 +76,19 @@ describe("LiquidLineCard", () => {
       });
 
     const marked = mountCard(true);
-    const badge = marked.find(".new-lineup-badge");
-    expect(badge.exists()).toBe(true);
-    // Название плашки живёт на контейнере, а вся бегущая дорожка спрятана от
-    // скринридера: иначе он зачитает «Новинка» дюжину раз подряд.
-    expect(badge.attributes("role")).toBe("img");
-    expect(badge.attributes("aria-label")).toBe("Новинка");
-    expect(marked.find(".new-lineup-badge__track").attributes("aria-hidden")).toBe("true");
-    // Дорожка едет на половину своей ширины, поэтому наборов ровно два.
-    expect(marked.findAll(".new-lineup-badge__set")).toHaveLength(2);
-    const words = marked.findAll(".new-lineup-badge__word");
-    expect(words.length % 2).toBe(0);
-    expect(words[0].text()).toBe("Новинка");
+    const ribbon = marked.find(".new-ribbon");
+    expect(ribbon.exists()).toBe(true);
+    expect(ribbon.text()).toBe("НОВИНКА");
 
-    expect(mountCard(false).find(".new-lineup-badge").exists()).toBe(false);
+    // Карточка становится хостом ленты: от неё считается угол, и по её
+    // скруглению лента обрезается.
+    expect(marked.find(".liquid-line-card").classes()).toContain("has-new-ribbon");
+
+    // Нажатия лента не перехватывает — под ней кнопки карточки.
+    expect(ribbon.attributes("style") ?? "").not.toContain("pointer-events");
+    const plain = mountCard(false);
+    expect(plain.find(".new-ribbon").exists()).toBe(false);
+    expect(plain.find(".liquid-line-card").classes()).not.toContain("has-new-ribbon");
   });
 
   it("показывает скидку зачёркнутой ценой и плашкой", () => {

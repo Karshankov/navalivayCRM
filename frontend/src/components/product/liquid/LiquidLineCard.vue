@@ -1,6 +1,14 @@
 <template>
-  <div class="liquid-line-card" :class="{ expanded, 'liquid-line-card--unavailable': unavailable }">
-    <NewLineupBadge v-if="isNew && showPromoBadges" />
+  <div
+    class="liquid-line-card"
+    :class="{
+      expanded,
+      'liquid-line-card--unavailable': unavailable,
+      // Класс-хост нужен ленте: она позиционируется от края карточки.
+      'has-new-ribbon': isNew && showPromoBadges,
+    }"
+  >
+    <span v-if="isNew && showPromoBadges" class="new-ribbon">НОВИНКА</span>
     <div class="liquid-line-header" @click="toggle">
       <div
         class="liquid-line-main"
@@ -332,7 +340,6 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch, nextTick } from "vue";
-import NewLineupBadge from "@/components/product/NewLineupBadge.vue";
 import ReviewsFeedPanel from "@/components/reviews/ReviewsFeedPanel.vue";
 import ReviewRatingLink from "@/components/reviews/ReviewRatingLink.vue";
 import SignificanceMark from "@/components/product/SignificanceMark.vue";
@@ -1054,6 +1061,36 @@ function closeColorPreview() {
   border-radius: 20px;
   padding: 16px;
   margin-bottom: 0;
+}
+
+/* Хост ленты: угол должен обрезаться по скруглению карточки. */
+.liquid-line-card.has-new-ribbon {
+  position: relative;
+  overflow: hidden;
+}
+
+/* Угловая лента «Новинка»: свешивается из правого верхнего угла.
+   Нажатия не перехватывает — под ней кнопки карточки. */
+.new-ribbon {
+  position: absolute;
+  top: 26px;
+  right: -37px;
+  z-index: 2;
+  width: 147px;
+  padding: 6px 0;
+  background: linear-gradient(100deg, #ff0500 0%, #b40008 100%);
+  color: #ffffff;
+  font-family: "Montserrat", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: normal;
+  letter-spacing: 0.05em;
+  text-align: center;
+  transform: rotate(45deg);
+  transform-origin: center center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  pointer-events: none;
+  user-select: none;
 }
 
 /* Линейка закончилась (избранное): приглушённая карточка. */
