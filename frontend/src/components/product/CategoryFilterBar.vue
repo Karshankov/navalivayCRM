@@ -389,7 +389,9 @@ function clearSearch() {
   align-items: center;
   gap: 10px;
   height: 50px;
-  margin-bottom: 23px;
+  /* Тот же зазор, что между плитками и никобустером: блок фильтров
+     читается единым, без провала после поиска. */
+  margin-bottom: 13px;
   padding: 0 15px;
   border: 1px solid #e5e8ef;
   border-radius: 16px;

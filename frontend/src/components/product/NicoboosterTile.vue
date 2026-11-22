@@ -87,7 +87,8 @@ const priceLabel = computed(() => {
 
 <style scoped>
 .nicobooster {
-  margin-top: 10px;
+  /* Совпадает с зазором после поиска: одинаковый ритм в блоке. */
+  margin-top: 13px;
 }
 
 /* Размеры плитки совпадают с плитками фильтров: высота 50px,
