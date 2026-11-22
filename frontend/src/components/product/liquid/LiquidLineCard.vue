@@ -1239,7 +1239,9 @@ function closeColorPreview() {
   flex-direction: column;
   align-items: flex-start;
   justify-content: center;
-  gap: 6px;
+  /* Между строками мало воздуха ещё и внутри line-height, поэтому
+     зазор небольшой: название и крепость читаются парой. */
+  gap: 2px;
   min-width: 0;
   flex: 1;
 }
@@ -1852,7 +1854,7 @@ function closeColorPreview() {
   }
 
   .liquid-line-info {
-    gap: 6px;
+    gap: 2px;
   }
 
   .liquid-line-title {
@@ -1975,7 +1977,7 @@ function closeColorPreview() {
   }
 
   .liquid-line-info {
-    gap: 6px;
+    gap: 2px;
   }
 
   .liquid-line-title {
@@ -2109,7 +2111,7 @@ function closeColorPreview() {
   }
 
   .liquid-line-info {
-    gap: 5px;
+    gap: 2px;
   }
 
   .liquid-line-title {
