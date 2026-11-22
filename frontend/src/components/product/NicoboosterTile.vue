@@ -138,11 +138,11 @@ const priceLabel = computed(() => {
    а композиция читается ровнее. */
 .nicobooster__art {
   position: absolute;
-  top: -33px;
-  right: 37%;
+  top: -31px;
+  right: 44%;
   z-index: 1;
-  width: 180px;
-  height: 180px;
+  width: 171px;
+  height: 171px;
   background: url("/filters/nicobooster-art.png") center / contain no-repeat;
   transform: rotate(35deg);
   mask-image: linear-gradient(to right, transparent, #000 42%);
