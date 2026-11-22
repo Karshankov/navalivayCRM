@@ -1,11 +1,12 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
 import CategoryFilterBar from "@/components/product/CategoryFilterBar.vue";
 
-const q = (s: string) => document.querySelector(s) as HTMLElement | null;
-const qa = (s: string) => [...document.querySelectorAll(s)];
-
-describe("CategoryFilterBar: плитки фильтров", () => {
+/**
+ * Версия из filters-fully-native.html: поиск, компактные плитки 50px
+ * и крепость через нативный список системы.
+ */
+describe("CategoryFilterBar: нативные плитки", () => {
   beforeEach(() => { document.body.innerHTML = ""; });
   afterEach(() => { document.body.innerHTML = ""; });
 
@@ -16,75 +17,54 @@ describe("CategoryFilterBar: плитки фильтров", () => {
     });
   }
 
-  it("рисует две плитки для жидкостей", async () => {
+  it("рисует поиск, ТОП-5 и выбор крепости", async () => {
     const w = mountBar();
     await flushPromises();
 
-    const tiles = w.findAll(".filter-tile");
-    console.log("плиток:", tiles.length);
-    console.log("подписи:", tiles.map((t) => t.find(".filter-tile__caption").text()).join(" | "));
-    console.log("артов:", w.findAll(".filter-tile__art").length);
+    console.log("поиск:", w.find("[data-test=filter-search]").exists());
+    console.log("плейсхолдер:", w.find("[data-test=filter-search]").attributes("placeholder"));
+    console.log("ТОП-5:", w.find("[data-test=filter-top]").exists());
+    console.log("крепость:", w.find("[data-test=filter-strength]").exists());
+    console.log("тип поля крепости:", w.find("[data-test=filter-strength]").element.tagName);
 
-    expect(tiles).toHaveLength(2);
-    expect(w.find("[data-test=filter-top]").exists()).toBe(true);
-    expect(w.find("[data-test=filter-strength-open]").exists()).toBe(true);
+    expect(w.find("[data-test=filter-search]").exists()).toBe(true);
+    expect(w.find("[data-test=filter-strength]").element.tagName).toBe("SELECT");
     w.unmount();
   });
 
-  it("нажатие плитки «Чаще берут» отправляет toggle-top", async () => {
+  it("в списке крепости четыре варианта, первый — любой", async () => {
     const w = mountBar();
     await flushPromises();
 
-    await w.find("[data-test=filter-top]").trigger("click");
+    const options = w.findAll("[data-test=filter-strength] option");
+    console.log("вариантов:", options.length);
+    console.log("подписи:", options.map((o) => o.text()).join(" | "));
+
+    expect(options).toHaveLength(4);
+    expect(options[0].text()).toBe("Любая крепость");
+    w.unmount();
+  });
+
+  it("нажатие ТОП-5 отправляет toggle-top", async () => {
+    const w = mountBar();
+    await flushPromises();
+
+    await w.find("[data-test=filter-top]").trigger("change");
     console.log("событие toggle-top:", w.emitted("toggle-top")?.length ?? 0);
     expect(w.emitted("toggle-top")).toHaveLength(1);
     w.unmount();
   });
 
-  it("выбранное состояние красит плитку и ставит aria-pressed", async () => {
-    const w = mountBar({ topActive: true });
-    await flushPromises();
-
-    const top = w.find("[data-test=filter-top]");
-    console.log("aria-pressed:", top.attributes("aria-pressed"));
-    expect(top.attributes("aria-pressed")).toBe("true");
-    w.unmount();
-  });
-
-  it("плитка крепости открывает панель с вариантами", async () => {
+  it("выбор крепости применяет фильтр", async () => {
     const w = mountBar();
     await flushPromises();
 
-    console.log("до нажатия панель:", !!q(".strength-sheet"));
-    await w.find("[data-test=filter-strength-open]").trigger("click");
-    await flushPromises();
-
-    const sheet = q(".strength-sheet");
-    console.log("после нажатия панель:", !!sheet);
-    console.log("заголовок:", q("#strength-sheet-title")?.textContent);
-    const options = qa(".strength-option");
-    console.log("вариантов:", options.length);
-    console.log("подписи:", options.map((o) => o.textContent?.trim()).join(" | "));
-
-    expect(sheet).not.toBeNull();
-    expect(options).toHaveLength(4);
-    w.unmount();
-  });
-
-  it("выбор крепости применяет фильтр и закрывает панель", async () => {
-    const w = mountBar();
-    await flushPromises();
-
-    await w.find("[data-test=filter-strength-open]").trigger("click");
-    await flushPromises();
-    // Панель уезжает в body через Teleport — ищем её в документе.
-    (q("[data-test=strength-strong]") as HTMLButtonElement).click();
+    const select = w.find("[data-test=filter-strength]");
+    await select.setValue("strong");
     await flushPromises();
 
     const events = w.emitted("toggle-strength");
     console.log("toggle-strength:", JSON.stringify(events));
-    console.log("панель закрылась:", !q(".strength-sheet"));
-    expect(events).toHaveLength(1);
     expect(events?.[0]).toEqual(["strong"]);
     w.unmount();
   });
@@ -93,13 +73,11 @@ describe("CategoryFilterBar: плитки фильтров", () => {
     const w = mountBar({ strengthTier: "strong" });
     await flushPromises();
 
-    await w.find("[data-test=filter-strength-open]").trigger("click");
-    await flushPromises();
-    (q("[data-test=strength-any]") as HTMLButtonElement).click();
+    await w.find("[data-test=filter-strength]").setValue("");
     await flushPromises();
 
     const events = w.emitted("toggle-strength");
-    console.log("снятие фильтра:", JSON.stringify(events));
+    console.log("снятие:", JSON.stringify(events));
     expect(events?.[0]).toEqual(["strong"]);
     w.unmount();
   });
@@ -108,9 +86,39 @@ describe("CategoryFilterBar: плитки фильтров", () => {
     const w = mountBar({ strengthTier: "light" });
     await flushPromises();
 
-    const caption = w.find("[data-test=filter-strength-open] .filter-tile__caption").text();
-    console.log("подпись при выбранной лёгкой:", caption);
+    const caption = w.find(".filter-tile--strength .filter-tile__caption").text();
+    console.log("подпись:", caption);
+    console.log("плитка залита:", w.find(".filter-tile--strength").classes().includes("is-selected"));
     expect(caption).toBe("Лёгкая");
+    w.unmount();
+  });
+
+  it("при выборе крепости поле синхронизируется с фильтром", async () => {
+    const w = mountBar({ strengthTier: "very_strong" });
+    await flushPromises();
+
+    const value = (w.find("[data-test=filter-strength]").element as HTMLSelectElement).value;
+    console.log("значение поля:", value);
+    expect(value).toBe("very_strong");
+    w.unmount();
+  });
+
+  it("поиск принимает ввод и очищается крестиком", async () => {
+    const w = mountBar();
+    await flushPromises();
+
+    const input = w.find("[data-test=filter-search]");
+    await input.setValue("вишня");
+    await flushPromises();
+
+    console.log("введено:", (input.element as HTMLInputElement).value);
+    console.log("крестик:", w.find(".filter-search__clear").exists());
+    expect(w.find(".filter-search__clear").exists()).toBe(true);
+
+    await w.find(".filter-search__clear").trigger("click");
+    await flushPromises();
+    console.log("после очистки:", (w.find("[data-test=filter-search]").element as HTMLInputElement).value);
+    expect((w.find("[data-test=filter-search]").element as HTMLInputElement).value).toBe("");
     w.unmount();
   });
 
@@ -118,8 +126,17 @@ describe("CategoryFilterBar: плитки фильтров", () => {
     const w = mountBar({ profile: "snus_plates" });
     await flushPromises();
 
-    console.log("плиток у снюса:", w.findAll(".filter-tile").length);
-    expect(w.find("[data-test=filter-strength-open]").exists()).toBe(false);
+    console.log("крепость у снюса:", w.find("[data-test=filter-strength]").exists());
+    expect(w.find("[data-test=filter-strength]").exists()).toBe(false);
+    w.unmount();
+  });
+
+  it("крестик поиска не виден, пока поле пустое", async () => {
+    const w = mountBar();
+    await flushPromises();
+
+    console.log("крестик при пустом поле:", w.find(".filter-search__clear").exists());
+    expect(w.find(".filter-search__clear").exists()).toBe(false);
     w.unmount();
   });
 });

@@ -1,119 +1,95 @@
 <template>
   <section v-if="visible" class="category-filter-bar" aria-label="Фильтры категории">
-    <div v-if="showTop || showDiscountChip || showStrength" class="filter-tiles">
-      <!-- «Чаще берут»: плитка с объёмным артом и переключаемым состоянием. -->
+    <!-- Поиск по вкусам. Логика подключится позже: сейчас поле только
+         показывает ввод и очищается крестиком. -->
+    <label class="filter-search">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="10.5" cy="10.5" r="6.5" />
+        <path d="m16 16 4.5 4.5" />
+      </svg>
+      <input
+        v-model="searchQuery"
+        type="search"
+        placeholder="Поиск по вкусам"
+        aria-label="Поиск по вкусам"
+        autocomplete="off"
+        data-test="filter-search"
+      />
+      <button
+        v-if="searchQuery"
+        type="button"
+        class="filter-search__clear"
+        aria-label="Очистить поиск"
+        @click="clearSearch"
+      >
+        ×
+      </button>
+    </label>
+
+    <div class="filter-tiles">
+      <!-- «ТОП-5»: плитка с чекбоксом внутри. Выбранное состояние —
+           красная заливка, как у навигационных плиток. -->
       <div v-if="topChip" class="filter-tile-slot">
-        <button
-          type="button"
-          class="filter-tile filter-tile--top"
-          :class="{ 'is-loading': topChip.loading }"
-          :aria-pressed="topChip.active"
-          :disabled="topChip.loading"
-          :aria-label="topChip.label"
-          data-test="filter-top"
-          @click="topChip.onClick"
-        >
+        <label class="filter-tile filter-tile--top" :class="{ 'is-loading': topChip.loading }">
+          <input
+            class="filter-tile__toggle"
+            type="checkbox"
+            name="top5"
+            :checked="topChip.active"
+            :disabled="topChip.loading"
+            aria-label="ТОП-5"
+            data-test="filter-top"
+            @change="topChip.onClick()"
+          />
           <span class="filter-tile__art filter-tile__art--top" aria-hidden="true" />
-          <span class="filter-tile__caption">{{ topChip.tileLabel }}</span>
-        </button>
+          <span class="filter-tile__caption">ТОП-5</span>
+        </label>
       </div>
 
-      <!-- Скидки: та же плитка, но со счётчиком вместо арта. -->
+      <!-- Скидки: та же плитка со счётчиком, когда в разделе есть скидки. -->
       <div v-if="showDiscountChip" class="filter-tile-slot">
-        <button
-          type="button"
-          class="filter-tile filter-tile--discount"
-          :aria-pressed="discountActive"
-          :aria-label="`Показать линейки со скидками, сейчас ${discountCount}`"
-          data-test="filter-discount"
-          @click="$emit('toggle-discount')"
-        >
+        <label class="filter-tile filter-tile--discount">
+          <input
+            class="filter-tile__toggle"
+            type="checkbox"
+            name="discount"
+            :checked="discountActive"
+            :aria-label="`Показать линейки со скидками, сейчас ${discountCount}`"
+            data-test="filter-discount"
+            @change="$emit('toggle-discount')"
+          />
           <span class="filter-tile__count" aria-hidden="true">{{ discountCount }}</span>
           <span class="filter-tile__caption">Со скидкой</span>
-        </button>
+        </label>
       </div>
 
-      <!-- Крепость: плитка, снизу выезжает панель с вариантами. -->
-      <div v-if="showStrength" class="filter-tile-slot">
-        <button
-          type="button"
-          class="filter-tile filter-tile--strength"
-          aria-haspopup="dialog"
-          :aria-label="strengthTileLabel"
-          :aria-expanded="strengthOpen"
-          data-test="filter-strength-open"
-          @click="openStrength"
+      <!-- Крепость: прозрачный нативный select поверх плитки. При нажатии
+           открывается системный список, подпись меняется по выбору. -->
+      <div v-if="showStrength" class="filter-tile-slot filter-tile-slot--strength">
+        <select
+          v-model="strengthValue"
+          class="filter-tile__select"
+          name="strength"
+          aria-label="Выбрать крепость"
+          data-test="filter-strength"
+          @change="onStrengthChange"
         >
+          <option value="">Любая крепость</option>
+          <option v-for="chip in strengthChips" :key="chip.id" :value="chip.id">
+            {{ chip.label }}
+          </option>
+        </select>
+        <span class="filter-tile filter-tile--strength" :class="{ 'is-selected': strengthTier !== null }">
           <span class="filter-tile__art filter-tile__art--strength" aria-hidden="true" />
           <span class="filter-tile__caption">{{ strengthTileLabel }}</span>
-          <span class="filter-tile__chevron" aria-hidden="true">
-            <svg viewBox="0 0 20 20"><path d="m5 8 5 5 5-5" /></svg>
-          </span>
-        </button>
+        </span>
       </div>
     </div>
-
-    <!-- Панель выбора крепости: как нижние шторки в приложении. -->
-    <Teleport to="body">
-      <Transition name="strength-fade">
-        <div
-          v-if="strengthOpen"
-          class="strength-backdrop"
-          aria-hidden="true"
-          @click="closeStrength"
-        />
-      </Transition>
-      <Transition name="strength-rise">
-        <div
-          v-if="strengthOpen"
-          class="strength-sheet"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="strength-sheet-title"
-          @keydown.esc="closeStrength"
-        >
-          <span class="strength-sheet__grip" aria-hidden="true" />
-          <div class="strength-sheet__head">
-            <h2 id="strength-sheet-title">Крепость</h2>
-            <button
-              type="button"
-              class="strength-sheet__close"
-              aria-label="Закрыть выбор крепости"
-              @click="closeStrength"
-            >
-              ×
-            </button>
-          </div>
-          <div class="strength-sheet__options">
-            <button
-              type="button"
-              class="strength-option"
-              :aria-pressed="strengthTier === null"
-              data-test="strength-any"
-              @click="pickStrength(null)"
-            >
-              Любая крепость
-            </button>
-            <button
-              v-for="chip in strengthChips"
-              :key="chip.id"
-              type="button"
-              class="strength-option"
-              :aria-pressed="chip.active"
-              :data-test="`strength-${chip.id}`"
-              @click="pickStrength(chip.tier)"
-            >
-              {{ chip.label }}
-            </button>
-          </div>
-        </div>
-      </Transition>
-    </Teleport>
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import type { StorefrontFiltersProfile, StrengthTier } from "@/composables/useCategoryFilters";
 import { getStrengthLabel } from "@/composables/useCategoryFilters";
 
@@ -223,43 +199,111 @@ const strengthTileLabel = computed(() => {
   return active ? active.tileLabel : "Выбрать крепость";
 });
 
-/* Панель выбора крепости открывается по плитке. Выбор сразу применяет
-   фильтр и закрывает панель — как нижние шторки в приложении. */
-const strengthOpen = ref(false);
+/* Крепость выбирается нативным списком системы: select прозрачный
+   и лежит поверх плитки, поэтому нажатие открывает системный выбор. */
+const strengthValue = ref<string>(props.strengthTier ?? "");
 
-function openStrength() {
-  strengthOpen.value = true;
-}
+// Внешнее изменение фильтра (сброс на экране) синхронизируем с полем.
+watch(
+  () => props.strengthTier,
+  (tier) => {
+    strengthValue.value = tier ?? "";
+  },
+);
 
-function closeStrength() {
-  strengthOpen.value = false;
-}
-
-function pickStrength(tier: StrengthTier | null) {
-  closeStrength();
-  // Повторный выбор того же значения снимает фильтр, как переключатель.
-  if (tier === null || props.strengthTier === tier) {
+function onStrengthChange() {
+  const next = strengthValue.value as StrengthTier | "";
+  if (!next) {
+    // «Любая крепость»: снимаем фильтр, если он был.
     if (props.strengthTier !== null) emit("toggle-strength", props.strengthTier);
     return;
   }
-  emit("toggle-strength", tier);
+  emit("toggle-strength", next);
 }
 
-/* Escape закрывает панель, а фон не должен прокручиваться под ней. */
-watch(strengthOpen, (open) => {
-  if (typeof document === "undefined") return;
-  document.body.style.overflow = open ? "hidden" : "";
-});
+/* Поиск по вкусам. Логику подключим позже — сейчас поле только
+   держит введённый текст. */
+const searchQuery = ref("");
 
-onBeforeUnmount(() => {
-  if (typeof document !== "undefined") document.body.style.overflow = "";
-});
+function clearSearch() {
+  searchQuery.value = "";
+}
 </script>
 
 <style scoped>
-/* ===== Плитки фильтров =====
-   Две плитки в ряд: «Чаще берут» и выбор крепости. Вид взят из
-   присланного макета filters-final.html, логика фильтров не менялась. */
+/* ===== Поиск по вкусам =====
+   Размеры и отступы взяты из присланного макета: высота 50px, радиус
+   16px, отступ снизу 23px, внутренний 0 15px, зазор 10px. */
+.filter-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 50px;
+  margin-bottom: 23px;
+  padding: 0 15px;
+  border: 1px solid #e5e8ef;
+  border-radius: 16px;
+  background: #ffffff;
+  transition: border-color 0.2s ease;
+}
+
+.filter-search:focus-within {
+  border-color: #c1ccd9;
+}
+
+.filter-search svg {
+  flex: none;
+  width: 20px;
+  fill: none;
+  stroke: #99a1ad;
+  stroke-width: 1.7;
+}
+
+.filter-search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  background: none;
+  color: #191919;
+  font-family: inherit;
+  /* 16px: при меньшем iOS зумит страницу при фокусе. */
+  font-size: 16px;
+  outline: none;
+}
+
+.filter-search input::placeholder {
+  color: #979fac;
+  font-size: 14px;
+}
+
+/* Крестик очистки: родной у type=search выглядит иначе. */
+.filter-search input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.filter-search__clear {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: #f0f2f7;
+  color: #7e8998;
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.filter-search__clear:focus-visible {
+  outline: 2px solid #147cec;
+  outline-offset: 2px;
+}
+
+/* ===== Плитки =====
+   Две плитки по 50px высотой, зазор 10px, радиус 14px. */
 .filter-tiles {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -275,17 +319,15 @@ onBeforeUnmount(() => {
   position: relative;
   display: block;
   width: 100%;
-  height: 82px;
-  padding: 0;
+  height: 50px;
   overflow: hidden;
   border: 1px solid transparent;
-  border-radius: 18px;
+  border-radius: 14px;
   background: #ffffff;
   color: #191919;
-  font-family: "Montserrat", sans-serif;
-  text-align: left;
-  cursor: pointer;
+  font-family: inherit;
   isolation: isolate;
+  cursor: pointer;
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
   transition: box-shadow 0.22s ease, color 0.2s ease, border-color 0.2s ease,
@@ -310,96 +352,128 @@ onBeforeUnmount(() => {
   pointer-events: none;
 }
 
-.filter-tile:active:not(:disabled) {
+/* Нажатие: плитка чуть ужимается. */
+.filter-tile:active {
   transform: scale(0.98);
 }
 
-.filter-tile:focus-visible {
-  outline: 2px solid #147cec;
-  outline-offset: 3px;
-}
-
-.filter-tile:disabled {
+.filter-tile.is-loading {
   cursor: wait;
   opacity: 0.7;
 }
 
-/* Выбранное состояние: красный градиент, как у навигационных плиток. */
-.filter-tile[aria-pressed="true"] {
+/* Чекбокс и select растянуты по плитке и прозрачны: нажатие ловят они,
+   а вид рисуем на плите. Так выбор крепости открывается системным
+   списком, как в нативных приложениях. */
+.filter-tile__toggle,
+.filter-tile__select {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  border: 0;
+  opacity: 0;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.filter-tile__select {
+  /* 16px: при меньшем iOS зумит страницу при открытии списка. */
+  font-size: 16px;
+}
+
+.filter-tile__toggle:disabled,
+.filter-tile__select:disabled {
+  cursor: wait;
+}
+
+/* Фокус показываем на самой плитке: поле ввода прозрачное. */
+.filter-tile:has(.filter-tile__toggle:focus-visible),
+.filter-tile-slot--strength:has(.filter-tile__select:focus-visible) .filter-tile {
+  outline: 2px solid #147cec;
+  outline-offset: 3px;
+}
+
+/* ===== Выбранное состояние =====
+   Красная заливка, как у навигационных плиток. */
+.filter-tile:has(.filter-tile__toggle:checked),
+.filter-tile--strength.is-selected {
   border-color: transparent;
   color: #ffffff;
   background: linear-gradient(115deg, #ff2010 0%, #e4170c 43%, #a91e17 100%);
   box-shadow: 0 7px 19px -6px #df21144f, 0 3px 8px -4px #b819122e;
 }
 
-.filter-tile[aria-pressed="true"]::before {
+.filter-tile:has(.filter-tile__toggle:checked)::before,
+.filter-tile--strength.is-selected::before {
   background: radial-gradient(ellipse at 4% -12%, #ffffff38, transparent 58%),
     radial-gradient(ellipse at 78% 130%, #ff806929, transparent 68%);
 }
 
-.filter-tile[aria-pressed="true"]::after {
+.filter-tile:has(.filter-tile__toggle:checked)::after,
+.filter-tile--strength.is-selected::after {
   box-shadow: inset 0 1px 0 #ffffff29, inset 0 -1px 1px #7d090c18;
 }
 
-/* Подпись стоит слева по центру высоты. */
+/* ===== Подпись =====
+   Слева по центру высоты: 13px, вес 600, максимум 70px ширины. */
 .filter-tile__caption {
   position: absolute;
   top: 50%;
-  left: 12px;
-  right: auto;
+  left: 10px;
   z-index: 3;
-  max-width: 76px;
+  max-width: 70px;
+  color: inherit;
   font-size: 13px;
   font-weight: 600;
   line-height: 1.25;
   letter-spacing: -0.15px;
-  transform: translateY(-50%);
   text-align: left;
+  transform: translateY(-50%);
   pointer-events: none;
 }
 
-.filter-tile--strength .filter-tile__caption {
-  max-width: 70px;
-  font-size: 12px;
-}
-
-.filter-tile[aria-pressed="true"] .filter-tile__caption {
+.filter-tile:has(.filter-tile__toggle:checked) .filter-tile__caption,
+.filter-tile--strength.is-selected .filter-tile__caption {
   color: #ffffff;
   text-shadow: 0 1px 1px #8c0f1420;
 }
 
-/* Объёмные арты уходят вправо, растворяясь к тексту. */
+/* ===== Арты =====
+   Объёмные картинки справа, растворяются к тексту маской. */
 .filter-tile__art {
   position: absolute;
-  top: 50%;
   z-index: 1;
   background-repeat: no-repeat;
+  background-position: center;
+  background-size: 100% 100%;
   pointer-events: none;
+  mask-image: linear-gradient(to right, transparent, #000 35%);
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 35%);
 }
 
 .filter-tile__art--top {
+  top: -11px;
   right: -16px;
-  width: 110px;
-  height: 110px;
+  width: 85px;
+  height: 85px;
   background-image: url("/filters/top5-art.png");
-  background-size: 100% 100%;
-  transform: translateY(-50%);
-  mask-image: linear-gradient(to right, transparent, #000 35%);
-  -webkit-mask-image: linear-gradient(to right, transparent, #000 35%);
+  transform: rotate(-5deg);
 }
 
 .filter-tile__art--strength {
-  right: -10px;
-  width: 96px;
-  height: 96px;
+  top: -9px;
+  right: -23px;
+  width: 84px;
+  height: 84px;
   background-image: url("/filters/strength-art.png");
-  background-size: 100% 100%;
-  transform: translateY(-50%);
-  mask-image: linear-gradient(to right, transparent, #000 35%);
-  -webkit-mask-image: linear-gradient(to right, transparent, #000 35%);
+  transform: rotate(8deg);
 }
 
-.filter-tile[aria-pressed="true"] .filter-tile__art {
+.filter-tile:has(.filter-tile__toggle:checked) .filter-tile__art,
+.filter-tile--strength.is-selected .filter-tile__art {
   filter: drop-shadow(0 0 6px #ffffff23);
 }
 
@@ -407,230 +481,98 @@ onBeforeUnmount(() => {
 .filter-tile__count {
   position: absolute;
   top: 50%;
-  right: 14px;
+  right: 12px;
   z-index: 2;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 30px;
-  height: 30px;
-  padding: 0 8px;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 7px;
   border-radius: 50%;
   background: linear-gradient(106.76deg, #f50302 -2.64%, #a90f0e 85.78%);
   color: #ffffff;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 800;
   line-height: 1;
   transform: translateY(-50%);
 }
 
-.filter-tile[aria-pressed="true"] .filter-tile__count {
+.filter-tile:has(.filter-tile__toggle:checked) .filter-tile__count {
   background: #ffffff;
   color: #a90f0e;
 }
 
-/* Стрелка вниз у плитки крепости: показывает, что откроется список. */
-.filter-tile__chevron {
-  position: absolute;
-  right: 9px;
-  bottom: 11px;
-  z-index: 3;
-  display: grid;
-  place-items: center;
-  width: 19px;
-  height: 19px;
-  border-radius: 50%;
-  background: #f0f2f7;
-  color: #929aa6;
-  pointer-events: none;
-}
-
-.filter-tile__chevron svg {
-  width: 11px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.7;
-}
-
-.filter-tile[aria-pressed="true"] .filter-tile__chevron {
-  background: #ffffff2e;
-  color: #ffffff;
-}
-
-/* ===== Панель выбора крепости ===== */
-.strength-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 90;
-  background: #1c263550;
-}
-
-.strength-sheet {
-  position: fixed;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  z-index: 91;
-  width: min(100%, 430px);
-  margin: 0 auto;
-  padding: 10px 18px max(22px, env(safe-area-inset-bottom));
-  border-radius: 24px 24px 0 0;
-  background: #ffffff;
-  color: #202126;
-  font-family: "Montserrat", sans-serif;
-  box-shadow: 0 -12px 50px #19263c20;
-}
-
-.strength-sheet__grip {
-  display: block;
-  width: 34px;
-  height: 4px;
-  margin: 0 auto 18px;
-  border-radius: 4px;
-  background: #dce1e8;
-}
-
-.strength-sheet__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-.strength-sheet__head h2 {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 600;
-}
-
-.strength-sheet__close {
-  display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  border: 0;
-  border-radius: 50%;
-  background: #f1f3f7;
-  color: #7e8998;
-  font-size: 22px;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.strength-sheet__close:focus-visible {
-  outline: 2px solid #147cec;
-  outline-offset: 2px;
-}
-
-.strength-sheet__options {
-  display: grid;
-  gap: 8px;
-}
-
-.strength-option {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 49px;
-  padding: 12px 14px;
-  border: 1px solid #e7eaf0;
-  border-radius: 12px;
-  background: #f8f9fc;
-  color: #191919;
-  font-family: inherit;
-  font-size: 14px;
-  font-weight: 500;
-  text-align: left;
-  cursor: pointer;
-  transition: border-color 0.2s ease, background 0.2s ease, color 0.2s ease;
-}
-
-.strength-option:focus-visible {
-  outline: 2px solid #147cec;
-  outline-offset: 2px;
-}
-
-.strength-option[aria-pressed="true"] {
-  border-color: #e6b2ad;
-  background: #fff1ee;
-  color: #c3231b;
-}
-
-.strength-option[aria-pressed="true"]::after {
-  content: "✓";
-  font-size: 17px;
-}
-
-.strength-fade-enter-active,
-.strength-fade-leave-active {
-  transition: opacity 0.24s ease;
-}
-
-.strength-fade-enter-from,
-.strength-fade-leave-to {
-  opacity: 0;
-}
-
-.strength-rise-enter-active,
-.strength-rise-leave-active {
-  transition: transform 0.28s cubic-bezier(0.32, 0.72, 0, 1);
-}
-
-.strength-rise-enter-from,
-.strength-rise-leave-to {
-  transform: translateY(100%);
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .filter-tile:hover:not(:disabled):not([aria-pressed="true"]) {
-    border-color: #e6e9ed;
-    box-shadow: 0 6px 16px -8px #19263c1f;
-  }
-}
-
 @media (max-width: 350px) {
   .filter-tiles {
-    gap: 8px;
-  }
-
-  .filter-tile {
-    height: 74px;
-    border-radius: 16px;
+    gap: 10px;
   }
 
   .filter-tile__caption {
     left: 10px;
-    max-width: 66px;
+    max-width: 70px;
     font-size: 12px;
   }
 
-  .filter-tile--strength .filter-tile__caption {
-    max-width: 62px;
-    font-size: 11px;
+  .filter-tile--top .filter-tile__caption {
+    font-size: 13px;
   }
 
   .filter-tile__art--top {
-    right: -14px;
-    width: 96px;
-    height: 96px;
+    top: -11px;
+    right: -16px;
+    width: 85px;
+    height: 85px;
   }
 
   .filter-tile__art--strength {
-    right: -8px;
+    top: -9px;
+    right: -23px;
     width: 84px;
     height: 84px;
   }
 }
 
+@media (hover: hover) and (pointer: fine) {
+  .filter-tile:hover:not(:has(.filter-tile__toggle:checked)):not(.is-selected) {
+    border-color: #e6e9ed;
+    box-shadow: 0 6px 16px -8px #19263c1f;
+  }
+}
+
+/* Плавающие арты: оживляют плитку, но не мешают чтению. */
+@media (prefers-reduced-motion: no-preference) {
+  .filter-tile__art--top {
+    animation: filter-float-top 5s ease-in-out infinite;
+  }
+
+  .filter-tile__art--strength {
+    animation: filter-float-gauge 5.8s ease-in-out infinite;
+  }
+
+  @keyframes filter-float-top {
+    0%,
+    100% {
+      transform: rotate(-5deg) translateY(0);
+    }
+    50% {
+      transform: rotate(-2deg) translateY(2px);
+    }
+  }
+
+  @keyframes filter-float-gauge {
+    0%,
+    100% {
+      transform: rotate(8deg) translateY(0);
+    }
+    50% {
+      transform: rotate(5deg) translateY(2px);
+    }
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .filter-tile,
-  .strength-option,
-  .strength-fade-enter-active,
-  .strength-fade-leave-active,
-  .strength-rise-enter-active,
-  .strength-rise-leave-active {
+  .filter-tile {
     transition: none;
   }
 }
