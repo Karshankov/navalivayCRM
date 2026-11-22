@@ -7,11 +7,23 @@
         <circle cx="10.5" cy="10.5" r="6.5" />
         <path d="m16 16 4.5 4.5" />
       </svg>
+      <!-- Анимированная подсказка: пока поле пустое, вместо placeholder
+           печатается фраза и примеры вкусов. Как только покупатель
+           начал вводить — подсказка уходит. -->
+      <span
+        v-if="!searchQuery"
+        class="filter-search__hint"
+        :class="{ 'is-careless': isCarelessPause }"
+        aria-hidden="true"
+      >
+        <span class="filter-search__hint-text">{{ typedHint }}</span><span
+          class="filter-search__caret"
+        />
+      </span>
       <input
         v-model="searchQuery"
         type="search"
-        placeholder="Поиск по вкусам"
-        aria-label="Поиск по вкусам"
+        :aria-label="searchAriaLabel"
         autocomplete="off"
         data-test="filter-search"
       />
@@ -89,7 +101,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import type { StorefrontFiltersProfile, StrengthTier } from "@/composables/useCategoryFilters";
 import { getStrengthLabel } from "@/composables/useCategoryFilters";
 
@@ -221,12 +233,136 @@ function onStrengthChange() {
   emit("toggle-strength", next);
 }
 
-/* Поиск по вкусам. Логику подключим позже — сейчас поле только
-   держит введённый текст. */
+/* ===== Анимированная подсказка в поиске =====
+   Пока поле пустое, вместо placeholder печатается фраза, затем
+   примеры вкусов — с паузой, стиранием и задержкой перед следующим.
+   Работает только визуально: для скринридера у поля своя подпись,
+   иначе он читал бы меняющийся текст как содержимое. */
+const HINT_PHRASES = [
+  "можно найти тут по вкусу",
+  "малина",
+  "хм…",
+  "арбуз",
+  "вишня",
+  "клубника",
+];
+
+/** Скорость печати и стирания, пауза на прочтение. */
+const TYPE_MS = 55;
+const ERASE_MS = 32;
+const HOLD_MS = 1500;
+/** После «хм…» держим дольше: это задумчивость, а не пример. */
+const HOLD_LONG_MS = 1900;
+
 const searchQuery = ref("");
+const typedHint = ref("");
+const isCarelessPause = ref(false);
+
+let hintTimer: ReturnType<typeof setTimeout> | 0 = 0;
+let phraseIndex = 0;
+let charIndex = 0;
+let erasing = false;
+/** Анимацию останавливаем, когда покупатель начал вводить. */
+let hintRunning = false;
+
+function scheduleHint(delay: number) {
+  if (hintTimer) clearTimeout(hintTimer);
+  hintTimer = setTimeout(tickHint, delay);
+}
+
+function tickHint() {
+  if (!hintRunning) return;
+
+  const phrase = HINT_PHRASES[phraseIndex];
+
+  if (!erasing) {
+    charIndex += 1;
+    typedHint.value = phrase.slice(0, charIndex);
+
+    if (charIndex === phrase.length) {
+      // Фраза напечатана: держим её, потом стираем.
+      const isThoughtful = phrase === "хм…";
+      const hold = isThoughtful ? HOLD_LONG_MS : HOLD_MS;
+      isCarelessPause.value = isThoughtful;
+      scheduleHint(hold);
+      erasing = true;
+      return;
+    }
+    scheduleHint(TYPE_MS);
+    return;
+  }
+
+  charIndex -= 1;
+  typedHint.value = phrase.slice(0, Math.max(0, charIndex));
+
+  if (charIndex <= 0) {
+    // Стёрли: переходим к следующей фразе.
+    erasing = false;
+    isCarelessPause.value = false;
+    phraseIndex = (phraseIndex + 1) % HINT_PHRASES.length;
+    // Небольшая пауза перед новой строкой, чтобы не мельтешило.
+    scheduleHint(320);
+    return;
+  }
+  scheduleHint(ERASE_MS);
+}
+
+function startHint() {
+  hintRunning = true;
+  phraseIndex = 0;
+  charIndex = 0;
+  erasing = false;
+  typedHint.value = "";
+  // Первая фраза появляется сразу, без задержки на старте.
+  scheduleHint(400);
+}
+
+function stopHint() {
+  hintRunning = false;
+  isCarelessPause.value = false;
+  if (hintTimer) {
+    clearTimeout(hintTimer);
+    hintTimer = 0;
+  }
+}
+
+/* Подсказка живёт, только пока поле пустое и экран не скрыт. */
+watch(
+  [() => searchQuery.value, () => props.profile],
+  () => {
+    if (searchQuery.value) {
+      stopHint();
+      return;
+    }
+    if (!hintRunning) startHint();
+  },
+);
+
+onMounted(() => {
+  // Уважаем системную настройку: при отключённой анимации текст статичен.
+  if (prefersReducedMotion()) {
+    typedHint.value = HINT_PHRASES[0];
+    return;
+  }
+  startHint();
+});
+
+onBeforeUnmount(() => {
+  stopHint();
+});
+
+/** Скринридеру отдаём понятную подпись, а не бегущий текст. */
+const searchAriaLabel = computed(() => "Поиск по вкусам");
+
+function prefersReducedMotion(): boolean {
+  if (typeof window === "undefined" || !window.matchMedia) return false;
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
 
 function clearSearch() {
   searchQuery.value = "";
+  // Поле опустело — возвращаем бегущую подсказку.
+  if (!hintRunning && !prefersReducedMotion()) startHint();
 }
 </script>
 
@@ -235,6 +371,7 @@ function clearSearch() {
    Размеры и отступы взяты из присланного макета: высота 50px, радиус
    16px, отступ снизу 23px, внутренний 0 15px, зазор 10px. */
 .filter-search {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -245,6 +382,13 @@ function clearSearch() {
   border-radius: 16px;
   background: #ffffff;
   transition: border-color 0.2s ease;
+}
+
+/* Поле лежит выше подсказки: каретка ввода и выделение текста
+   не должны упираться в подсказку. */
+.filter-search input {
+  position: relative;
+  z-index: 1;
 }
 
 .filter-search:focus-within {
@@ -271,9 +415,49 @@ function clearSearch() {
   outline: none;
 }
 
-.filter-search input::placeholder {
+/* Подсказка: на месте placeholder, поверх пустого поля. Ввод начинается
+   с той же точки, поэтому текст не сдвигается, когда подсказка уходит. */
+.filter-search__hint {
+  position: absolute;
+  top: 50%;
+  left: 45px;
+  z-index: 0;
+  display: flex;
+  align-items: center;
+  max-width: calc(100% - 62px);
   color: #979fac;
   font-size: 14px;
+  line-height: 1;
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.filter-search__hint-text {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Мигающая каретка: показывает, что текст печатается сейчас. */
+.filter-search__caret {
+  flex: none;
+  width: 1.5px;
+  height: 15px;
+  margin-left: 2px;
+  background: #b4bcc8;
+  animation: filter-caret-blink 1s steps(1) infinite;
+}
+
+@keyframes filter-caret-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .filter-search__caret {
+    animation: none;
+  }
 }
 
 /* Крестик очистки: родной у type=search выглядит иначе. */
