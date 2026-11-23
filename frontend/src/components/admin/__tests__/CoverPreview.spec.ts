@@ -189,11 +189,11 @@ describe("CoverPreview: редактор обложки", () => {
     const emitted = w.emitted("update:zoom");
     console.log("зум колесом вверх:", emitted);
     expect(emitted).toBeTruthy();
-    // Один щелчок колеса (deltaY 100) даёт 6%.
-    expect(emitted![0]).toEqual([106]);
+    // Один щелчок колеса (deltaY 100) даёт 10%: заметно, но не рывком.
+    expect(emitted![0]).toEqual([110]);
 
     // Вниз — обратно и симметрично.
-    await w.setProps({ zoom: 106 });
+    await w.setProps({ zoom: 110 });
     await w.find('[data-test="cover-viewport"]').trigger("wheel", { deltaY: 100 });
     const out = w.emitted("update:zoom")!.at(-1)![0];
     console.log("зум колесом вниз:", out);
@@ -224,10 +224,12 @@ describe("CoverPreview: редактор обложки", () => {
     console.log("жест тачпада (40 событий) -> зум:", final, "%");
     console.log("  прибавка:", final - 100, "% за жест");
 
-    /* Событие deltaY -2 даёт 0.12%, за 40 событий — около 5%. Дробь
-       копится внутри, иначе округление съело бы движение целиком. */
-    expect(final).toBeGreaterThan(103);
-    expect(final, "жест не должен улетать в максимум").toBeLessThan(115);
+    /* Событие deltaY -2 даёт 0.2%, за 40 событий — около 8%. Дробь
+       копится внутри, иначе округление съело бы движение целиком.
+       Потолок здесь намеренно ниже прежнего сломанного поведения: там
+       один жест давал +300% и упирался в максимум. */
+    expect(final - 100).toBeGreaterThan(4);
+    expect(final, "жест не должен улетать в максимум").toBeLessThan(120);
     w.unmount();
   });
 
@@ -238,7 +240,8 @@ describe("CoverPreview: редактор обложки", () => {
 
     const out = w.emitted("update:zoom")!.at(-1)![0] as number;
     console.log("резкий скролл deltaY -600 -> зум:", out, "%");
-    expect(out - 100).toBeLessThanOrEqual(12);
+    // Потолок шага — 15% на событие.
+    expect(out - 100).toBeLessThanOrEqual(15);
     w.unmount();
   });
 
