@@ -55,6 +55,7 @@ export const VERIFICATION_CODE_TTL_DAYS = 30;
 const MAX_TITLE_LENGTH = 200;
 const MAX_KEYWORDS_TOTAL_LENGTH = 1000;
 const MAX_RESPONSE_LENGTH = 4000;
+const MAX_SHORTCUT_NAME_LENGTH = 64;
 const MAX_TEMPLATE_BODY_LENGTH = 4000;
 
 // =============================================================================
@@ -214,6 +215,11 @@ function rowToQuickReply(row) {
     title: String(row.title ?? ''),
     keywords,
     response_text: String(row.response_text ?? ''),
+    // Ссылка на быструю заготовку Telegram. null — правило отвечает своим
+    // текстом. Колонки может не быть в старой БД до миграции, поэтому
+    // undefined тоже приводим к null.
+    telegram_shortcut_id: row.telegram_shortcut_id ? Number(row.telegram_shortcut_id) : null,
+    telegram_shortcut_name: row.telegram_shortcut_name ? String(row.telegram_shortcut_name) : null,
     is_active: Number(row.is_active) ? 1 : 0,
     sort_order: Number(row.sort_order ?? 0),
     created_at: row.created_at ?? null,
@@ -259,8 +265,18 @@ function normalizeKeywordsList(rawList) {
   return out;
 }
 
-function validateQuickReplyPayload(payload) {
-  const title = String(payload?.title ?? '').trim();
+/**
+ * id быстрой заготовки Telegram. Приходит из userbot (shortcut_id), где это
+ * целое число. Пустое/мусорное значение означает «ссылки нет» — правило
+ * отвечает своим текстом.
+ */
+function normalizeTelegramShortcutId(value) {
+  if (value === undefined || value === null || value === '') return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric > 0 ? Math.trunc(numeric) : null;
+}
+
+function validateQuickReplyPayload(payload) {  const title = String(payload?.title ?? '').trim();
   if (!title) {
     const err = new Error('title_required');
     err.code = 'title_required';
@@ -272,7 +288,11 @@ function validateQuickReplyPayload(payload) {
     throw err;
   }
   const responseText = String(payload?.response_text ?? '').trim();
-  if (!responseText) {
+  // Текст ответа не обязателен, когда правило ссылается на быструю заготовку
+  // Telegram: он прочитается из неё в момент отправки. Без того и другого
+  // правило отвечать нечем.
+  const shortcutId = normalizeTelegramShortcutId(payload?.telegram_shortcut_id);
+  if (!responseText && !shortcutId) {
     const err = new Error('response_required');
     err.code = 'response_required';
     throw err;
@@ -289,7 +309,12 @@ function validateQuickReplyPayload(payload) {
     err.code = 'keywords_too_long';
     throw err;
   }
-  return { title, responseText, keywords };
+  const shortcutNameRaw = payload?.telegram_shortcut_name;
+  const shortcutName =
+    shortcutNameRaw === undefined || shortcutNameRaw === null
+      ? null
+      : String(shortcutNameRaw).trim().replace(/^\/+/, '').slice(0, MAX_SHORTCUT_NAME_LENGTH) || null;
+  return { title, responseText, keywords, shortcutId, shortcutName };
 }
 
 export function listQuickReplies({ activeOnly = false } = {}) {
@@ -320,16 +345,17 @@ export function getQuickReply(id) {
 }
 
 export function createQuickReply(payload = {}) {
-  const { title, responseText, keywords } = validateQuickReplyPayload(payload);
+  const { title, responseText, keywords, shortcutId, shortcutName } = validateQuickReplyPayload(payload);
   const isActive = payload.is_active === undefined ? 1 : payload.is_active ? 1 : 0;
   const sortOrderRaw = Number(payload.sort_order);
   const sortOrder = Number.isFinite(sortOrderRaw) && sortOrderRaw >= 0 ? Math.trunc(sortOrderRaw) : 0;
   const result = db
     .prepare(
-      `INSERT INTO bot_quick_replies (title, keywords, response_text, is_active, sort_order)
-       VALUES (?, ?, ?, ?, ?)`,
+      `INSERT INTO bot_quick_replies
+         (title, keywords, response_text, is_active, sort_order, telegram_shortcut_id, telegram_shortcut_name)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
     )
-    .run(title, JSON.stringify(keywords), responseText, isActive, sortOrder);
+    .run(title, JSON.stringify(keywords), responseText, isActive, sortOrder, shortcutId, shortcutName);
   return getQuickReply(result.lastInsertRowid);
 }
 
@@ -345,17 +371,35 @@ export function updateQuickReply(id, payload = {}) {
     response_text:
       payload.response_text !== undefined ? payload.response_text : existing.response_text,
     keywords: payload.keywords !== undefined ? payload.keywords : existing.keywords,
+    telegram_shortcut_id:
+      payload.telegram_shortcut_id !== undefined
+        ? payload.telegram_shortcut_id
+        : existing.telegram_shortcut_id,
+    telegram_shortcut_name:
+      payload.telegram_shortcut_name !== undefined
+        ? payload.telegram_shortcut_name
+        : existing.telegram_shortcut_name,
   };
-  const { title, responseText, keywords } = validateQuickReplyPayload(merged);
+  const { title, responseText, keywords, shortcutId, shortcutName } = validateQuickReplyPayload(merged);
   const nextActive =
     payload.is_active === undefined ? existing.is_active : payload.is_active ? 1 : 0;
   const nextSortRaw = payload.sort_order === undefined ? existing.sort_order : Number(payload.sort_order);
   const nextSort = Number.isFinite(nextSortRaw) && nextSortRaw >= 0 ? Math.trunc(nextSortRaw) : 0;
   db.prepare(
     `UPDATE bot_quick_replies
-        SET title = ?, keywords = ?, response_text = ?, is_active = ?, sort_order = ?, updated_at = DATETIME('now')
+        SET title = ?, keywords = ?, response_text = ?, is_active = ?, sort_order = ?,
+            telegram_shortcut_id = ?, telegram_shortcut_name = ?, updated_at = DATETIME('now')
       WHERE id = ?`,
-  ).run(title, JSON.stringify(keywords), responseText, nextActive, nextSort, Number(id));
+  ).run(
+    title,
+    JSON.stringify(keywords),
+    responseText,
+    nextActive,
+    nextSort,
+    shortcutId,
+    shortcutName,
+    Number(id),
+  );
   return getQuickReply(id);
 }
 
@@ -1232,7 +1276,13 @@ export function handleIncomingBusinessMessage({
     .get(String(fromUserId));
 
   return {
+    // Заготовка Telegram сильнее собственного текста правила: если ссылка
+    // задана, ответ приходит из неё (актуальный текст, правки в Telegram
+    // подхватываются сами). Резолвит её вызывающая сторона — здесь она
+    // синхронная и в Telegram не ходит. Текст правила остаётся запасным.
     text: reply.response_text,
+    telegramShortcutId: reply.telegram_shortcut_id ?? null,
+    telegramShortcutName: reply.telegram_shortcut_name ?? null,
     templateKind: 'quick_reply',
     templateId: reply.id,
     quickReplyTitle: reply.title,

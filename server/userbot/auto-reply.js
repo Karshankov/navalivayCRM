@@ -105,6 +105,56 @@ async function sendReply(payload) {
 }
 
 /**
+ * Текст быстрой заготовки Telegram по её shortcut_id.
+ *
+ * Идёт через сокет по той же причине, что и отправка: обычный HTTP внутри
+ * этого процесса перехватывает proxychains.
+ *
+ * Возвращает null, если прочитать не удалось. Вызывающий решает, что делать:
+ * молча подставить текст правила было бы хуже, чем показать причину.
+ */
+async function readShortcutText({ shortcutId, topMessage, fetchImpl = fetch, baseUrl = null }) {
+  const id = Number(shortcutId) || 0;
+  if (!id) return null;
+  const message = Number(topMessage) || id;
+  const path = `/quick-reply-text?shortcut_id=${id}&top_message=${message}`;
+  const headers = {};
+  if (SHARED_SECRET) headers['X-Userbot-Secret'] = SHARED_SECRET;
+
+  if (!baseUrl && hasSelfSocket()) {
+    const { Agent } = await import('undici');
+    const dispatcher = new Agent({ connect: { socketPath: SELF_SOCKET_PATH } });
+    try {
+      const response = await fetchImpl(`http://localhost${path}`, {
+        headers,
+        signal: AbortSignal.timeout(SELF_SEND_TIMEOUT_MS),
+        dispatcher,
+      });
+      const data = await response.json().catch(() => ({}));
+      if (response.ok && data?.ok) return String(data.text ?? '') || null;
+      return null;
+    } catch {
+      return null;
+    } finally {
+      await dispatcher.close().catch(() => {});
+    }
+  }
+
+  const { USERBOT_BASE } = await import('../utils/userbot-client.js');
+  try {
+    const response = await fetchImpl(`${baseUrl || USERBOT_BASE}${path}`, {
+      headers,
+      signal: AbortSignal.timeout(SELF_SEND_TIMEOUT_MS),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (response.ok && data?.ok) return String(data.text ?? '') || null;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Принять решение об автоответе и отправить его.
  *
  * @param {object} params
@@ -127,6 +177,7 @@ export async function processIncomingAutoReply(
     log = logBotMessage,
     start = tryStartAutoReply,
     finish = finishAutoReply,
+    readShortcut = readShortcutText,
   } = deps;
 
   const reply = decide({
@@ -136,6 +187,23 @@ export async function processIncomingAutoReply(
     text,
   });
   if (!reply) return null;
+
+  // Правило может ссылаться на быструю заготовку Telegram. Тогда её текст
+  // читается здесь и сейчас — правки в Telegram подхватываются без правок в
+  // CRM. Свой текст правила остаётся запасным: если заготовку не прочитать,
+  // клиент всё равно получит ответ, а не тишину.
+  let answerText = reply.text;
+  if (reply.telegramShortcutId) {
+    const fromShortcut = await readShortcut({ shortcutId: reply.telegramShortcutId });
+    if (fromShortcut) {
+      answerText = fromShortcut;
+    } else {
+      console.warn(
+        `[userbot] автоответ: текст заготовки #${reply.telegramShortcutId} не прочитан, ` +
+          'отправляю текст правила',
+      );
+    }
+  }
 
   // Блокировка на время отправки: пауза читается из журнала, а запись туда
   // идёт только после отправки. Без неё два сообщения подряд дали бы два
@@ -149,7 +217,7 @@ export async function processIncomingAutoReply(
     // напрямую значило бы продублировать всё это и разойтись с ним.
     const result = await send({
       chatId,
-      text: reply.text,
+      text: answerText,
       username: reply.customerUsername || null,
       auto: true,
     });
@@ -167,7 +235,7 @@ export async function processIncomingAutoReply(
       messageType: AUTO_REPLY_MESSAGE_TYPE,
       templateKind: reply.templateKind,
       templateId: reply.templateId,
-      text: reply.text,
+      text: answerText,
       meta: {
         quick_reply_title: reply.quickReplyTitle,
         via: 'userbot-listener',
@@ -180,7 +248,7 @@ export async function processIncomingAutoReply(
 
     return {
       outcome,
-      text: reply.text,
+      text: answerText,
       title: reply.quickReplyTitle,
       error: result.ok ? null : String(result.error || ''),
     };

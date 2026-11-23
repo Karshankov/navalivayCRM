@@ -55,16 +55,32 @@ assert.deepEqual(sentRequest.id, []);
 assert.deepEqual(sentRequest.randomId, buildStableRandomIds('welcome:c1', 2));
 
 // --- Текст заготовки ---------------------------------------------------------
-// Telegram хранит текст заготовки отдельным сообщением в «Избранном»; QuickReply
-// отдаёт лишь top_message. Читаем его через messages.GetMessages.
-assert.equal(
-  await readQuickReplyText(
-    { invoke: async () => ({ messages: [{ message: 'Работаем до 20:00' }] }) },
-    501,
-  ),
-  'Работаем до 20:00',
-  'текст заготовки читается по topMessage',
+// Регрессия: текст заготовки лежит НЕ в «Избранном». Проверено на живом
+// аккаунте — те же id через messages.GetMessages отдают MessageEmpty, а
+// история «Избранного» начинается с других номеров. Тексты заготовок лежат
+// в отдельном хранилище, и достать их можно только GetQuickReplyMessages.
+//
+// Проверяем не только результат, но и сам вызов: прежний тест мокал invoke
+// и молчал о методе, поэтому баг с пустыми заготовками через него прошёл.
+let seenRequest = null;
+const text = await readQuickReplyText(
+  {
+    invoke: async (request) => {
+      seenRequest = request;
+      return { messages: [{ message: 'Работаем до 20:00' }] };
+    },
+  },
+  501,
+  137,
 );
+assert.equal(text, 'Работаем до 20:00', 'текст заготовки читается');
+assert.equal(
+  seenRequest?.className,
+  'messages.GetQuickReplyMessages',
+  'запрошен именно GetQuickReplyMessages, а не GetMessages',
+);
+assert.deepEqual(seenRequest?.id, [501], 'id — это topMessage (с пустым массивом Telegram отдаёт пусто)');
+assert.equal(seenRequest?.shortcutId, 137, 'shortcut_id передан отдельно от id сообщения');
 
 // Без topMessage запрос не нужен: не дёргаем сеть впустую.
 let calledWithoutId = false;

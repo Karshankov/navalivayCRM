@@ -82,12 +82,22 @@
             required
             placeholder="Работаем ежедневно с 10:00 до 20:00"
           />
+          <p v-if="form.telegram_shortcut_id" class="crm-restriction-hint" data-testid="telegram-linked">
+            Ответ берётся из заготовки
+            <strong>/{{ form.telegram_shortcut_name || form.telegram_shortcut_id }}</strong>
+            в Telegram — правки там подхватятся сами. Текст выше уйдёт, только если заготовку
+            не удастся прочитать.
+            <button type="button" class="crm-restriction-link" @click="clearTelegramReply">
+              Отвязать
+            </button>
+          </p>
           <div v-if="telegramOpen" class="crm-restriction-trigger-box">
             <button
               v-for="item in telegramReplies"
               :key="item.id"
               type="button"
               class="crm-restriction-template"
+              :class="{ 'crm-restriction-template--active': form.telegram_shortcut_id === item.id }"
               :disabled="!item.text"
               @click="applyTelegramReply(item)"
             >
@@ -178,6 +188,9 @@ export interface QuickReplyRule {
   title: string;
   keywords: string[];
   response_text: string;
+  /** Ссылка на быструю заготовку Telegram; null — отвечаем своим текстом. */
+  telegram_shortcut_id?: number | null;
+  telegram_shortcut_name?: string | null;
   is_active: number;
   sort_order: number;
 }
@@ -197,6 +210,8 @@ const form = reactive({
   title: '',
   triggers: [] as string[],
   response_text: '',
+  telegram_shortcut_id: null as number | null,
+  telegram_shortcut_name: null as string | null,
 });
 
 const triggerDraft = ref('');
@@ -252,9 +267,22 @@ async function toggleTelegramList() {
   }
 }
 
+/**
+ * Выбор заготовки Telegram сохраняет ССЫЛКУ на неё, а не копию текста:
+ * правки в Telegram подхватываются сами, и копия в CRM не расходится с
+ * оригиналом. Текст кладём в response_text только как запасной — он уйдёт,
+ * если заготовку почему-то не удастся прочитать.
+ */
 function applyTelegramReply(item: TelegramReply) {
+  form.telegram_shortcut_id = item.id;
+  form.telegram_shortcut_name = item.name;
   form.response_text = item.text;
   telegramOpen.value = false;
+}
+
+function clearTelegramReply() {
+  form.telegram_shortcut_id = null;
+  form.telegram_shortcut_name = null;
 }
 
 const canSubmit = computed(
@@ -292,6 +320,8 @@ function resetForm() {
   form.title = rule?.title ?? '';
   form.triggers = Array.isArray(rule?.keywords) ? [...rule.keywords] : [];
   form.response_text = rule?.response_text ?? '';
+  form.telegram_shortcut_id = rule?.telegram_shortcut_id ?? null;
+  form.telegram_shortcut_name = rule?.telegram_shortcut_name ?? null;
   triggerDraft.value = '';
   checkText.value = '';
   checkResult.value = null;
@@ -346,6 +376,8 @@ async function submit() {
       title: form.title.trim(),
       keywords: form.triggers,
       response_text: form.response_text.trim(),
+      telegram_shortcut_id: form.telegram_shortcut_id,
+      telegram_shortcut_name: form.telegram_shortcut_name,
       is_active: props.editing ? props.editing.is_active : 1,
       sort_order: props.editing ? props.editing.sort_order : 0,
     };

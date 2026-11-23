@@ -39,21 +39,32 @@ export async function listQuickReplies(client) {
 }
 
 /**
- * Текст заготовки. Схема Telegram хранит его как обычное сообщение в
- * «Избранном» (Saved Messages); QuickReply даёт лишь top_message — его id.
+ * Текст заготовки.
  *
- * Возвращает '' когда сообщение недоступно: заготовка могла быть создана
- * с другого устройства, а «Избранное» — приватный чат, к которому у сессии
- * есть доступ. Пустая строка здесь безопаснее исключения: список заготовок
- * всё равно нужен форме, даже если текст одной из них прочитать не вышло.
+ * Быстрая заготовка Telegram — это НЕ сообщение в «Избранном», хотя
+ * top_message выглядит как обычный id. Проверено на живом аккаунте: те же
+ * id через GetMessages возвращают MessageEmpty, а история «Избранного»
+ * начинается с других номеров. Тексты заготовок лежат в отдельном хранилище,
+ * и достаются только через GetQuickReplyMessages.
+ *
+ * Обязательно передавать id: [top_message] — с пустым массивом метод
+ * отвечает messages.Messages с нулём сообщений, то есть выглядит как
+ * «заготовка без текста», хотя текст есть.
+ *
+ * Возвращает '' когда прочитать не удалось: пустая строка здесь безопаснее
+ * исключения — список заготовок нужен форме, даже если текст одной из них
+ * недоступен.
  */
-export async function readQuickReplyText(client, topMessageId) {
+export async function readQuickReplyText(client, topMessageId, shortcutId = null) {
   const messageId = Number(topMessageId) || 0;
   if (!messageId) return '';
+  const shortcut = Number(shortcutId ?? topMessageId) || messageId;
   try {
     const response = await client.invoke(
-      new Api.messages.GetMessages({
-        id: [new Api.InputMessageID({ id: messageId })],
+      new Api.messages.GetQuickReplyMessages({
+        shortcutId: shortcut,
+        id: [messageId],
+        hash: 0n,
       }),
     );
     const messages = Array.isArray(response?.messages) ? response.messages : [];

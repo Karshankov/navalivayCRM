@@ -1643,6 +1643,10 @@ crmRouter.post('/api/admin/crm/bot/quick-replies', authMiddleware, (req, res) =>
       title: req.body?.title,
       keywords: req.body?.keywords,
       response_text: req.body?.response_text,
+      // Ссылка на быструю заготовку Telegram: текст читается из неё в момент
+      // отправки, а response_text остаётся запасным.
+      telegram_shortcut_id: req.body?.telegram_shortcut_id,
+      telegram_shortcut_name: req.body?.telegram_shortcut_name,
       is_active: req.body?.is_active,
       sort_order: req.body?.sort_order,
     });
@@ -1661,6 +1665,10 @@ crmRouter.put('/api/admin/crm/bot/quick-replies/:id', authMiddleware, (req, res)
       title: req.body?.title,
       keywords: req.body?.keywords,
       response_text: req.body?.response_text,
+      // Ссылка на быструю заготовку Telegram: текст читается из неё в момент
+      // отправки, а response_text остаётся запасным.
+      telegram_shortcut_id: req.body?.telegram_shortcut_id,
+      telegram_shortcut_name: req.body?.telegram_shortcut_name,
       is_active: req.body?.is_active,
       sort_order: req.body?.sort_order,
     });

@@ -285,6 +285,38 @@ export async function listUserbotQuickReplies({ withText = false } = {}) {
   }
 }
 
+/**
+ * Текст одной быстрой заготовки Telegram по её shortcut_id.
+ *
+ * Нужен автоответу: правило хранит только ссылку на заготовку, а текст
+ * читается в момент отправки, чтобы правки в Telegram подхватывались сами.
+ * Отдельный запрос, а не весь список: список тянет текст каждой заготовки,
+ * а нужен один — это лишние обращения к Telegram и FloodWait.
+ */
+export async function readUserbotQuickReplyText({
+  shortcutId,
+  topMessage = null,
+  fetchImpl = fetch,
+  baseUrl = USERBOT_BASE,
+} = {}) {
+  const id = Number(shortcutId) || 0;
+  if (!id) return { ok: false, error: 'invalid_payload' };
+  const message = Number(topMessage) || id;
+  try {
+    const headers = {};
+    if (SHARED_SECRET) headers['X-Userbot-Secret'] = SHARED_SECRET;
+    const url = `${baseUrl}/quick-reply-text?shortcut_id=${id}&top_message=${message}`;
+    const response = await fetchImpl(url, { headers, signal: AbortSignal.timeout(20_000) });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data?.ok) {
+      return { ok: false, error: data?.error || `http_${response.status}` };
+    }
+    return { ok: true, text: String(data.text ?? '') };
+  } catch (err) {
+    return classifyFetchError(err);
+  }
+}
+
 export async function sendQuickReplyViaUserbot({
   chatId,
   shortcut,

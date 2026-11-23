@@ -125,7 +125,23 @@ export function migrateBusinessBot() {
     console.log('[migration] Added customers.bot_verification_code column');
   }
 
-  // 6) Дефолтные шаблоны статусов — Костя на старте сможет сразу попробовать
+  // 6) Ссылка правила на быструю заготовку Telegram.
+  // Текст такой заготовки читается через userbot в момент отправки, поэтому в
+  // правиле хранится только ссылка: правки в Telegram подхватываются сами, а
+  // копия текста в БД не расходится с оригиналом.
+  // Через PRAGMA table_info чтобы не упасть на повторном запуске.
+  const replyCols = db.prepare(`PRAGMA table_info(bot_quick_replies)`).all();
+  const replyNames = new Set(replyCols.map((c) => c.name));
+  if (!replyNames.has('telegram_shortcut_id')) {
+    db.exec(`ALTER TABLE bot_quick_replies ADD COLUMN telegram_shortcut_id INTEGER`);
+    console.log('[migration] Added bot_quick_replies.telegram_shortcut_id column');
+  }
+  if (!replyNames.has('telegram_shortcut_name')) {
+    db.exec(`ALTER TABLE bot_quick_replies ADD COLUMN telegram_shortcut_name TEXT`);
+    console.log('[migration] Added bot_quick_replies.telegram_shortcut_name column');
+  }
+
+  // 7) Дефолтные шаблоны статусов — Костя на старте сможет сразу попробовать
   // сценарий «нажал собрано → клиент получил уведомление». Позже отредактирует
   // через CRM. INSERT OR IGNORE — повторный запуск не ломает кастомные правки.
   const defaultStatusTemplates = [

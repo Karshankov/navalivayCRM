@@ -841,18 +841,40 @@ async function getKnownRecipientPeer(chatId) {
   }
 }
 
+// Текст одной заготовки по её id. Отдельный эндпоинт, потому что автоответ
+// знает только id правила: тянуть ради одного текста весь список с 15
+// запросами к Telegram незачем — это лишний FloodWait.
+app.get('/quick-reply-text', checkSecret, async (req, res) => {
+  const shortcutId = Number(req.query?.shortcut_id) || 0;
+  const topMessage = Number(req.query?.top_message) || shortcutId;
+  if (!shortcutId || !topMessage) {
+    return res.status(400).json({ ok: false, error: 'invalid_payload' });
+  }
+  if (!client.connected || sessionDead) {
+    return res.status(503).json({ ok: false, error: 'disconnected' });
+  }
+  try {
+    const text = await readQuickReplyText(client, topMessage, shortcutId);
+    return res.json({ ok: true, text });
+  } catch (err) {
+    const errorText = redactSecrets(err?.errorMessage || err?.message || err);
+    console.error('[userbot] quick-reply-text error:', errorText);
+    return res.status(502).json({ ok: false, error: 'quick_reply_text_failed' });
+  }
+});
+
 app.get('/quick-replies', checkSecret, async (req, res) => {
   try {
     if (!client.connected || sessionDead) {
       return res.status(503).json({ ok: false, error: 'disconnected' });
     }
     const quickReplies = await listQuickReplies(client);
-    // Текст заготовки лежит отдельным сообщением в «Избранном», поэтому
-    // достаётся дополнительным запросом на каждую. Список для подписи в
-    // выпадающем меню текста не требует — читаем только когда попросили.
+    // Текст заготовки лежит отдельно от неё самой, поэтому достаётся
+    // дополнительным запросом на каждую. Список для подписи в выпадающем
+    // меню текста не требует — читаем только когда попросили.
     if (String(req.query?.with_text || '') === '1') {
       for (const item of quickReplies) {
-        item.text = await readQuickReplyText(client, item.topMessage);
+        item.text = await readQuickReplyText(client, item.topMessage, item.id);
       }
     }
     return res.json({ ok: true, quick_replies: quickReplies });

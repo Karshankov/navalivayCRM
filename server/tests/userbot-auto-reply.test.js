@@ -274,6 +274,109 @@ async function testSendsThroughSelfSocket() {
   }
 }
 
+async function testShortcutTextReplacesRuleText() {
+  console.log('\n=== текст заготовки ТГ важнее текста правила ===');
+  const sent = [];
+  const logged = [];
+  const result = await processIncomingAutoReply(
+    { chatId: CLIENT, fromUserId: CLIENT, ownerUserId: OWNER, text: 'Проверка' },
+    {
+      decide: () => ({
+        text: '/стоп',
+        telegramShortcutId: 137,
+        templateKind: 'quick_reply',
+        templateId: 4,
+        quickReplyTitle: 'Тест',
+        customerId: null,
+        customerTelegramId: CLIENT,
+        customerUsername: 'client',
+      }),
+      readShortcut: async ({ shortcutId }) => {
+        assert.equal(shortcutId, 137, 'запрошен именно id заготовки правила');
+        return 'НЕ РАБОТАЕМ ПО ТЕХ ПРИЧИНАМ';
+      },
+      send: async (payload) => {
+        sent.push(payload);
+        return { ok: true };
+      },
+      log: (entry) => logged.push(entry),
+      start: () => true,
+      finish: () => {},
+    },
+  );
+
+  assert.equal(result.outcome, 'sent', 'ответ ушёл');
+  assert.equal(sent[0].text, 'НЕ РАБОТАЕМ ПО ТЕХ ПРИЧИНАМ', 'ушёл текст заготовки, а не правила');
+  assert.equal(logged[0].text, 'НЕ РАБОТАЕМ ПО ТЕХ ПРИЧИНАМ', 'в журнале тоже текст заготовки');
+}
+
+async function testShortcutFailureFallsBackToRuleText() {
+  console.log('\n=== заготовку не прочитать — уходит текст правила ===');
+  const sent = [];
+  const result = await processIncomingAutoReply(
+    { chatId: CLIENT, fromUserId: CLIENT, ownerUserId: OWNER, text: 'Проверка' },
+    {
+      decide: () => ({
+        text: 'Работаем до 21:00',
+        telegramShortcutId: 137,
+        templateKind: 'quick_reply',
+        templateId: 4,
+        quickReplyTitle: 'Тест',
+        customerId: null,
+        customerTelegramId: CLIENT,
+        customerUsername: null,
+      }),
+      readShortcut: async () => null,
+      send: async (payload) => {
+        sent.push(payload);
+        return { ok: true };
+      },
+      log: () => {},
+      start: () => true,
+      finish: () => {},
+    },
+  );
+
+  // Тишина в ответ на вопрос клиента хуже устаревшего текста.
+  assert.equal(result.outcome, 'sent', 'ответ всё равно ушёл');
+  assert.equal(sent[0].text, 'Работаем до 21:00', 'подставлен запасной текст правила');
+}
+
+async function testRuleWithoutShortcutIsUntouched() {
+  console.log('\n=== правило без заготовки работает по-старому ===');
+  let readCalled = false;
+  const sent = [];
+  await processIncomingAutoReply(
+    { chatId: CLIENT, fromUserId: CLIENT, ownerUserId: OWNER, text: 'Проверка' },
+    {
+      decide: () => ({
+        text: 'Работаем до 21:00',
+        telegramShortcutId: null,
+        templateKind: 'quick_reply',
+        templateId: 4,
+        quickReplyTitle: 'Тест',
+        customerId: null,
+        customerTelegramId: CLIENT,
+        customerUsername: null,
+      }),
+      readShortcut: async () => {
+        readCalled = true;
+        return 'что-то';
+      },
+      send: async (payload) => {
+        sent.push(payload);
+        return { ok: true };
+      },
+      log: () => {},
+      start: () => true,
+      finish: () => {},
+    },
+  );
+
+  assert.equal(readCalled, false, 'в Telegram не ходили — незачем');
+  assert.equal(sent[0].text, 'Работаем до 21:00', 'отправлен текст правила');
+}
+
 await testSendsToCorrectChat();
 await testLogsSentOnSuccess();
 await testFailureDoesNotArmCooldown();
@@ -284,5 +387,8 @@ await testAlwaysReleasesClient();
 await testSendThrowStillReleases();
 await testOwnerEchoIsNotAnswered();
 await testSendsThroughSelfSocket();
+await testShortcutTextReplacesRuleText();
+await testShortcutFailureFallsBackToRuleText();
+await testRuleWithoutShortcutIsUntouched();
 
 console.log('\nвсе проверки автоответа через userbot пройдены');

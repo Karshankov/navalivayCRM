@@ -130,6 +130,11 @@
 .crm-restriction-template:hover:not(:disabled) { border-color: #b8cef5; background: #f7fbff; }
 .crm-restriction-template:focus-visible { outline: 2px solid #0958ff; outline-offset: 2px; }
 .crm-restriction-template:disabled { opacity: .5; cursor: not-allowed; }
+/* Заготовка, на которую сейчас ссылается правило — видно, какая выбрана. */
+.crm-restriction-template--active {
+  border-color: #0958ff; background: #eef4ff; color: #0b3ea8;
+  box-shadow: inset 0 0 0 1px #0958ff;
+}
 
 /* Живая проверка фразы */
 .crm-restriction-check { display: flex; gap: 8px; }
