@@ -2791,7 +2791,7 @@ async function reloadProductsAfterDiscount() {
   })
 }
 
-async function handleGroupFormSubmit(payload: { name: string; slug?: string; coverImage?: string | null; coverZoom?: number | null; coverShift?: number | null; hideEmpty?: boolean; parentId?: string | null; metaLabel?: string | null; metaValue?: string | null; minStockThreshold?: number | null; totalControl?: boolean; isNew?: boolean; newDays?: number; discount?: { price: number | null; untilDate: string | null }; wholesalePrices?: Record<string, number | null>; waiveDescription?: boolean; waiveMinStock?: boolean; waiveWholesale?: boolean; waiveStrengthTier?: boolean; strengthTier?: string | null; significanceMarkId?: string | null; posPublication?: any }) {
+async function handleGroupFormSubmit(payload: { name: string; slug?: string; coverImage?: string | null; coverZoom?: number | null; coverShift?: number | null; coverOffsetY?: number | null; coverManual?: boolean | null; hideEmpty?: boolean; parentId?: string | null; metaLabel?: string | null; metaValue?: string | null; minStockThreshold?: number | null; totalControl?: boolean; isNew?: boolean; newDays?: number; discount?: { price: number | null; untilDate: string | null }; wholesalePrices?: Record<string, number | null>; waiveDescription?: boolean; waiveMinStock?: boolean; waiveWholesale?: boolean; waiveStrengthTier?: boolean; strengthTier?: string | null; significanceMarkId?: string | null; posPublication?: any }) {
   const categoryId = groupFormCategoryId.value || activeGroupCategory.value?.id || null
   if (!categoryId) {
     showToast('Сначала выберите категорию', 'error')
@@ -2817,6 +2817,8 @@ async function handleGroupFormSubmit(payload: { name: string; slug?: string; cov
            терялись и настройка не доходила до сервера. */
         coverZoom: payload.coverZoom ?? null,
         coverShift: payload.coverShift ?? null,
+        coverOffsetY: payload.coverOffsetY ?? null,
+        coverManual: payload.coverManual ?? null,
         hideEmpty: payload.hideEmpty,
         parentId: payload.parentId ?? null,
         metaLabel: payload.metaLabel ?? null,
@@ -2844,6 +2846,8 @@ async function handleGroupFormSubmit(payload: { name: string; slug?: string; cov
         coverImage: payload.coverImage ?? null,
         coverZoom: payload.coverZoom ?? null,
         coverShift: payload.coverShift ?? null,
+        coverOffsetY: payload.coverOffsetY ?? null,
+        coverManual: payload.coverManual ?? null,
         hideEmpty: payload.hideEmpty,
         parentId: payload.parentId ?? null,
         metaLabel: payload.metaLabel ?? null,

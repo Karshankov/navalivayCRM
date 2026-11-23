@@ -290,8 +290,14 @@ function enrichAdminCategoryGroup(group) {
     /* Расположение обложки: фронт читает camelCase, база хранит snake_case. */
     cover_zoom: group.cover_zoom ?? null,
     cover_shift: group.cover_shift ?? null,
+    cover_offset_y: group.cover_offset_y ?? null,
+    /* Признак ручного кадра: база хранит 0/1, наружу отдаём булево.
+       NULL у старых линеек значит «работает автоподбор». */
+    cover_manual: group.cover_manual == null ? null : Boolean(group.cover_manual),
     coverZoom: group.cover_zoom ?? null,
     coverShift: group.cover_shift ?? null,
+    coverOffsetY: group.cover_offset_y ?? null,
+    coverManual: group.cover_manual == null ? null : Boolean(group.cover_manual),
   };
 }
 
@@ -2969,6 +2975,8 @@ adminRouter.get('/api/admin/category-groups/:id', authMiddleware, (req, res) => 
       g.cover_image,
       g.cover_zoom,
       g.cover_shift,
+      g.cover_offset_y,
+      g.cover_manual,
       g.[order],
       g.hide_empty,
       g.parent_group_id,
@@ -3344,6 +3352,10 @@ adminRouter.put('/api/admin/category-groups/:id', authMiddleware, async (req, re
     cover_zoom,
     coverShift,
     cover_shift,
+    coverOffsetY,
+    cover_offset_y,
+    coverManual,
+    cover_manual,
     hide_empty,
     order,
     parentId,
@@ -3469,11 +3481,14 @@ adminRouter.put('/api/admin/category-groups/:id', authMiddleware, async (req, re
       nextCover = null;
     }
   }
-  /* Расположение обложки в карточке: множитель масштаба и наклон.
-     Как и с coverImage, ключа нет в теле — значение не трогаем.
-     Иначе старое сохранение формы затрёт подобранные настройки. */
+  /* Расположение обложки в карточке: масштаб, сдвиг по обеим осям и
+     признак ручного кадра. Как и с coverImage, ключа нет в теле —
+     значение не трогаем. Иначе старое сохранение формы затрёт
+     подобранные настройки. */
   const coverZoomProvided = 'coverZoom' in (req.body || {}) || 'cover_zoom' in (req.body || {});
   const coverShiftProvided = 'coverShift' in (req.body || {}) || 'cover_shift' in (req.body || {});
+  const coverOffsetYProvided = 'coverOffsetY' in (req.body || {}) || 'cover_offset_y' in (req.body || {});
+  const coverManualProvided = 'coverManual' in (req.body || {}) || 'cover_manual' in (req.body || {});
 
   const normalizeCoverNumber = (raw, min, max) => {
     if (raw === null || raw === '' || raw === undefined) return null;
@@ -3482,14 +3497,35 @@ adminRouter.put('/api/admin/category-groups/:id', authMiddleware, async (req, re
     return Math.max(min, Math.min(max, Math.round(parsed)));
   };
 
+  /* Верхняя граница зума поднята до 400%: у части линеек объект на фото
+     мелкий и много белого фона — при прежних 200% его не приблизить.
+     Нижние границы оставлены как были. */
   let nextCoverZoom = current.cover_zoom ?? null;
   if (coverZoomProvided) {
-    nextCoverZoom = normalizeCoverNumber(coverZoom ?? cover_zoom, 60, 200);
+    nextCoverZoom = normalizeCoverNumber(coverZoom ?? cover_zoom, 60, 400);
   }
 
   let nextCoverShift = current.cover_shift ?? null;
   if (coverShiftProvided) {
-    nextCoverShift = normalizeCoverNumber(coverShift ?? cover_shift, -40, 40);
+    nextCoverShift = normalizeCoverNumber(coverShift ?? cover_shift, -100, 100);
+  }
+
+  let nextCoverOffsetY = current.cover_offset_y ?? null;
+  if (coverOffsetYProvided) {
+    nextCoverOffsetY = normalizeCoverNumber(coverOffsetY ?? cover_offset_y, -100, 100);
+  }
+
+  /* Признак ручного кадра храним как 0/1. null значит «правок нет»:
+     отличаем «сотрудник не трогал» от «сотрудник вернул автоподбор». */
+  let nextCoverManual = current.cover_manual ?? null;
+  if (coverManualProvided) {
+    const rawManual = coverManual ?? cover_manual;
+    nextCoverManual =
+      rawManual === null || rawManual === '' || rawManual === undefined
+        ? null
+        : rawManual
+          ? 1
+          : 0;
   }
 
   const nextHideEmpty = hide_empty !== undefined ? (hide_empty ? 1 : 0) : current.hide_empty;
@@ -3585,7 +3621,7 @@ adminRouter.put('/api/admin/category-groups/:id', authMiddleware, async (req, re
       db.prepare(`
         UPDATE category_groups
         SET name = ?, slug = ?, cover_image = ?, hide_empty = ?, [order] = ?,
-            cover_zoom = ?, cover_shift = ?,
+            cover_zoom = ?, cover_shift = ?, cover_offset_y = ?, cover_manual = ?,
             meta_label = ?, meta_value = ?, parent_group_id = ?, min_stock_threshold = ?,
             total_control = ?,
             waive_description = ?, waive_min_stock = ?, waive_wholesale = ?,
@@ -3601,6 +3637,8 @@ adminRouter.put('/api/admin/category-groups/:id', authMiddleware, async (req, re
         nextOrder,
         nextCoverZoom,
         nextCoverShift,
+        nextCoverOffsetY,
+        nextCoverManual,
         nextMetaLabel,
         nextMetaValue,
         nextParentId,

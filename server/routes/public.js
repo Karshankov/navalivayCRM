@@ -1249,7 +1249,7 @@ publicRouter.get("/api/categories", (req, res) => {
       `
     SELECT g.id, g.categoryId, g.slug, g.name, 
            CASE WHEN g.cover_image IS NOT NULL AND g.cover_image != '' THEN 1 ELSE 0 END as hasCoverImage,
-           g.cover_zoom, g.cover_shift,
+           g.cover_zoom, g.cover_shift, g.cover_offset_y, g.cover_manual,
            g.[order], g.hide_empty, g.parent_group_id, g.meta_label, g.meta_value,
            g.strength_tier,
            g.new_since,
@@ -1373,6 +1373,9 @@ publicRouter.get("/api/categories", (req, res) => {
     /* Расположение обложки, подобранное в CRM. null значит автоподбор. */
     coverZoom: group.cover_zoom ?? null,
     coverShift: group.cover_shift ?? null,
+    coverOffsetY: group.cover_offset_y ?? null,
+    /* Ручной кадр: автоподбор для этой линейки не применяется. */
+    coverManual: group.cover_manual == null ? null : group.cover_manual === 1,
     hideEmpty: group.hide_empty === 1,
     parentId: group.parent_group_id || null,
     metaLabel: group.meta_label || null,
@@ -1428,6 +1431,8 @@ publicRouter.get("/api/categories", (req, res) => {
         coverImage: node.coverImage,
         coverZoom: node.coverZoom ?? null,
         coverShift: node.coverShift ?? null,
+        coverOffsetY: node.coverOffsetY ?? null,
+        coverManual: node.coverManual ?? null,
         hideEmpty: node.hideEmpty,
         parentId: node.parentId,
         metaLabel: node.metaLabel || null,

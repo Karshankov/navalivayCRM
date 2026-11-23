@@ -1,10 +1,18 @@
 <template>
-  <!-- Превью обложки ровно как в мини-аппе: тот же компонент и тот же
-       расчёт геометрии. Что видно здесь — увидят покупатели. -->
+  <!-- Редактор обложки: окно с фото, которое двигают мышью и приближают.
+       Внутри окна — тот же ImageFade, что в карточке мини-аппа, поэтому
+       сотрудник видит ровно тот кадр, который получит покупатель. -->
   <div class="cover-preview">
     <div class="cover-preview__frame">
       <div class="cover-preview__art">
-        <ImageFade :src="src" :alt="alt" :zoom="zoom / 100" :shift-x="shift" />
+        <ImageFade
+          :src="src"
+          :alt="alt"
+          :zoom="zoom / 100"
+          :shift-x="shiftX"
+          :shift-y="shiftY"
+          :manual="manual"
+        />
       </div>
       <div class="cover-preview__info">
         <span class="cover-preview__title">{{ title }}</span>
@@ -16,54 +24,97 @@
       Так карточка выглядит в мини-аппе
     </p>
 
-    <!-- Правки расположения: сотрудник видит результат сразу здесь. -->
-    <div class="cover-preview__controls">
-      <label class="cover-preview__control">
-        <span class="cover-preview__control-label">
-          Размер <b>{{ zoom }}%</b>
-        </span>
-        <input
-          :value="zoom"
-          type="range"
-          min="60"
-          max="200"
-          step="5"
-          class="cover-preview__slider"
-          data-test="cover-zoom"
-          @input="emit('update:zoom', Number(($event.target as HTMLInputElement).value))"
-        />
-      </label>
+    <!-- Окно редактора: видимая зона обведена рамкой, вокруг — запас.
+         Фото можно тащить мышью или пальцем, приближать колесом. -->
+    <div class="cover-editor" data-test="cover-editor">
+      <div class="cover-editor__stage">
+        <div
+          class="cover-editor__viewport"
+          :class="{ 'cover-editor__viewport--dragging': dragging }"
+          data-test="cover-viewport"
+          @pointerdown="startDrag"
+          @pointermove="onDrag"
+          @pointerup="endDrag"
+          @pointercancel="endDrag"
+          @wheel.prevent="onWheel"
+        >
+          <!-- Слой фото: увеличен, сдвинут и обрезан рамкой окна. -->
+          <div class="cover-editor__canvas">
+            <ImageFade
+              :src="src"
+              :alt="alt"
+              :zoom="zoom / 100"
+              :shift-x="shiftX"
+              :shift-y="shiftY"
+              manual
+            />
+          </div>
+        </div>
 
-      <label class="cover-preview__control">
-        <span class="cover-preview__control-label">
-          Сдвиг <b>{{ shiftLabel }}</b>
-        </span>
-        <input
-          :value="shift"
-          type="range"
-          min="-40"
-          max="40"
-          step="5"
-          class="cover-preview__slider"
-          data-test="cover-shift"
-          @input="emit('update:shift', Number(($event.target as HTMLInputElement).value))"
-        />
-      </label>
+        <!-- Подсказка внутри окна: показывается, пока кадр не трогали. -->
+        <p v-if="!touched" class="cover-editor__overlay-hint">
+          Перетащите фото, чтобы выбрать кадр
+        </p>
+      </div>
 
-      <button
-        type="button"
-        class="cover-preview__reset"
-        data-test="cover-reset"
-        @click="reset"
-      >
-        Сбросить
-      </button>
+      <div class="cover-editor__controls">
+        <label class="cover-editor__control">
+          <span class="cover-editor__control-label">
+            Размер <b>{{ zoom }}%</b>
+          </span>
+          <input
+            :value="zoom"
+            type="range"
+            min="60"
+            max="400"
+            step="5"
+            class="cover-editor__slider"
+            data-test="cover-zoom"
+            @input="onZoomInput"
+          />
+        </label>
+
+        <div class="cover-editor__position">
+          <span class="cover-editor__control-label">
+            Положение
+          </span>
+          <!-- Точное положение стрелками: мышь даёт грубо, а тут шаг 1%.
+               Кнопки нужны и для доступности с клавиатуры. -->
+          <div class="cover-editor__nudge">
+            <button
+              v-for="dir in nudgeDirections"
+              :key="dir.key"
+              type="button"
+              class="cover-editor__nudge-button"
+              :data-test="`cover-nudge-${dir.key}`"
+              :aria-label="dir.label"
+              :title="dir.label"
+              @click="nudge(dir.dx, dir.dy)"
+            >
+              {{ dir.glyph }}
+            </button>
+          </div>
+          <span class="cover-editor__position-value">
+            {{ positionLabel }}
+          </span>
+        </div>
+
+        <button
+          type="button"
+          class="cover-editor__reset"
+          data-test="cover-reset"
+          :disabled="!manual"
+          @click="reset"
+        >
+          Сбросить
+        </button>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import ImageFade from "@/components/product/ImageFade.vue";
 
 const props = withDefaults(
@@ -72,29 +123,144 @@ const props = withDefaults(
     title?: string;
     meta?: string;
     alt?: string;
-    /** Размер фото в процентах: 100 — как подобрал алгоритм. */
+    /** Размер фото в процентах: 100 — как вписалось в область. */
     zoom?: number;
-    /** Сдвиг вбок в процентах: минус влево, плюс вправо. */
-    shift?: number;
+    /** Сдвиг вбок в процентах видимой области: минус влево, плюс вправо. */
+    shiftX?: number;
+    /** Сдвиг по вертикали в процентах: минус вверх, плюс вниз. */
+    shiftY?: number;
+    /** Кадр настроен руками: автоподбор не применяется. */
+    manual?: boolean;
   }>(),
-  { title: "Название линейки", meta: "Крепость 20 мг", alt: "", zoom: 100, shift: 0 },
+  {
+    title: "Название линейки",
+    meta: "Крепость 20 мг",
+    alt: "",
+    zoom: 100,
+    shiftX: 0,
+    shiftY: 0,
+    manual: false,
+  },
 );
 
 const emit = defineEmits<{
   "update:zoom": [value: number];
-  "update:shift": [value: number];
+  "update:shiftX": [value: number];
+  "update:shiftY": [value: number];
+  "update:manual": [value: boolean];
 }>();
 
-/** Подпись сдвига: ноль значит «как подобрал алгоритм». */
-const shiftLabel = computed(() => {
-  if (props.shift === 0) return "по центру";
-  return props.shift > 0 ? `${props.shift}% вправо` : `${-props.shift}% влево`;
+const dragging = ref(false);
+/** Кадр трогали: подсказка в окне больше не нужна. */
+const touched = ref(props.manual);
+
+/** Шаг перемещения кнопками: мышью грубо, а тут ровно. */
+const NUDGE_STEP = 2;
+
+const nudgeDirections = [
+  { key: "up", dx: 0, dy: -NUDGE_STEP, glyph: "↑", label: "Сдвинуть выше" },
+  { key: "down", dx: 0, dy: NUDGE_STEP, glyph: "↓", label: "Сдвинуть ниже" },
+  { key: "left", dx: -NUDGE_STEP, dy: 0, glyph: "←", label: "Сдвинуть левее" },
+  { key: "right", dx: NUDGE_STEP, dy: 0, glyph: "→", label: "Сдвинуть правее" },
+] as const;
+
+/** Точка отсчёта перетаскивания: считаем от неё, а не от прошлого события,
+ *  иначе мелкие прыжки указателя накапливают погрешность. */
+const dragOrigin = ref({ x: 0, y: 0, shiftX: 0, shiftY: 0 });
+
+/** Подпись положения словами: понять сдвиг без заглядывания в цифры. */
+const positionLabel = computed(() => {
+  const parts: string[] = [];
+  if (props.shiftX === 0) parts.push("по центру");
+  else parts.push(props.shiftX > 0 ? `${props.shiftX}% вправо` : `${-props.shiftX}% влево`);
+  if (props.shiftY !== 0) {
+    parts.push(props.shiftY > 0 ? `${props.shiftY}% вниз` : `${-props.shiftY}% вверх`);
+  }
+  return parts.join(", ");
 });
+
+/** Первое касание кадра переводит линейку в ручной режим: с этого момента
+ *  автоподбор не участвует и в карточке будет ровно то, что в окне. */
+function markManual() {
+  if (!touched.value) touched.value = true;
+  if (!props.manual) emit("update:manual", true);
+}
+
+function clampShift(value: number) {
+  return Math.max(-100, Math.min(100, Math.round(value)));
+}
+
+function clampZoom(value: number) {
+  return Math.max(60, Math.min(400, Math.round(value)));
+}
+
+function startDrag(event: PointerEvent) {
+  const target = event.currentTarget as HTMLElement | null;
+  if (!target || !props.src) return;
+  dragging.value = true;
+  target.setPointerCapture?.(event.pointerId);
+  dragOrigin.value = {
+    x: event.clientX,
+    y: event.clientY,
+    shiftX: props.shiftX,
+    shiftY: props.shiftY,
+  };
+  markManual();
+}
+
+function onDrag(event: PointerEvent) {
+  if (!dragging.value) return;
+  const target = event.currentTarget as HTMLElement | null;
+  if (!target) return;
+
+  /* Переводим пиксели указателя в проценты области. Проценты те же, что
+     хранит база, поэтому сохранённое значение не зависит от того, на
+     каком экране сотрудник настраивал кадр. */
+  const rect = target.getBoundingClientRect();
+  const width = rect.width || 1;
+  const height = rect.height || 1;
+
+  const dx = ((event.clientX - dragOrigin.value.x) / width) * 100;
+  const dy = ((event.clientY - dragOrigin.value.y) / height) * 100;
+
+  emit("update:shiftX", clampShift(dragOrigin.value.shiftX + dx));
+  emit("update:shiftY", clampShift(dragOrigin.value.shiftY + dy));
+}
+
+function endDrag(event: PointerEvent) {
+  if (!dragging.value) return;
+  dragging.value = false;
+  const target = event.currentTarget as HTMLElement | null;
+  target?.releasePointerCapture?.(event.pointerId);
+}
+
+/** Колесо мыши над окном приближает и отдаляет фото. */
+function onWheel(event: WheelEvent) {
+  if (!props.src) return;
+  const step = event.deltaY > 0 ? -10 : 10;
+  emit("update:zoom", clampZoom(props.zoom + step));
+  markManual();
+}
+
+function onZoomInput(event: Event) {
+  const value = Number((event.target as HTMLInputElement).value);
+  emit("update:zoom", clampZoom(value));
+  markManual();
+}
+
+function nudge(dx: number, dy: number) {
+  emit("update:shiftX", clampShift(props.shiftX + dx));
+  emit("update:shiftY", clampShift(props.shiftY + dy));
+  markManual();
+}
 
 /** Возврат к автоподбору: множитель 1 и без сдвига. */
 function reset() {
   emit("update:zoom", 100);
-  emit("update:shift", 0);
+  emit("update:shiftX", 0);
+  emit("update:shiftY", 0);
+  emit("update:manual", false);
+  touched.value = false;
 }
 </script>
 
@@ -165,19 +331,88 @@ function reset() {
   color: #6b7280;
 }
 
-/* Управление расположением: два ползунка и сброс. */
-.cover-preview__controls {
+/* --- Окно редактора ---
+   Оформление повторяет поля самой формы линейки: те же скругления
+   (rounded-lg — 8px), рамки border-gray-200 и подписи text-gray-500/700.
+   Клиентская палитра выше относится к превью карточки: оно намеренно
+   копирует мини-апп и живёт по его правилам. */
+
+.cover-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 12px 12px;
+  border-radius: 8px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+}
+
+.cover-editor__stage {
+  position: relative;
+  display: grid;
+  place-items: center;
+  padding: 14px;
+  border-radius: 8px;
+  /* Шахматка: видно, где кончается картинка, а где пусто вокруг. */
+  background-color: #eef1f5;
+  background-image:
+    linear-gradient(45deg, #e2e7ee 25%, transparent 25%, transparent 75%, #e2e7ee 75%),
+    linear-gradient(45deg, #e2e7ee 25%, transparent 25%, transparent 75%, #e2e7ee 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 8px 8px;
+}
+
+/* Видимая зона: ровно те пропорции, что в карточке мини-аппа (76x92).
+   Габариты увеличены примерно в 1.86 раза, отношение сторон сохранено
+   точно: 76 * 1.86 = 141.4, 92 * 1.86 = 171.1. Пропорции важнее размера —
+   от них зависит кадр, и расхождение даже в полпроцента сдвинет обрезку. */
+.cover-editor__viewport {
+  position: relative;
+  width: 141px;
+  height: 171px;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 0 0 2px #0958ff;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.cover-editor__viewport--dragging {
+  cursor: grabbing;
+}
+
+/* Слой фото: тот же компонент и та же геометрия, что в мини-аппе. */
+.cover-editor__canvas {
+  position: absolute;
+  inset: 0;
+}
+
+.cover-editor__overlay-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 6px;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: #081b4be6;
+  color: #ffffff;
+  font-size: 10px;
+  line-height: 1.3;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.cover-editor__controls {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 12px;
-  padding: 10px 12px;
-  border-radius: 12px;
-  background: #f9fafb;
-  border: 1px solid #e6e9ed;
 }
 
-.cover-preview__control {
+.cover-editor__control {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -185,25 +420,77 @@ function reset() {
   flex: 1;
 }
 
-.cover-preview__control-label {
+.cover-editor__control-label {
   flex-shrink: 0;
   font-size: 12px;
-  color: #4b5563;
+  color: #6b7280;
   white-space: nowrap;
 }
 
-.cover-preview__control-label b {
+.cover-editor__control-label b {
   color: #111827;
 }
 
-.cover-preview__slider {
+.cover-editor__slider {
   flex: 1;
   min-width: 90px;
-  accent-color: #d82319;
+  accent-color: #0958ff;
   cursor: pointer;
 }
 
-.cover-preview__reset {
+.cover-editor__position {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* Крестовина: четыре кнопки, как в редакторах изображений. */
+.cover-editor__nudge {
+  display: grid;
+  grid-template-areas:
+    ". up ."
+    "left . right"
+    ". down .";
+  gap: 2px;
+}
+
+.cover-editor__nudge-button {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  border: 1px solid #d1d5db;
+  background: #ffffff;
+  color: #374151;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.cover-editor__nudge-button:hover {
+  border-color: #9ca3af;
+  color: #111827;
+}
+
+.cover-editor__nudge-button:focus-visible {
+  outline: 2px solid #0958ff;
+  outline-offset: 1px;
+}
+
+.cover-editor__nudge-button:nth-child(1) { grid-area: up; }
+.cover-editor__nudge-button:nth-child(2) { grid-area: down; }
+.cover-editor__nudge-button:nth-child(3) { grid-area: left; }
+.cover-editor__nudge-button:nth-child(4) { grid-area: right; }
+
+.cover-editor__position-value {
+  font-size: 11px;
+  color: #6b7280;
+  min-width: 96px;
+}
+
+.cover-editor__reset {
   flex-shrink: 0;
   padding: 6px 12px;
   border-radius: 8px;
@@ -214,8 +501,52 @@ function reset() {
   cursor: pointer;
 }
 
-.cover-preview__reset:hover {
+.cover-editor__reset:hover:not(:disabled) {
   border-color: #9ca3af;
   color: #111827;
+}
+
+.cover-editor__reset:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* До 640px модалка формы ещё во всю ширину экрана и места мало: управление
+   встаёт в столбец, а окно уменьшается. Порог совпадает с точкой, где
+   модалка становится широкой (sm:max-w-lg) — иначе на 480..640px строка
+   управления ломалась бы на две. */
+@media (max-width: 640px) {
+  .cover-editor__controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .cover-editor__position {
+    justify-content: space-between;
+  }
+
+  .cover-editor__viewport {
+    /* Те же пропорции 76:92, меньше размером: 76 * 1.55 = 117.8,
+       92 * 1.55 = 142.6. */
+    width: 118px;
+    height: 143px;
+  }
+}
+
+/* Совсем узкие экраны: окно ещё меньше, чтобы не упиралось в края. */
+@media (max-width: 400px) {
+  .cover-editor__stage {
+    padding: 10px;
+  }
+
+  .cover-editor__viewport {
+    /* Пропорции держим те же: 76 * 1.35 = 102.6, 92 * 1.35 = 124.2. */
+    width: 103px;
+    height: 125px;
+  }
+
+  .cover-editor__position-value {
+    min-width: 0;
+  }
 }
 </style>

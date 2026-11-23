@@ -87,6 +87,7 @@ import { migrateFinancialDayClosures } from './migrations/add_financial_day_clos
 import { migrateCustomReminders } from './migrations/add_custom_reminders.js';
 import { migrateRevenueTriggers } from './migrations/add_revenue_triggers.js';
 import { migrateCategoryGroupCoverLayout } from './migrations/add_cover_layout_to_category_groups.js';
+import { migrateCategoryGroupCoverOffset } from './migrations/add_cover_offset_y_to_category_groups.js';
 import { assertFinancialCloseDatabaseReady } from './utils/financial-close-activation.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -282,6 +283,7 @@ export function initDb() {
   migrateCustomReminders(db);
   migrateRevenueTriggers(db);
   migrateCategoryGroupCoverLayout();
+  migrateCategoryGroupCoverOffset();
 
   seedIfEmpty();
   seedDefaultLoyaltyData();

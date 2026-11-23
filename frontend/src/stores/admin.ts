@@ -179,6 +179,12 @@ export interface CategoryGroup {
   name: string
   coverImage?: string | null
   hasCoverImage?: boolean
+  /** Расположение обложки: масштаб в процентах и сдвиги по осям. */
+  coverZoom?: number | null
+  coverShift?: number | null
+  coverOffsetY?: number | null
+  /** Кадр настроен руками: автоподбор для линейки не применяется. */
+  coverManual?: boolean | null
   order: number
   hideEmpty?: boolean
   parentId?: string | null
@@ -1228,7 +1234,7 @@ async function createCategory(category: {
     }
   }
 
-  async function createCategoryGroup(payload: { categoryId: string; name: string; slug?: string; coverImage?: string | null; coverZoom?: number | null; coverShift?: number | null; hideEmpty?: boolean; parentId?: string | null; metaLabel?: string | null; metaValue?: string | null; minStockThreshold?: number | null; totalControl?: boolean; isNew?: boolean; newDays?: number; wholesalePrices?: Record<string, number | null>; waiveDescription?: boolean; waiveMinStock?: boolean; waiveWholesale?: boolean; waiveStrengthTier?: boolean; strengthTier?: string | null; significanceMarkId?: string | null; posPublication?: PosPublication }) {
+  async function createCategoryGroup(payload: { categoryId: string; name: string; slug?: string; coverImage?: string | null; coverZoom?: number | null; coverShift?: number | null; coverOffsetY?: number | null; coverManual?: boolean | null; hideEmpty?: boolean; parentId?: string | null; metaLabel?: string | null; metaValue?: string | null; minStockThreshold?: number | null; totalControl?: boolean; isNew?: boolean; newDays?: number; wholesalePrices?: Record<string, number | null>; waiveDescription?: boolean; waiveMinStock?: boolean; waiveWholesale?: boolean; waiveStrengthTier?: boolean; strengthTier?: string | null; significanceMarkId?: string | null; posPublication?: PosPublication }) {
     try {
       isLoading.value = true
       error.value = null
@@ -1243,6 +1249,8 @@ async function createCategory(category: {
           coverImage: payload.coverImage ?? null,
           coverZoom: payload.coverZoom ?? null,
           coverShift: payload.coverShift ?? null,
+          coverOffsetY: payload.coverOffsetY ?? null,
+          coverManual: payload.coverManual ?? null,
           hide_empty: payload.hideEmpty ?? false,
           parentId: payload.parentId ?? null,
           metaLabel: payload.metaLabel ?? null,
@@ -1336,6 +1344,8 @@ async function createCategory(category: {
       // ключа нет, значит не трогаем сохранённые настройки.
       if ('coverZoom' in updates) body.coverZoom = updates.coverZoom ?? null
       if ('coverShift' in updates) body.coverShift = updates.coverShift ?? null
+      if ('coverOffsetY' in updates) body.coverOffsetY = updates.coverOffsetY ?? null
+      if ('coverManual' in updates) body.coverManual = updates.coverManual ?? null
       if ('hideEmpty' in updates) body.hide_empty = updates.hideEmpty
       if ('order' in updates) body.order = updates.order
       if ('parentId' in updates) body.parentId = updates.parentId ?? null

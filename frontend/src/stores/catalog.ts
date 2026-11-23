@@ -26,8 +26,12 @@ export interface CategoryGroup {
   coverImage?: string | null
   /** Расположение обложки из CRM: множитель масштаба в процентах. */
   coverZoom?: number | null
-  /** Наклон обложки в градусах. */
+  /** Сдвиг обложки вбок в процентах. */
   coverShift?: number | null
+  /** Сдвиг обложки по вертикали в процентах. */
+  coverOffsetY?: number | null
+  /** Кадр настроен руками: автоподбор для линейки не применяется. */
+  coverManual?: boolean | null
   hasCoverImage?: boolean
   productCount: number
   totalProductCount?: number
@@ -394,6 +398,8 @@ export const useCatalogStore = defineStore('catalog', () => {
               // поля терялись при нормализации ответа.
               coverZoom: group.coverZoom ?? group.cover_zoom ?? null,
               coverShift: group.coverShift ?? group.cover_shift ?? null,
+              coverOffsetY: group.coverOffsetY ?? group.cover_offset_y ?? null,
+              coverManual: group.coverManual ?? group.cover_manual ?? null,
               hasCoverImage: group.hasCoverImage ?? false,
               productCount: group.productCount ?? 0,
               totalProductCount: group.totalProductCount ?? group.productCount ?? 0,

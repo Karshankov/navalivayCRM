@@ -36,20 +36,26 @@ const props = withDefaults(
   defineProps<{
     src: string | null;
     alt?: string;
-    /** Ручные поправки из CRM: множитель масштаба и сдвиг вбок. */
+    /** Ручные поправки из CRM: множитель масштаба и сдвиги по осям. */
     zoom?: number;
     shiftX?: number;
+    shiftY?: number;
+    /** Кадр настроен руками: автоподбор не применяется. */
+    manual?: boolean;
   }>(),
-  { alt: "", zoom: undefined, shiftX: undefined },
+  { alt: "", zoom: undefined, shiftX: undefined, shiftY: undefined, manual: false },
 );
 
 const areaRef = ref<HTMLElement | null>(null);
 const imgRef = ref<HTMLImageElement | null>(null);
 
-/* Поправки передаём в расчёт: он применяет их поверх автоподбора. */
+/* Поправки передаём в расчёт: он применяет их поверх автоподбора
+   либо, в ручном режиме, вместо него. */
 const overrides = computed(() => ({
   zoom: props.zoom,
   shiftX: props.shiftX,
+  shiftY: props.shiftY,
+  manual: props.manual,
 }));
 
 const {

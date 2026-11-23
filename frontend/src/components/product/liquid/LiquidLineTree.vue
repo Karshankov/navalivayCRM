@@ -12,6 +12,8 @@
       :is-new="group.isNew ?? false"
       :cover-zoom="group.coverZoom ?? null"
       :cover-shift="group.coverShift ?? null"
+      :cover-offset-y="group.coverOffsetY ?? null"
+      :cover-manual="group.coverManual ?? null"
       :meta-label="group.metaLabel ?? null"
       :meta-value="group.metaValue ?? null"
       :mark="group.mark ?? null"
@@ -85,6 +87,10 @@ interface LiquidGroup {
   /** Расположение обложки из CRM. */
   coverZoom?: number | null;
   coverShift?: number | null;
+  /** Сдвиг обложки по вертикали в процентах. */
+  coverOffsetY?: number | null;
+  /** Кадр настроен руками: автоподбор не применяется. */
+  coverManual?: boolean | null;
   strengthTier?: string | null;
   isNew?: boolean;
   newSince?: string | null;

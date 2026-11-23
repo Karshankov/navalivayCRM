@@ -24,6 +24,8 @@
             :alt="title"
             :zoom="coverZoom != null ? coverZoom / 100 : undefined"
             :shift-x="coverShift ?? undefined"
+            :shift-y="coverOffsetY ?? undefined"
+            :manual="coverManual === true"
           />
           <span v-if="topRank && showPromoBadges" class="liquid-line-top-rank">#{{ topRank }}</span>
           <DiscountBadge v-if="hasDiscount && showPromoBadges" class="liquid-line-discount" />
@@ -363,8 +365,12 @@ const props = withDefaults(
     metaValue?: string | null;
     /** Расположение обложки из CRM: множитель масштаба в процентах. */
     coverZoom?: number | null;
-    /** Наклон обложки в градусах. */
+    /** Сдвиг обложки вбок в процентах: минус влево, плюс вправо. */
     coverShift?: number | null;
+    /** Сдвиг обложки по вертикали в процентах: минус вверх, плюс вниз. */
+    coverOffsetY?: number | null;
+    /** Кадр настроен руками в CRM: автоподбор не применяется. */
+    coverManual?: boolean | null;
     topRank?: number | null;
     /** Пометка значимости линейки: ярлык в строке, рядом с отзывами. */
     mark?: ProductMark | null;

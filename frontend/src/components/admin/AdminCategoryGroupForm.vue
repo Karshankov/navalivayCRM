@@ -317,12 +317,15 @@
         </div>
       </div>
 
-      <!-- Превью как в мини-аппе: сотрудник видит, что увидят покупатели,
-           а не просто «тот ли файл загружен». -->
+      <!-- Редактор обложки: внутри то же фото и та же геометрия, что в
+           карточке мини-аппа, — что сотрудник видит здесь, то и получит
+           покупатель. -->
       <CoverPreview
         v-if="hasPreview"
         v-model:zoom="coverZoom"
-        v-model:shift="coverShift"
+        v-model:shift-x="coverShift"
+        v-model:shift-y="coverOffsetY"
+        v-model:manual="coverManual"
         :src="currentPreview"
         :title="form.name || 'Название линейки'"
         :meta="previewMeta"
@@ -519,6 +522,10 @@ interface CategoryGroup {
   coverZoom?: number | null
   /** Сдвиг обложки вбок в процентах. */
   coverShift?: number | null
+  /** Сдвиг обложки по вертикали в процентах. */
+  coverOffsetY?: number | null
+  /** Кадр настроен руками: автоподбор не применяется. */
+  coverManual?: boolean | null
   hideEmpty?: boolean
   parentId?: string | null
   metaLabel?: string | null
@@ -562,7 +569,7 @@ const props = withDefaults(defineProps<{ editingGroup?: CategoryGroup | null; is
 })
 
 const emit = defineEmits<{
-  (e: 'submit', payload: { name: string; coverImage?: string | null; coverZoom?: number | null; coverShift?: number | null; hideEmpty?: boolean; parentId?: string | null; metaLabel?: string | null; metaValue?: string | null; minStockThreshold?: number | null; totalControl?: boolean; isNew?: boolean; newDays?: number; discount?: { price: number | null; untilDate: string | null }; wholesalePrices?: Record<string, number | null>; waiveDescription?: boolean; waiveMinStock?: boolean; waiveWholesale?: boolean; waiveStrengthTier?: boolean; strengthTier?: string | null; significanceMarkId?: string | null; posPublication?: PosPublicationValue }): void
+  (e: 'submit', payload: { name: string; coverImage?: string | null; coverZoom?: number | null; coverShift?: number | null; coverOffsetY?: number | null; coverManual?: boolean | null; hideEmpty?: boolean; parentId?: string | null; metaLabel?: string | null; metaValue?: string | null; minStockThreshold?: number | null; totalControl?: boolean; isNew?: boolean; newDays?: number; discount?: { price: number | null; untilDate: string | null }; wholesalePrices?: Record<string, number | null>; waiveDescription?: boolean; waiveMinStock?: boolean; waiveWholesale?: boolean; waiveStrengthTier?: boolean; strengthTier?: string | null; significanceMarkId?: string | null; posPublication?: PosPublicationValue }): void
   (e: 'cancel'): void
 }>()
 
@@ -651,10 +658,14 @@ const previewMeta = computed(() => {
   return label || value || 'Крепость 20 мг'
 })
 
-/* Расположение обложки: 100% и 0 значат «как подобрал алгоритм».
-   Эти значения сохраняются вместе с линейкой и работают у покупателей. */
+/* Расположение обложки: 100% и 0 значат «как вписалось в область».
+   Эти значения сохраняются вместе с линейкой и работают у покупателей.
+   coverManual включается, как только сотрудник тронул кадр: с этого
+   момента автоподбор не участвует. */
 const coverZoom = ref(100)
 const coverShift = ref(0)
+const coverOffsetY = ref(0)
+const coverManual = ref(false)
 
 const strengthOptions = [
   { value: 'very_strong', label: 'Очень крепкая' },
@@ -756,8 +767,12 @@ watch(
       /* Расположение обложки: сервер отдаёт и camelCase, и snake_case. */
       const rawZoom = (group as any).coverZoom ?? (group as any).cover_zoom
       const rawShift = (group as any).coverShift ?? (group as any).cover_shift
+      const rawOffsetY = (group as any).coverOffsetY ?? (group as any).cover_offset_y
+      const rawManual = (group as any).coverManual ?? (group as any).cover_manual
       coverZoom.value = Number.isFinite(Number(rawZoom)) && rawZoom !== null ? Number(rawZoom) : 100
       coverShift.value = Number.isFinite(Number(rawShift)) && rawShift !== null ? Number(rawShift) : 0
+      coverOffsetY.value = Number.isFinite(Number(rawOffsetY)) && rawOffsetY !== null ? Number(rawOffsetY) : 0
+      coverManual.value = rawManual === true || rawManual === 1
       posPublication.value = (group as any).pos_publication ?? null
       syncWholesalePriceInputs(group)
       if ((group.coverImage || '').startsWith('data:')) {
@@ -901,6 +916,8 @@ function onSubmit() {
     /* Расположение сохраняем всегда: сотрудник подобрал его в превью. */
     coverZoom: coverZoom.value,
     coverShift: coverShift.value,
+    coverOffsetY: coverOffsetY.value,
+    coverManual: coverManual.value,
     hideEmpty: form.hideEmpty,
     parentId: form.parentId ? form.parentId : null,
     metaLabel: null,

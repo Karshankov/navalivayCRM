@@ -24,6 +24,12 @@ const SCALE_MIN = 1.08;
 const SCALE_MAX = 1.62;
 /** Запас, чтобы объект не прилипал к краю обрезки. */
 const SAFE_MARGIN = 0.04;
+/** Границы масштаба в ручном режиме: сотрудник задаёт его сам.
+ *  Верхняя — 400%: у части линеек объект на фото мелкий и много
+ *  белого фона, ближе не подобраться. Нижняя не даёт потерять фото
+ *  совсем. */
+const MANUAL_SCALE_MIN = 0.6;
+const MANUAL_SCALE_MAX = 4;
 
 export interface ImageFadeGeometry {
   /** Масштаб относительно исходного размера картинки. */
@@ -39,6 +45,15 @@ export interface ImageFadeOverrides {
   zoom?: number;
   /** Сдвиг вбок в процентах от ширины области: минус влево, плюс вправо. */
   shiftX?: number;
+  /** Сдвиг по вертикали в процентах от высоты области: минус вверх, плюс вниз. */
+  shiftY?: number;
+  /**
+   * Кадр настроен руками: поправки заменяют автоподбор, а не складываются
+   * с ним. Нужно, чтобы сотрудник видел в редакторе ровно то, что получит
+   * покупатель: пока автоподбор работает поверх правок, картинка уезжает
+   * уже после сохранения.
+   */
+  manual?: boolean;
 }
 
 export function useImageFadeGeometry(overrides: Ref<ImageFadeOverrides | undefined> = ref(undefined)) {
@@ -78,6 +93,30 @@ export function useImageFadeGeometry(overrides: Ref<ImageFadeOverrides | undefin
     const fitScale = Math.min(aw / nw, ah / nh);
     const fitW = nw * fitScale;
     const fitH = nh * fitScale;
+
+    /* Кадр настроен руками: автоподбор не участвует вообще, иначе он
+       сдвинул бы фото влево-вниз уже после того, как сотрудник выставил
+       положение в редакторе, и в карточке получилось бы не то, что он
+       видел. Масштаб берём от вписанного размера — как object-fit. */
+    if (overrides.value?.manual) {
+      const manualZoom = overrides.value.zoom ?? 1;
+      const manualScale = Math.max(
+        MANUAL_SCALE_MIN,
+        Math.min(MANUAL_SCALE_MAX, manualZoom),
+      );
+
+      /* Сдвиги приходят в процентах от габаритов области. translate
+         берёт проценты от размера самого элемента, а он равен области,
+         умноженной на масштаб, — поэтому делим на масштаб. */
+      const shiftXPercent = (overrides.value.shiftX ?? 0) / manualScale;
+      const shiftYPercent = (overrides.value.shiftY ?? 0) / manualScale;
+
+      return {
+        scale: manualScale,
+        offsetX: Math.round(shiftXPercent),
+        offsetY: Math.round(shiftYPercent),
+      };
+    }
 
     /* Насколько вписанное фото короче области по каждой оси. Квадратное
        фото при области 76x92 заполняет ширину и оставляет 16px снизу —
@@ -138,7 +177,7 @@ export function useImageFadeGeometry(overrides: Ref<ImageFadeOverrides | undefin
     const boxW = (aw || 1) * scale;
     const boxH = (ah || 1) * scale;
     let offsetX = Math.round((shiftX / boxW) * 100);
-    const offsetY = Math.round((shiftY / boxH) * 100);
+    let offsetY = Math.round((shiftY / boxH) * 100);
 
     /* Ручная поправка из CRM: сотрудник сдвигает фото вбок. Значение
        в процентах от ширины области, минус влево, плюс вправо.
@@ -147,6 +186,15 @@ export function useImageFadeGeometry(overrides: Ref<ImageFadeOverrides | undefin
     if (manualShift !== 0) {
       const manualPercent = Math.round((aw * (manualShift / 100) / boxW) * 100);
       offsetX += manualPercent;
+    }
+
+    /* Ручной сдвиг по вертикали: минус вверх, плюс вниз. В отличие от
+       автоподбора, который всегда уводит фото вниз, здесь знак сохраняем
+       как задал сотрудник. */
+    const manualShiftY = overrides.value?.shiftY ?? 0;
+    if (manualShiftY !== 0) {
+      const manualPercentY = Math.round((ah * (manualShiftY / 100) / boxH) * 100);
+      offsetY += manualPercentY;
     }
 
     return { scale, offsetX, offsetY };
