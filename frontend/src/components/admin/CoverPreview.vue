@@ -4,101 +4,6 @@
        двигать, карточка — чтобы видеть результат у клиента. Обе берут
        один кадр из одного состояния, поэтому расходятся не могут. -->
   <div class="cover-preview">
-    <!-- Колонка-эталон: три области фото подряд, ровно как в ленте у
-         клиента и в натуральную величину. Соседи сверху и снизу дают то,
-         чего не даёт никакая сетка, — видно, на какой высоте стоят их
-         картинки, и свою ставят на ту же. Между областями тот же зазор,
-         что в ленте, а сквозь все три проходят направляющие: на одной
-         высоте у всех должна быть середина кадра. -->
-    <div class="cover-guides" data-test="cover-guides">
-      <div class="cover-guides__head">
-        <span class="cover-editor__title">Ряд с соседями</span>
-        <span class="cover-editor__note">Натуральный размер, как у клиента</span>
-      </div>
-
-      <div class="cover-guides__column">
-        <!-- Сосед выше -->
-        <div class="cover-guides__slot">
-          <span class="cover-guides__caption">
-            <b>Выше</b>
-            <template v-if="previous">{{ previous.name }}</template>
-          </span>
-          <div v-if="previous" class="cover-guides__area" data-test="guide-previous">
-            <ImageFade
-              :src="previous.coverImage"
-              :alt="previous.name"
-              :zoom="(previous.coverZoom ?? 100) / 100"
-              :shift-x="previous.coverShift ?? 0"
-              :shift-y="previous.coverOffsetY ?? 0"
-              :manual="previous.coverManual ?? false"
-            />
-            <span class="cover-guides__lines" aria-hidden="true">
-              <i class="cover-guides__line cover-guides__line--quarter" />
-              <i class="cover-guides__line cover-guides__line--center" />
-              <i class="cover-guides__line cover-guides__line--three-quarter" />
-            </span>
-          </div>
-          <div v-else class="cover-guides__area cover-guides__area--empty">
-            <span>Первая в списке</span>
-          </div>
-        </div>
-
-        <!-- Ваша линейка: тот же кадр, что в окне, но в натуральную величину -->
-        <div class="cover-guides__slot">
-          <span class="cover-guides__caption cover-guides__caption--own">
-            <b>Ваша</b>
-            <span>{{ title }}</span>
-          </span>
-          <div class="cover-guides__area cover-guides__area--own" data-test="guide-own">
-            <ImageFade
-              :src="src"
-              :alt="alt"
-              :zoom="zoom / 100"
-              :shift-x="shiftX"
-              :shift-y="shiftY"
-              :manual="manual"
-            />
-            <span class="cover-guides__lines cover-guides__lines--own" aria-hidden="true">
-              <i class="cover-guides__line cover-guides__line--quarter" />
-              <i class="cover-guides__line cover-guides__line--center" />
-              <i class="cover-guides__line cover-guides__line--three-quarter" />
-            </span>
-          </div>
-        </div>
-
-        <!-- Сосед ниже -->
-        <div class="cover-guides__slot">
-          <span class="cover-guides__caption">
-            <b>Ниже</b>
-            <template v-if="next">{{ next.name }}</template>
-          </span>
-          <div v-if="next" class="cover-guides__area" data-test="guide-next">
-            <ImageFade
-              :src="next.coverImage"
-              :alt="next.name"
-              :zoom="(next.coverZoom ?? 100) / 100"
-              :shift-x="next.coverShift ?? 0"
-              :shift-y="next.coverOffsetY ?? 0"
-              :manual="next.coverManual ?? false"
-            />
-            <span class="cover-guides__lines" aria-hidden="true">
-              <i class="cover-guides__line cover-guides__line--quarter" />
-              <i class="cover-guides__line cover-guides__line--center" />
-              <i class="cover-guides__line cover-guides__line--three-quarter" />
-            </span>
-          </div>
-          <div v-else class="cover-guides__area cover-guides__area--empty">
-            <span>Последняя в списке</span>
-          </div>
-        </div>
-      </div>
-
-      <p class="cover-guides__legend">
-        Пунктир — четверти кадра, синяя линия — середина. Ставьте фото так,
-        чтобы у соседей и у вас середина была на одной высоте.
-      </p>
-    </div>
-
     <!-- Окно: то же соотношение сторон, что у области фото в карточке.
          Всё, что внутри синей рамки, попадёт в карточку; за рамкой —
          запас, который обрежется. -->
@@ -134,6 +39,13 @@
                 manual
               />
             </div>
+            <!-- Направляющие по ширине: края видимой части и середина.
+                 По ним фото центруют влево-вправо. -->
+            <span class="cover-editor__guide-lines" aria-hidden="true">
+              <i class="cover-editor__guide-line cover-editor__guide-line--left" />
+              <i class="cover-editor__guide-line cover-editor__guide-line--center" />
+              <i class="cover-editor__guide-line cover-editor__guide-line--right" />
+            </span>
           </div>
         </div>
 
@@ -203,28 +115,101 @@
          превью масштабируется целиком, сохраняя внутренние размеры. -->
     <div class="cover-preview__result">
       <span class="cover-preview__result-title">Так увидит клиент</span>
-      <div class="cover-preview__stage">
-        <div class="cover-preview__frame">
-          <div class="cover-preview__main">
-            <div class="cover-preview__art">
-              <ImageFade
-                :src="src"
-                :alt="alt"
-                :zoom="zoom / 100"
-                :shift-x="shiftX"
-                :shift-y="shiftY"
-                :manual="manual"
-              />
+
+      <!-- Три карточки подряд: сосед выше, ваша, сосед ниже. Настоящий
+           состав карточки — от него зависит высота, а по высоте растянута
+           область фото. Порядок и зазор те же, что в ленте, поэтому видно,
+           как ваша обложка встаёт в ряд, а не отдельно от него. -->
+      <div class="cover-preview__stage cover-preview__stage--feed">
+        <!-- Сосед выше -->
+        <div class="cover-preview__row">
+          <div v-if="previous"
+               class="cover-preview__frame"
+               data-test="neighbour-previous">
+            <div class="cover-preview__main">
+              <div class="cover-preview__art">
+                <ImageFade
+                  :src="previous.coverImage"
+                  :alt="previous.name"
+                  :zoom="(previous.coverZoom ?? 100) / 100"
+                  :shift-x="previous.coverShift ?? 0"
+                  :shift-y="previous.coverOffsetY ?? 0"
+                  :manual="previous.coverManual ?? false"
+                />
+              </div>
+              <div class="cover-preview__info">
+                <span class="cover-preview__title">{{ previous.name }}</span>
+                <span v-if="meta" class="cover-preview__meta">{{ meta }}</span>
+                <span class="cover-preview__reviews">★ 5,0 · 12 отзывов</span>
+                <span class="cover-preview__favorite">Избранное</span>
+              </div>
             </div>
-            <div class="cover-preview__info">
-              <span class="cover-preview__title">{{ title }}</span>
-              <span v-if="meta" class="cover-preview__meta">{{ meta }}</span>
-              <span class="cover-preview__reviews">★ 5,0 · 12 отзывов</span>
-              <span class="cover-preview__favorite">Избранное</span>
+            <div class="cover-preview__side">
+              <span class="cover-preview__toggle" aria-hidden="true">⌄</span>
             </div>
           </div>
-          <div class="cover-preview__side">
-            <span class="cover-preview__toggle" aria-hidden="true">⌄</span>
+          <div v-else class="cover-preview__frame cover-preview__frame--empty">
+            <span>Первая в списке</span>
+          </div>
+        </div>
+
+        <!-- Ваша линейка -->
+        <div class="cover-preview__row">
+          <div class="cover-preview__frame cover-preview__frame--own"
+               data-test="preview-own">
+            <div class="cover-preview__main">
+              <div class="cover-preview__art">
+                <ImageFade
+                  :src="src"
+                  :alt="alt"
+                  :zoom="zoom / 100"
+                  :shift-x="shiftX"
+                  :shift-y="shiftY"
+                  :manual="manual"
+                />
+              </div>
+              <div class="cover-preview__info">
+                <span class="cover-preview__title">{{ title }}</span>
+                <span v-if="meta" class="cover-preview__meta">{{ meta }}</span>
+                <span class="cover-preview__reviews">★ 5,0 · 12 отзывов</span>
+                <span class="cover-preview__favorite">Избранное</span>
+              </div>
+            </div>
+            <div class="cover-preview__side">
+              <span class="cover-preview__toggle" aria-hidden="true">⌄</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Сосед ниже -->
+        <div class="cover-preview__row">
+          <div v-if="next"
+               class="cover-preview__frame"
+               data-test="neighbour-next">
+            <div class="cover-preview__main">
+              <div class="cover-preview__art">
+                <ImageFade
+                  :src="next.coverImage"
+                  :alt="next.name"
+                  :zoom="(next.coverZoom ?? 100) / 100"
+                  :shift-x="next.coverShift ?? 0"
+                  :shift-y="next.coverOffsetY ?? 0"
+                  :manual="next.coverManual ?? false"
+                />
+              </div>
+              <div class="cover-preview__info">
+                <span class="cover-preview__title">{{ next.name }}</span>
+                <span v-if="meta" class="cover-preview__meta">{{ meta }}</span>
+                <span class="cover-preview__reviews">★ 5,0 · 12 отзывов</span>
+                <span class="cover-preview__favorite">Избранное</span>
+              </div>
+            </div>
+            <div class="cover-preview__side">
+              <span class="cover-preview__toggle" aria-hidden="true">⌄</span>
+            </div>
+          </div>
+          <div v-else class="cover-preview__frame cover-preview__frame--empty">
+            <span>Последняя в списке</span>
           </div>
         </div>
       </div>
@@ -445,152 +430,7 @@ function reset() {
   gap: 14px;
 }
 
-/* Колонка-эталон: соседи сверху и снизу в натуральную величину. */
-.cover-guides {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 12px;
-  border-radius: 8px;
-  background: #f9fafb;
-  border: 1px solid #e5e7eb;
-}
 
-.cover-guides__head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 4px 8px;
-}
-
-/* Колонка областей. Ширина только под области: подписи стоят слева и в
-   расчёт шага не входят — иначе они раздвинули бы области и ряд перестал
-   бы совпадать с лентой клиента. */
-.cover-guides__column {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  width: 100%;
-}
-
-/* Слот — строка «подпись слева, область справа». Высота слота задаёт шаг
-   ряда: 124 (область) + 10 (зазор между карточками у клиента) = 134. Тот
-   же шаг, что в ленте, — иначе «в ряд с соседями» показывало бы неправду. */
-.cover-guides__slot {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 124px;
-  margin-bottom: 10px;
-}
-
-.cover-guides__slot:last-child {
-  margin-bottom: 0;
-}
-
-/* Подпись слева. Название соседа длинное, поэтому даём две строки и
-   фиксированную ширину: в узкую колонку оно не влезало и обрезалось
-   многоточием, а тогда непонятно, чей это кадр. */
-.cover-guides__caption {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  flex: 0 0 auto;
-  width: 92px;
-  font-size: 10px;
-  line-height: 13px;
-  color: #9ca3af;
-  overflow-wrap: anywhere;
-}
-
-.cover-guides__caption b {
-  color: #6b7280;
-  font-weight: 600;
-}
-
-.cover-guides__caption--own {
-  color: #0958ff;
-}
-
-.cover-guides__caption--own b {
-  color: #0958ff;
-}
-
-/* Область фото — ровно 76x124, как у клиента. Не масштабируем: смысл
-   колонки в том, что видно НАСТОЯЩИЙ размер, и по нему можно сверить,
-   не выбивается ли картинка из соседних. */
-.cover-guides__area {
-  position: relative;
-  flex: 0 0 auto;
-  width: 76px;
-  height: 124px;
-  border-radius: 6px;
-  overflow: hidden;
-  background: #eef1f5;
-}
-
-/* Своя область обведена, чтобы не путалась с соседями. */
-.cover-guides__area--own {
-  box-shadow: 0 0 0 2px #0958ff;
-}
-
-/* Нет соседа — пустое место в размер области с пунктирной рамкой: видно,
-   что линейка крайняя, и колонка не прыгает по высоте. */
-.cover-guides__area--empty {
-  display: grid;
-  place-items: center;
-  padding: 0 4px;
-  border: 1px dashed #d1d5db;
-  background: transparent;
-  text-align: center;
-  font-size: 9px;
-  line-height: 12px;
-  color: #9ca3af;
-}
-
-/* Направляющие: лежат поверх фото и нажатий не перехватывают. */
-.cover-guides__lines {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-
-.cover-guides__line {
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: 0;
-  border-top: 1px dashed #9ca3af;
-  opacity: 0.75;
-}
-
-.cover-guides__line--quarter {
-  top: 25%;
-}
-
-.cover-guides__line--three-quarter {
-  top: 75%;
-}
-
-/* Середина кадра — сплошная и синяя: это главная ось, по ней и
-   выравнивают картинки в ряд. */
-.cover-guides__line--center {
-  top: 50%;
-  border-top: 1px solid #0958ff;
-  opacity: 1;
-}
-
-/* На своей области линии заметнее: с ними работают. */
-.cover-guides__lines--own .cover-guides__line {
-  opacity: 1;
-}
-
-.cover-guides__legend {
-  margin: 0;
-  font-size: 11px;
-  line-height: 15px;
-  color: #6b7280;
-}
 
 /* Блок результата: карточка под окном. Отделён от редактора, чтобы
    взгляд сам находил ответ на вопрос «а как у клиента». */
@@ -619,6 +459,46 @@ function reset() {
    настоящими, а на экран оно занимает меньше места. */
 .cover-preview__stage {
   width: 369px;
+}
+
+/* Лента из трёх карточек. Зазор 10px — тот же, что между карточками в
+   мини-аппе, поэтому ряд выглядит как настоящий, а не как подборка. */
+.cover-preview__stage--feed {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Одна строка ленты. Карточка занимает всю ширину 369px — ровно как у
+   клиента на телефоне 393px.
+
+   Подписей «выше/ниже» здесь НЕТ намеренно: сбоку они отнимали у карточки
+   около 66px, длинное название переносилось на вторую строку, карточка
+   становилась выше и растягивала область фото — выходило 76x144 вместо
+   76x124, то есть превью начинало показывать не то, что видит покупатель.
+   Название соседа и так написано в его карточке, а свою видно по синей
+   рамке: отдельная подпись дублировала бы и врала бы в размерах. */
+.cover-preview__row {
+  display: flex;
+  align-items: center;
+}
+
+
+/* Своя карточка обведена: в ряду из трёх иначе неясно, какую правят. */
+.cover-preview__frame--own {
+  box-shadow: 0 0 0 2px #0958ff;
+}
+
+/* Нет соседа — на месте карточки его размер с подписью. Так видно, что
+   линейка крайняя, и ряд не теряет высоту. */
+.cover-preview__frame--empty {
+  display: grid;
+  place-items: center;
+  min-height: 124px;
+  border-style: dashed;
+  border-color: #d1d5db;
+  color: #9ca3af;
+  font-size: 11px;
 }
 
 /* Карточка в масштабе телефона: ширина мини-аппа, пропорции сохранены. */
@@ -815,9 +695,40 @@ function reset() {
   cursor: grabbing;
 }
 
-/* Слой фото: тот же компонент и та же геометрия, что в мини-аппе. */
-.cover-editor__canvas {
+/* Направляющие по ширине: края видимой части и середина. Лежат поверх
+   фото и нажатий не перехватывают — иначе мешали бы тянуть кадр.
+   По ним фото центруют влево-вправо: видно, симметрично ли объект стоит
+   и не уехала ли композиция к краю. */
+.cover-editor__guide-lines {
   position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.cover-editor__guide-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 1px dashed rgba(9, 88, 255, 0.55);
+}
+
+.cover-editor__guide-line--left {
+  left: 0;
+}
+
+.cover-editor__guide-line--right {
+  right: 0;
+}
+
+/* Середина — сплошная и чуть плотнее: это главная ось центровки. */
+.cover-editor__guide-line--center {
+  left: 50%;
+  border-left: 1px solid #0958ff;
+}
+
+/* Слой фото: тот же компонент и та же геометрия, что в мини-аппе. */
+.cover-editor__canvas {  position: absolute;
   inset: 0;
 }
 
@@ -995,17 +906,18 @@ function reset() {
 
   .cover-preview__result {
     /* transform не влияет на разметку: сама обёртка осталась бы во всю
-       высоту карточки и под уменьшенной картинкой зияла бы пустая
-       полоса. Обрезаем обёртку по размерам после масштаба.
+       высоту ленты и под уменьшенной картинкой зияла бы пустая полоса.
+       Обрезаем обёртку по размерам после масштаба.
 
-       В высоту входит и подпись: она лежит вне уменьшаемой части, поэтому
-       складываем её с уже уменьшенной карточкой, а не умножаем целиком.
-       17 (подпись) + 4 (зазор) + 126 * 0.75 = 116.
+       Высота — для ТРЁХ карточек: 126 (одна карточка) + 10 (зазор) + 126 +
+       10 + 126 = 398, после scale(0.75) это 298.5. Подпись лежит вне
+       уменьшаемой части, поэтому складываем её с уже уменьшенной лентой,
+       а не умножаем целиком: 17 + 4 + 298.5 = 319.5.
 
        Ширину берём с запасом к 369 * 0.75 = 276.75. Впритык правый край
        карточки (шеврон) срезался бы от одного округления. */
     max-width: 279px;
-    max-height: 117px;
+    max-height: 320px;
     overflow: hidden;
   }
 }

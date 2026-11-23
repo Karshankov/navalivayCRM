@@ -1,9 +1,9 @@
 /**
  * Направляющие и соседи в редакторе обложки.
  *
- * Смысл колонки: сотрудник видит картинки соседних линеек в натуральную
- * величину и ставит свою так, чтобы середина кадра оказалась на той же
- * высоте. Без соседей сравнивать не с чем — тогда это просто сетка.
+ * Направляющие вертикальные: края видимой части и середина. По ним фото
+ * центруют влево-вправо. Соседи показаны настоящими карточками в блоке
+ * «Так увидит клиент» — видно, как обложка встаёт в ряд, а не отдельно.
  */
 import { describe, expect, it } from "vitest";
 import { mount } from "@vue/test-utils";
@@ -14,7 +14,7 @@ function neighbour(id: string, name: string, extra: Partial<CoverNeighbour> = {}
   return {
     id,
     name,
-    coverImage: `/api/covers/${id}.png`,
+    coverImage: `/api/category-groups/${id}/cover`,
     coverZoom: 170,
     coverShift: 10,
     coverOffsetY: 14,
@@ -38,61 +38,132 @@ function prop(block: string, name: string): string | null {
   return block.match(new RegExp(`${name}:\\s*([^;]+);`))?.[1]?.trim() ?? null;
 }
 
-describe("Редактор обложки: направляющие с соседями", () => {
-  it("показывает соседа сверху и соседа снизу", () => {
+describe("Редактор обложки: направляющие", () => {
+  it("направляющие вертикальные — края и середина", () => {
+    const w = mount(CoverPreview, { props: { src: "/cover.png" } });
+
+    const lines = w.findAll(".cover-editor__guide-line");
+    console.log("линий в окне:", lines.length, "|", lines.map((l) => l.classes().join(" ")));
+
+    const classes = lines.map((l) => l.classes().join(" ")).join(" | ");
+    expect(lines.length).toBe(3);
+    expect(classes).toContain("--left");
+    expect(classes).toContain("--center");
+    expect(classes).toContain("--right");
+    w.unmount();
+  });
+
+  it("линии стоят по краям и по середине ширины", async () => {
+    const css = await stylesheet();
+    const left = ruleBlock(css, ".cover-editor__guide-line--left");
+    const center = ruleBlock(css, ".cover-editor__guide-line--center");
+    const right = ruleBlock(css, ".cover-editor__guide-line--right");
+
+    console.log("лево:", prop(left, "left"), "| центр:", prop(center, "left"), "| право:", prop(right, "right"));
+    expect(prop(left, "left")).toBe("0");
+    expect(prop(center, "left")).toBe("50%");
+    expect(prop(right, "right")).toBe("0");
+
+    /* Линия вертикальная: она тянется по высоте и не имеет ширины. */
+    const line = ruleBlock(css, ".cover-editor__guide-line");
+    console.log("линия:", prop(line, "top"), prop(line, "bottom"), prop(line, "border-left"));
+    expect(prop(line, "top")).toBe("0");
+    expect(prop(line, "bottom")).toBe("0");
+    expect(prop(line, "border-left")).toContain("solid".replace("solid", "dashed"));
+
+    /* Середина плотнее и цветом акцента — это главная ось. */
+    expect(prop(center, "border-left")).toContain("solid");
+    expect(prop(center, "border-left")).toContain("0958ff");
+  });
+
+  it("горизонтальных направляющих больше нет", async () => {
+    /* Их заменили вертикальными: горизонтальные сравнивали высоту, а
+       просили центровку по ширине. */
+    const source = await readFile("src/components/admin/CoverPreview.vue", "utf-8");
+    console.log("остатки горизонтальных:", source.includes("guide-line--quarter"));
+    expect(source).not.toContain("guide-line--quarter");
+    expect(source).not.toContain("cover-guides__line--center");
+  });
+
+  it("направляющие не перехватывают нажатия", async () => {
+    /* Иначе линии мешали бы тянуть фото в окне. */
+    const css = await stylesheet();
+    const lines = ruleBlock(css, ".cover-editor__guide-lines");
+    console.log("нажатия:", prop(lines, "pointer-events"));
+    expect(prop(lines, "pointer-events")).toBe("none");
+  });
+});
+
+describe("Редактор обложки: соседи в блоке результата", () => {
+  it("соседи стоят внутри блока «Так увидит клиент», а не отдельно", () => {
     const w = mount(CoverPreview, {
       props: {
         src: "/cover.png",
         title: "PODONKI PODGON",
-        previous: neighbour("cg_a", "ЛИНЕЙКА ВЫШЕ"),
-        next: neighbour("cg_c", "ЛИНЕЙКА НИЖЕ"),
+        previous: neighbour("cg_a", "PODONKI BLOOD"),
+        next: neighbour("cg_d", "PODONKI VINTAGE"),
       },
     });
 
-    const prev = w.find('[data-test="guide-previous"]');
-    const own = w.find('[data-test="guide-own"]');
-    const nxt = w.find('[data-test="guide-next"]');
+    const result = w.find(".cover-preview__result");
+    console.log("в блоке результата карточек:", result.findAll(".cover-preview__frame").length);
+    console.log("своя карточка в блоке:", result.find('[data-test="preview-own"]').exists());
 
-    console.log("сосед выше:", w.find(".cover-guides__slot").text().slice(0, 30));
-    expect(prev.exists()).toBe(true);
-    expect(own.exists()).toBe(true);
-    expect(nxt.exists()).toBe(true);
+    // Все три карточки — внутри блока результата.
+    expect(result.find('[data-test="neighbour-previous"]').exists()).toBe(true);
+    expect(result.find('[data-test="preview-own"]').exists()).toBe(true);
+    expect(result.find('[data-test="neighbour-next"]').exists()).toBe(true);
 
-    // Названия соседей подписаны — иначе непонятно, чей это кадр.
-    const captions = w.findAll(".cover-guides__caption").map((c) => c.text());
-    console.log("подписи:", captions);
-    expect(captions.join(" ")).toContain("ЛИНЕЙКА ВЫШЕ");
-    expect(captions.join(" ")).toContain("ЛИНЕЙКА НИЖЕ");
+    // Отдельного блока «Ряд с соседями» больше нет.
+    expect(w.find('[data-test="cover-guides"]').exists()).toBe(false);
     w.unmount();
   });
 
-  it("соседи рисуются в своих кадрах, а не общим автоподбором", () => {
-    /* У соседа кадр может быть настроен руками. Если нарисовать его
-       автоподбором, эталон будет врать: сотрудник выровняется по кадру,
-       которого у соседа нет. */
+  it("соседи показаны полными карточками — с текстом, как у клиента", () => {
     const w = mount(CoverPreview, {
       props: {
         src: "/cover.png",
-        previous: neighbour("cg_a", "ВЫШЕ", { coverManual: true, coverZoom: 250 }),
-        next: neighbour("cg_c", "НИЖЕ", { coverManual: false, coverZoom: null }),
+        title: "PODONKI PODGON",
+        meta: "Крепость 20 мг",
+        previous: neighbour("cg_a", "PODONKI BLOOD"),
       },
     });
 
-    const prevImg = w.find('[data-test="guide-previous"] .image-fade__img');
-    const nextImg = w.find('[data-test="guide-next"] .image-fade__img');
-    console.log("кадр соседа выше:", prevImg.attributes("style"));
-    console.log("кадр соседа ниже:", nextImg.attributes("style"));
-    expect(prevImg.exists()).toBe(true);
-    expect(nextImg.exists()).toBe(true);
+    const prev = w.find('[data-test="neighbour-previous"]');
+    const text = prev.text();
+    console.log("карточка соседа:", text.replace(/\s+/g, " ").trim().slice(0, 70));
+
+    /* Полная карточка — значит название, строка отзывов и пилюля: от
+       состава зависит высота, а по высоте растянута область фото. */
+    expect(text).toContain("PODONKI BLOOD");
+    expect(text).toContain("отзыв");
+    expect(prev.find(".cover-preview__favorite").exists()).toBe(true);
     w.unmount();
   });
 
-  it("без соседа показывает, что линейка крайняя", () => {
+  it("соседи рисуются своими кадрами, а не общим автоподбором", () => {
+    /* У соседа кадр может быть настроен руками. Автоподбор дал бы другую
+       картинку — и выравниваться пришлось бы по несуществующему кадру. */
+    const w = mount(CoverPreview, {
+      props: {
+        src: "/cover.png",
+        previous: neighbour("cg_a", "ВЫШЕ", { coverZoom: 250, coverShift: 20 }),
+        next: neighbour("cg_c", "НИЖЕ", { coverZoom: null, coverManual: false }),
+      },
+    });
+
+    const prev = w.find('[data-test="neighbour-previous"]');
+    console.log("кадров в карточке соседа:", prev.findAll(".cover-preview__art").length);
+    expect(prev.find(".cover-preview__art").exists()).toBe(true);
+    w.unmount();
+  });
+
+  it("без соседа на его месте подпись в размер карточки", () => {
     const w = mount(CoverPreview, {
       props: { src: "/cover.png", previous: null, next: neighbour("cg_c", "НИЖЕ") },
     });
 
-    const empty = w.findAll(".cover-guides__area--empty");
+    const empty = w.findAll(".cover-preview__frame--empty");
     console.log("пустых мест:", empty.length, "| текст:", empty[0]?.text());
     expect(empty.length).toBe(1);
     expect(empty[0]!.text()).toContain("Первая");
@@ -103,98 +174,27 @@ describe("Редактор обложки: направляющие с сосе�
     const w = mount(CoverPreview, {
       props: { src: "/cover.png", previous: neighbour("cg_a", "ВЫШЕ"), next: null },
     });
-    const empty = w.findAll(".cover-guides__area--empty");
+    const empty = w.findAll(".cover-preview__frame--empty");
     expect(empty.length).toBe(1);
     expect(empty[0]!.text()).toContain("Последняя");
     w.unmount();
   });
 
-  it("область эталона — ровно 76x124, как у клиента", async () => {
-    /* В этом весь смысл: натуральный размер. Если область окажется
-       крупнее или мельче, «не выбиваться из других» проверить нельзя. */
+  it("зазор между карточками — 10px, как в ленте", async () => {
     const css = await stylesheet();
-    const area = ruleBlock(css, ".cover-guides__area");
-    console.log("область эталона:", prop(area, "width"), "x", prop(area, "height"));
-
-    expect(prop(area, "width")).toBe("76px");
-    expect(prop(area, "height")).toBe("124px");
-
-    // Пропорция обязана совпасть с областью в карточке клиента.
-    const w = Number(prop(area, "width")!.replace("px", ""));
-    const h = Number(prop(area, "height")!.replace("px", ""));
-    expect(Math.abs(w / h - 76 / 124)).toBeLessThan(0.001);
+    const feed = ruleBlock(css, ".cover-preview__stage--feed");
+    console.log("зазор ленты:", prop(feed, "gap"), "| раскладка:", prop(feed, "flex-direction"));
+    expect(prop(feed, "gap")).toBe("10px");
+    expect(prop(feed, "flex-direction")).toBe("column");
   });
 
-  it("направляющие стоят на четвертях и на середине", async () => {
+  it("подпись соседа стоит сбоку, чтобы не раздвигать карточки", async () => {
+    /* Над карточкой подпись увеличила бы зазор и ряд перестал бы
+       совпадать с клиентским. */
     const css = await stylesheet();
-    const quarter = ruleBlock(css, ".cover-guides__line--quarter");
-    const center = ruleBlock(css, ".cover-guides__line--center");
-    const threeQuarter = ruleBlock(css, ".cover-guides__line--three-quarter");
-
-    console.log("четверть:", prop(quarter, "top"), "| середина:", prop(center, "top"), "| три четверти:", prop(threeQuarter, "top"));
-    expect(prop(quarter, "top")).toBe("25%");
-    expect(prop(center, "top")).toBe("50%");
-    expect(prop(threeQuarter, "top")).toBe("75%");
-
-    /* Середина — сплошная и цветом акцента, четверти — пунктиром.
-       Стиль линии задан в общем правиле, а модификаторы его уточняют,
-       поэтому смотрим на общее правило вместе с модификатором. */
-    const line = ruleBlock(css, ".cover-guides__line");
-    console.log("общая линия:", prop(line, "border-top"));
-    console.log("середина:", prop(center, "border-top"), prop(center, "background"));
-
-    expect(prop(line, "border-top")).toContain("dashed");
-    expect(prop(center, "border-top"), "середина должна быть сплошной").toContain("solid");
-    expect(prop(center, "border-top"), "середина — цветом акцента").toContain("0958ff");
-  });
-
-  it("шаг между областями — 134px, как между карточками у клиента", async () => {
-    /* Проверка счётом по правилам: 124 (область) + 10 (зазор) = 134.
-       Этот шаг и делает колонку «рядом из ленты», а не просто столбиком
-       картинок. Сначала подписи стояли НАД областями и добавляли к шагу
-       свои 14px — ряд разъезжался. */
-    const css = await stylesheet();
-    const area = ruleBlock(css, ".cover-guides__area");
-    const slot = ruleBlock(css, ".cover-guides__slot");
-
-    const areaH = Number(prop(area, "height")!.replace("px", ""));
-    const slotGap = Number(prop(slot, "margin-bottom")!.replace("px", ""));
-
-    console.log("область:", areaH, "px | зазор слота:", slotGap, "px | шаг:", areaH + slotGap);
-    expect(areaH + slotGap).toBe(134);
-
-    /* Подпись обязана стоять сбоку, а не над областью: над областью она
-       попадала бы в тот же столбик и увеличивала шаг. */
-    expect(prop(slot, "display")).toBe("flex");
-    expect(prop(slot, "min-height")).toBe("124px");
-  });
-
-  it("длинное название соседа не обрезается и не сбивает шаг", async () => {
-    /* Название линейки бывает длинным, а колонка узкая. Первая версия
-       резала его многоточием — становилось непонятно, чей это кадр.
-       Теперь подпись занимает две строки и потому не влияет на шаг. */
-    const css = await stylesheet();
-    const caption = ruleBlock(css, ".cover-guides__caption");
-
-    console.log("подпись:", prop(caption, "width"), prop(caption, "flex"), prop(caption, "overflow-wrap"));
-    // Ширина фиксирована, перенос разрешён — обрезки нет.
-    expect(prop(caption, "width")).toBe("92px");
-    expect(prop(caption, "overflow-wrap")).toBe("anywhere");
-    // text-overflow с многоточием не должен вернуться.
-    expect(prop(caption, "text-overflow")).toBeNull();
-    expect(prop(caption, "white-space")).toBeNull();
-
-    /* Слот выравнивает по центру, поэтому подпись в две строки просто
-       растёт вбок от области, не раздвигая области по вертикали. */
-    const slot = ruleBlock(css, ".cover-guides__slot");
-    expect(prop(slot, "align-items")).toBe("center");
-  });
-
-  it("направляющие не перехватывают нажатия", async () => {
-    /* Иначе линии мешали бы тянуть фото в окне. */
-    const css = await stylesheet();
-    const lines = ruleBlock(css, ".cover-guides__lines");
-    console.log("направляющие:", prop(lines, "pointer-events"));
-    expect(prop(lines, "pointer-events")).toBe("none");
+    const row = ruleBlock(css, ".cover-preview__row");
+    console.log("строка:", prop(row, "display"), prop(row, "align-items"));
+    expect(prop(row, "display")).toBe("flex");
+    expect(prop(row, "align-items")).toBe("center");
   });
 });
