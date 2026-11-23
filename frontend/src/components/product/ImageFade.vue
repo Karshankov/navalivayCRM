@@ -136,9 +136,12 @@ defineExpose({ loaded, failed });
    прячет — раньше правый край закрывался белым полностью, и картинка
    у края пропадала.
 
-   Плотность — 40% от исходной. Исходно было 5, 5, 18, 61, 100 (боковой)
-   и 55 (низ); отсюда 2, 2, 7, 24, 40 и 22. Край вместо 100 стал 40 —
-   белой пелены нет, но стык смягчён заметно.
+   Плотность — 55% от исходной. Исходно было 5, 5, 18, 61, 100 (боковой)
+   и 55 (низ); отсюда 3, 3, 10, 34, 55 и 30. Сперва поставили 40%, затем
+   прибавили 15 — подняли плотность по всему градиенту, включая край.
+
+   Край вместо 100 стал 55: белой пелены нет, фото у края видно, но стык
+   смягчён заметнее.
 
    Цвет — фон карточки, иначе на стыке виден шов. */
 .image-fade__fade {
@@ -149,15 +152,15 @@ defineExpose({ loaded, failed });
   background:
     linear-gradient(
       90deg,
-      color-mix(in srgb, var(--fade) 2%, transparent) 0%,
-      color-mix(in srgb, var(--fade) 2%, transparent) 40%,
-      color-mix(in srgb, var(--fade) 7%, transparent) 62%,
-      color-mix(in srgb, var(--fade) 24%, transparent) 82%,
-      color-mix(in srgb, var(--fade) 40%, transparent) 100%
+      color-mix(in srgb, var(--fade) 3%, transparent) 0%,
+      color-mix(in srgb, var(--fade) 3%, transparent) 40%,
+      color-mix(in srgb, var(--fade) 10%, transparent) 62%,
+      color-mix(in srgb, var(--fade) 34%, transparent) 82%,
+      color-mix(in srgb, var(--fade) 55%, transparent) 100%
     ),
     linear-gradient(
       0deg,
-      color-mix(in srgb, var(--fade) 22%, transparent) 0%,
+      color-mix(in srgb, var(--fade) 30%, transparent) 0%,
       transparent 32%
     );
   pointer-events: none;

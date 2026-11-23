@@ -87,36 +87,38 @@ describe("Белый наплыв вернулся и стал плотнее", 
     w.unmount();
   });
 
-  it("плотность — 40% от исходной", async () => {
+  it("плотность — 55% от исходной", async () => {
     const rule = fadeRule(await imageFadeSource());
     const values = densities(rule);
     console.log("плотность по точкам:", values);
 
     /* Порядок точек: 0%, 40%, 62%, 82%, 100% (боковой градиент). */
-    expect(values).toEqual([2, 2, 7, 24, 40]);
+    expect(values).toEqual([3, 3, 10, 34, 55]);
 
-    /* Это ровно 40% от исходного: 5, 5, 18, 61, 100. Держим пропорцию
-       явно, чтобы значение не «уехало» при следующей правке. */
+    /* Это ровно 55% от исходного: 5, 5, 18, 61, 100. Сперва поставили
+       40%, затем прибавили 15. Держим пропорцию явно, чтобы значение не
+       «уехало» при следующей правке. */
     const source = [5, 5, 18, 61, 100];
-    console.log("исходный:", source.join(", "), "-> 40%:", values.join(", "));
+    console.log("исходный:", source.join(", "), "-> 55%:", values.join(", "));
 
     for (const [i, value] of values.entries()) {
-      const expected = Math.max(1, Math.round(source[i]! * 0.4));
-      expect(value, `точка ${i}: 40% от ${source[i]}`).toBe(expected);
+      const expected = Math.max(1, Math.round(source[i]! * 0.55));
+      expect(value, `точка ${i}: 55% от ${source[i]}`).toBe(expected);
     }
   });
 
   it("правый край не сплошной — фото у края остаётся видно", async () => {
     /* Раньше край закрывался на 100%, и картинка у края исчезала.
-       Теперь 40% — стык смягчён, но фото видно. */
+       Теперь 55% — стык смягчён, но фото видно. Порог с запасом: если
+       плотность поднимут ещё, тест напомнит, что край забеливается. */
     const rule = fadeRule(await imageFadeSource());
     const edge = densities(rule)[4]!;
 
     console.log("плотность у правого края:", edge + "%",
-      edge < 50 ? "— фото видно" : "— фото закрыто");
+      edge < 70 ? "— фото видно" : "— фото почти закрыто");
 
     expect(rule).not.toMatch(/var\(--fade\) 100%/);
-    expect(edge).toBeLessThan(50);
+    expect(edge).toBeLessThan(70);
   });
 
   it("нижний наплыв как исходно — до 32% высоты", async () => {
@@ -125,11 +127,11 @@ describe("Белый наплыв вернулся и стал плотнее", 
     const bottom = bottomDensity(rule);
     console.log("низ:", bottom + "%", "до", stop + "% высоты");
 
-    // Высоту вернули к исходной, плотность — 40% от исходных 55.
+    // Высоту вернули к исходной, плотность — 55% от исходных 55.
     expect(Number(stop)).toBe(32);
-    expect(bottom).toBe(22);
-    // И это тоже 40% от исходного значения.
-    expect(bottom).toBe(Math.round(55 * 0.4));
+    expect(bottom).toBe(30);
+    // И это тоже 55% от исходного значения.
+    expect(bottom).toBe(Math.round(55 * 0.55));
   });
 
   it("направляющие лежат выше слоя фото", async () => {
