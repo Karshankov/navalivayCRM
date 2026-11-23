@@ -37,6 +37,7 @@ import {
 } from './quick-replies.js';
 import { db } from '../db.js';
 import { buildUserbotSendOptions } from './message-format.js';
+import { processIncomingAutoReply } from './auto-reply.js';
 
 const PORT = Number(process.env.USERBOT_HTTP_PORT || 8083);
 const SHARED_SECRET = (process.env.USERBOT_SECRET || '').trim();
@@ -582,6 +583,11 @@ function rememberEntity(user, source, topMessage) {
 
 // ---------------------------------------------------------------------------
 // Слушаем входящие сообщения и логируем активность клиентов в БД.
+//
+// Автоответы на входящие живут рядом: решение принимает processIncomingAutoReply
+// (userbot/auto-reply.js) — та же логика, что и в Business-пути bot.js. Здесь
+// же только транспорт: переписка @Rez0nsky идёт через этот userbot, поэтому
+// входящие появляются тут раньше, чем где-либо ещё.
 // ---------------------------------------------------------------------------
 client.addEventHandler((event) => {
   try {
@@ -636,6 +642,26 @@ client.addEventHandler((event) => {
         );
       } catch (err) {
         console.error('[userbot] ошибка записи в журнал:', redactSecrets(err?.message || err));
+      }
+
+      // Автоответ — только на входящие. Исходящие от нас самих отсекаются
+      // выше (direction === 'out' && senderId === myUserId), но проверяем
+      // ещё раз: сообщение менеджера из чужого клиента тоже не повод отвечать.
+      if (direction === 'in' && !message.out) {
+        // Не await: отправка занимает секунды (лимитер + возможные ретраи), а
+        // обработчик события должен освободить GramJS как можно раньше.
+        // Ошибки внутри обрабатываются самостоятельно.
+        void processIncomingAutoReply({
+          chatId,
+          fromUserId: chatId,
+          ownerUserId: myUserId,
+          text: message.message || '',
+        }).catch((err) => {
+          console.error(
+            '[userbot] автоответ: необработанная ошибка:',
+            redactSecrets(err?.message || err),
+          );
+        });
       }
     });
   } catch (err) {
