@@ -260,13 +260,20 @@ export async function sendViaUserbot({
   return { ok: true, telegram_message_id: data.telegram_message_id ?? null };
 }
 
-export async function listUserbotQuickReplies() {
+/**
+ * Заготовки из Telegram («Избранное» → Быстрые ответы, например «/график»).
+ *
+ * withText=true добавляет текст каждой заготовки: userbot читает его отдельным
+ * MtProto-запросом на каждую, поэтому для простого списка имён флаг не ставим.
+ */
+export async function listUserbotQuickReplies({ withText = false } = {}) {
   try {
     const headers = {};
     if (SHARED_SECRET) headers['X-Userbot-Secret'] = SHARED_SECRET;
-    const response = await fetch(`${USERBOT_BASE}/quick-replies`, {
+    const url = `${USERBOT_BASE}/quick-replies${withText ? '?with_text=1' : ''}`;
+    const response = await fetch(url, {
       headers,
-      signal: AbortSignal.timeout(10_000),
+      signal: AbortSignal.timeout(withText ? 20_000 : 10_000),
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data?.ok) {

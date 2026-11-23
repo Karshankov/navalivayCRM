@@ -8,8 +8,11 @@ import {
   removeBusinessConnection,
   handleIncomingBusinessMessage,
   logBotMessage,
+  AUTO_REPLY_MESSAGE_TYPE,
+  tryStartAutoReply,
+  finishAutoReply,
 } from './utils/business-bot.js';
-import { resolveUsernameViaUserbot } from './utils/userbot-client.js';
+import { resolveUsernameViaUserbot, sendViaUserbot, isUserbotAvailable } from './utils/userbot-client.js';
 import {
   attachFirstOrderToReferral,
   authorizeCustomerWithoutReferral,
@@ -579,36 +582,113 @@ if (!BOT_TOKEN) {
       });
       if (!reply) return;
 
+      // Блокировка на время отправки: проверка паузы читает журнал, а запись
+      // идёт только после отправки, которая может занять до 20 секунд. Без
+      // этого два сообщения подряд дали бы два одинаковых автоответа.
+      if (!tryStartAutoReply(fromUserId)) return;
+
       try {
-        await bot.telegram.sendMessage(chatId, reply.text, {
-          business_connection_id: businessConnectionId,
-        });
-        logBotMessage({
-          businessConnectionId,
-          chatId,
-          customerId: customer?.id ?? null,
-          customerTelegramId: fromUserId,
-          direction: 'out',
-          messageType: 'quick_reply',
-          templateKind: reply.templateKind,
-          templateId: reply.templateId,
-          text: reply.text,
-          meta: { quick_reply_title: reply.quickReplyTitle },
-        });
-      } catch (sendErr) {
-        console.error('[navalivay:bot] business send error:', sendErr?.message || sendErr);
-        logBotMessage({
-          businessConnectionId,
-          chatId,
-          customerId: customer?.id ?? null,
-          customerTelegramId: fromUserId,
-          direction: 'out',
-          messageType: 'quick_reply',
-          templateKind: reply.templateKind,
-          templateId: reply.templateId,
-          text: reply.text,
-          meta: { error: String(sendErr?.message || sendErr) },
-        });
+        // Канал доставки: сначала userbot — он работает от лица менеджера и не
+        // ограничен 24-часовым окном Telegram Business. Так же уходят уведомления
+        // о заказе (utils/auto-notify.js). Если userbot недоступен, откатываемся
+        // на Business mode: у подключения, которое только что принесло апдейт,
+        // право ответить точно есть.
+        let viaUserbot = false;
+        if (reply.customerTelegramId && (await isUserbotAvailable())) {
+          const ubResult = await sendViaUserbot({
+            chatId: reply.customerTelegramId,
+            text: reply.text,
+            username: reply.customerUsername || null,
+            auto: true,
+          });
+          if (ubResult.ok) {
+            viaUserbot = true;
+          } else if (ubResult.outcome === 'ambiguous') {
+            // Ответ мог уйти, а подтверждение потерялось. Повторять нельзя —
+            // клиент получит два одинаковых сообщения. Логируем и выходим.
+            console.warn(
+              '[navalivay:bot] quick reply userbot send ambiguous:',
+              ubResult.error,
+            );
+            logBotMessage({
+              businessConnectionId,
+              chatId,
+              customerId: reply.customerId ?? customer?.id ?? null,
+              customerTelegramId: fromUserId,
+              direction: 'out',
+              // Отдельный тип от 'quick_reply': тот же тип использует userbot для
+              // ручных быстрых ответов (/прайс), и смешивать их нельзя — пауза
+              // считает по нему и ловила бы чужие отправки.
+              messageType: AUTO_REPLY_MESSAGE_TYPE,
+              templateKind: reply.templateKind,
+              templateId: reply.templateId,
+              text: reply.text,
+              meta: {
+                quick_reply_title: reply.quickReplyTitle,
+                via: 'userbot',
+                outcome: 'ambiguous',
+                error: String(ubResult.error || ''),
+              },
+            });
+            return;
+          } else {
+            console.warn(
+              '[navalivay:bot] quick reply userbot failed, falling back to business mode:',
+              ubResult.outcome,
+              ubResult.error,
+            );
+          }
+        }
+
+        try {
+          if (!viaUserbot) {
+            await bot.telegram.sendMessage(chatId, reply.text, {
+              business_connection_id: businessConnectionId,
+            });
+          }
+          logBotMessage({
+            businessConnectionId,
+            chatId,
+            customerId: reply.customerId ?? customer?.id ?? null,
+            customerTelegramId: fromUserId,
+            direction: 'out',
+            messageType: AUTO_REPLY_MESSAGE_TYPE,
+            templateKind: reply.templateKind,
+            templateId: reply.templateId,
+            text: reply.text,
+            meta: {
+              quick_reply_title: reply.quickReplyTitle,
+              via: viaUserbot ? 'userbot' : 'business',
+              // Именно outcome='sent' считает пауза: провал не должен глушить
+              // следующие автоответы на полчаса.
+              outcome: 'sent',
+            },
+          });
+        } catch (sendErr) {
+          console.error('[navalivay:bot] business send error:', sendErr?.message || sendErr);
+          logBotMessage({
+            businessConnectionId,
+            chatId,
+            customerId: reply.customerId ?? customer?.id ?? null,
+            customerTelegramId: fromUserId,
+            direction: 'out',
+            messageType: AUTO_REPLY_MESSAGE_TYPE,
+            templateKind: reply.templateKind,
+            templateId: reply.templateId,
+            text: reply.text,
+            meta: {
+              quick_reply_title: reply.quickReplyTitle,
+              via: viaUserbot ? 'userbot' : 'business',
+              // Отправка не удалась — паузу не включаем: клиент ответа не получил.
+              outcome: 'failed',
+              error: String(sendErr?.message || sendErr),
+            },
+          });
+        }
+      } finally {
+        // Всегда освобождаем: иначе после первой же ошибки клиент останется
+        // «занятым» до перезапуска бота и автоответов больше не получит.
+        finishAutoReply(fromUserId);
       }
     } catch (err) {
       console.error('[navalivay:bot] business_message handler error:', err);

@@ -455,6 +455,114 @@
   .crm-ref-gate { padding: 22px 18px 20px; }
   .crm-ref-gate-title { font-size: 20px; }
 }
+/* ===== Автоответы клиентам =================================================
+   Единственный новый элемент интерфейса — тумблер: в дизайн-системе его не
+   было. Остальное («правило» — карточка + чипы + поля) собрано из
+   существующих примитивов и повторяет язык страницы «Заказы».
+   ========================================================================== */
+
+.crm-ref-switch {
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 0; border: none; background: transparent; cursor: pointer;
+  font-size: 13px; font-weight: 700; color: #081b4b;
+}
+.crm-ref-switch:disabled { cursor: not-allowed; opacity: .6; }
+.crm-ref-switch-track {
+  position: relative; flex-shrink: 0; width: 46px; height: 26px;
+  border-radius: 999px; background: #dbe5f3;
+  box-shadow: inset 0 1px 3px #20386914;
+  transition: background .18s ease;
+}
+.crm-ref-switch-knob {
+  position: absolute; top: 3px; left: 3px; width: 20px; height: 20px;
+  border-radius: 50%; background: white;
+  box-shadow: 0 2px 5px #20386930;
+  transition: transform .18s ease;
+}
+.crm-ref-switch--on .crm-ref-switch-track { background: var(--crm-ref-primary); }
+.crm-ref-switch--on .crm-ref-switch-knob { transform: translateX(20px); }
+.crm-ref-switch--busy .crm-ref-switch-track { opacity: .7; }
+
+/* Состояние: три плитки в шапке панели */
+.crm-ref-stat {
+  display: grid; gap: 4px; align-content: start;
+  padding: 14px 16px; border: 1px solid #eaf0f9; border-radius: 15px; background: #fbfdff;
+}
+.crm-ref-stat-label {
+  font-size: 10px; font-weight: 800; letter-spacing: .17em; text-transform: uppercase; color: #8898b5;
+}
+.crm-ref-stat-value { font-size: 15px; font-weight: 700; color: #081b4b; }
+.crm-ref-stat-value--ok { color: #0a8f4d; }
+.crm-ref-stat-value--warn { color: #b67b31; }
+.crm-ref-stat-note { font-size: 11px; line-height: 1.55; color: #7584a7; overflow-wrap: anywhere; }
+
+/* Причина, по которой автоответ не уйдёт */
+.crm-ref-notice {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 12px 14px; border: 1px solid #f4e2c7; border-radius: 13px;
+  background: #fff8ed; color: #7d5d36; font-size: 12px; line-height: 1.55;
+}
+.crm-ref-notice > svg { width: 18px; height: 18px; flex-shrink: 0; margin-top: 1px; color: #b67b31; }
+.crm-ref-notice strong { display: block; font-weight: 750; color: #7d5d36; }
+.crm-ref-notice--ok { border-color: #cfe9d9; background: #f1fbf5; color: #24704a; }
+.crm-ref-notice--ok > svg { color: #2f9e63; }
+.crm-ref-notice--ok strong { color: #24704a; }
+
+/* Карточка правила */
+.crm-ref-rule {
+  display: grid; gap: 12px;
+  padding: 16px 18px; border: 1px solid #eaf0f9; border-radius: 16px; background: white;
+  box-shadow: 0 10px 30px #20386905;
+}
+.crm-ref-rule--off { background: #fafcfe; border-style: dashed; }
+.crm-ref-rule--off .crm-ref-rule-title { color: #7584a7; }
+.crm-ref-rule-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.crm-ref-rule-title { margin: 0; font-size: 15px; font-weight: 750; color: #081b4b; overflow-wrap: anywhere; }
+.crm-ref-rule-meta { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; margin-top: 5px; }
+.crm-ref-rule-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 9px; border-radius: 999px;
+  background: #eef4ff; color: #233e70; font-size: 10px; font-weight: 750; letter-spacing: .04em;
+}
+.crm-ref-rule-badge--on { background: #e8f8ef; color: #1f7a4d; }
+.crm-ref-rule-badge--off { background: #eef2f8; color: #7584a7; }
+.crm-ref-rule-badge--hits { background: #fff4e6; color: #a5651c; }
+.crm-ref-rule-body { display: grid; gap: 9px; }
+.crm-ref-rule-row { display: grid; gap: 5px; }
+.crm-ref-rule-label {
+  font-size: 10px; font-weight: 800; letter-spacing: .17em; text-transform: uppercase; color: #8898b5;
+}
+.crm-ref-rule-text {
+  margin: 0; padding: 10px 12px; border: 1px solid #eef3fb; border-radius: 11px;
+  background: #fbfdff; color: #425778; font-size: 12px; line-height: 1.6;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.crm-ref-rule-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.crm-ref-rule-order { display: inline-flex; gap: 2px; }
+.crm-ref-rule-order > button {
+  display: grid; place-items: center; width: 30px; height: 30px;
+  border: 1px solid #dce8fa; border-radius: 9px; background: #f7fbff; color: #425778;
+}
+.crm-ref-rule-order > button > svg { width: 14px; height: 14px; }
+.crm-ref-rule-order > button:hover:not(:disabled) { background: #edf5ff; border-color: #b8cef5; color: #1759ed; }
+.crm-ref-rule-order > button:disabled { opacity: .35; }
+
+/* Кнопка-ссылка внутри текста: действие, которое не должно спорить с основной
+   кнопкой рядом (например «Изменить» у паузы). */
+.crm-ref-link-button {
+  padding: 2px 0; border: 0; background: transparent;
+  color: #1759ed; font-family: inherit; font-size: inherit; font-weight: 750;
+  text-decoration: underline; text-underline-offset: 2px; cursor: pointer;
+}
+.crm-ref-link-button:hover { color: #0f47c4; }
+.crm-ref-link-button:focus-visible { outline: 2px solid #0958ff; outline-offset: 2px; border-radius: 4px; }
+
+.crm-ref-field-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: end; }
+@media (max-width: 700px) {
+  .crm-ref-field-row { grid-template-columns: minmax(0, 1fr); }
+  .crm-ref-stat { padding: 12px 13px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .crm-ref * { transition-duration: 0ms; }
 }

@@ -32,6 +32,7 @@ import { createRateLimiter } from './rate-limiter.js';
 import {
   findQuickReply,
   listQuickReplies,
+  readQuickReplyText,
   sendQuickReply,
 } from './quick-replies.js';
 import { db } from '../db.js';
@@ -812,12 +813,20 @@ async function getKnownRecipientPeer(chatId) {
   }
 }
 
-app.get('/quick-replies', checkSecret, async (_req, res) => {
+app.get('/quick-replies', checkSecret, async (req, res) => {
   try {
     if (!client.connected || sessionDead) {
       return res.status(503).json({ ok: false, error: 'disconnected' });
     }
     const quickReplies = await listQuickReplies(client);
+    // Текст заготовки лежит отдельным сообщением в «Избранном», поэтому
+    // достаётся дополнительным запросом на каждую. Список для подписи в
+    // выпадающем меню текста не требует — читаем только когда попросили.
+    if (String(req.query?.with_text || '') === '1') {
+      for (const item of quickReplies) {
+        item.text = await readQuickReplyText(client, item.topMessage);
+      }
+    }
     return res.json({ ok: true, quick_replies: quickReplies });
   } catch (err) {
     const errorText = redactSecrets(err?.errorMessage || err?.message || err);

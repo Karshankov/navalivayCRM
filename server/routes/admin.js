@@ -43,7 +43,6 @@ import {
   saveGroupWholesalePrices,
 } from '../wholesale-service.js';
 import { syncGroupParking, syncParkingFromFlattened } from '../utils/group-parking.js';
-import { invalidateRestockCache } from '../utils/restock-candidates.js';
 import { searchProductsForAdmin, searchProductsForCrm, syncProductSearchIndex } from '../services/product-search-service.js';
 import { bumpCatalogRevision } from '../utils/catalog-revision.js';
 import {
@@ -1711,21 +1710,6 @@ function insertTransferItems({ transferId, sourceLocation, items }) {
 function inventoryActor(req) {
   return String(req.user?.u || req.user?.username || 'admin');
 }
-
-/**
- * Любое изменение перемещений меняет состав кандидатов на пополнение полки
- * (создали заявку / оприходовали / отменили). Сбрасываем суточный кэш значка,
- * чтобы цифра была верной сразу, а не ждала 9:00.
- */
-adminRouter.use('/api/admin/inventory/transfers', (req, res, next) => {
-  if (req.method === 'GET') return next();
-  res.on('finish', () => {
-    if (res.statusCode >= 200 && res.statusCode < 300) {
-      invalidateRestockCache();
-    }
-  });
-  next();
-});
 
 adminRouter.get('/api/admin/inventory/transfers', authMiddleware, (req, res) => {
   const page = Math.max(Number.parseInt(req.query.page, 10) || 1, 1);

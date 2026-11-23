@@ -31,7 +31,37 @@ export async function listQuickReplies(client) {
     id: Number(item.shortcutId),
     name: String(item.shortcut || ''),
     count: Math.max(0, Number(item.count) || 0),
+    // id сообщения-шаблона в «Избранном». Текст заготовки Telegram в списке
+    // не отдаёт (в схеме есть только shortcut_id/shortcut/top_message/count) —
+    // его достаём отдельно через readQuickReplyText.
+    topMessage: Number(item.topMessage) || 0,
   }));
+}
+
+/**
+ * Текст заготовки. Схема Telegram хранит его как обычное сообщение в
+ * «Избранном» (Saved Messages); QuickReply даёт лишь top_message — его id.
+ *
+ * Возвращает '' когда сообщение недоступно: заготовка могла быть создана
+ * с другого устройства, а «Избранное» — приватный чат, к которому у сессии
+ * есть доступ. Пустая строка здесь безопаснее исключения: список заготовок
+ * всё равно нужен форме, даже если текст одной из них прочитать не вышло.
+ */
+export async function readQuickReplyText(client, topMessageId) {
+  const messageId = Number(topMessageId) || 0;
+  if (!messageId) return '';
+  try {
+    const response = await client.invoke(
+      new Api.messages.GetMessages({
+        id: [new Api.InputMessageID({ id: messageId })],
+      }),
+    );
+    const messages = Array.isArray(response?.messages) ? response.messages : [];
+    const text = messages.find((m) => typeof m?.message === 'string')?.message;
+    return typeof text === 'string' ? text : '';
+  } catch {
+    return '';
+  }
 }
 
 export async function sendQuickReply({

@@ -105,6 +105,11 @@ export function migrateBusinessBot() {
       ON bot_message_log(created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_bot_message_log_chat
       ON bot_message_log(chat_id, created_at DESC);
+    -- Поиск последнего автоответа клиенту (пауза между автоответами). Без этого
+    -- индекса запрос сканирует весь журнал: на 77k записей это ~18 мс на каждое
+    -- входящее сообщение, с индексом — доли миллисекунды.
+    CREATE INDEX IF NOT EXISTS idx_bot_message_log_customer_type
+      ON bot_message_log(customer_telegram_id, message_type, direction, created_at DESC);
   `);
 
   // 5) customers — два новых поля для верификации через бот.

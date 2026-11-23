@@ -380,6 +380,9 @@ export function matchQuickReply(text) {
   if (replies.length === 0) return null;
 
   const tokenSet = new Set(normText.split(/\s+/).filter(Boolean));
+  // Текст с пробелами по краям — чтобы границу слова можно было проверить
+  // обычным includes(' слово '), не разбирая строку заново.
+  const padded = ` ${normText} `;
 
   let substringHit = null;
   for (const reply of replies) {
@@ -391,7 +394,11 @@ export function matchQuickReply(text) {
       if (tokenSet.has(kw)) {
         return reply;
       }
-      if (!hasSubstring && normText.includes(kw)) {
+      // Фраза целиком внутри сообщения. Требуем границы слова: без неё
+      // триггер «график» ловил «телеграфик», а «доставк» — «предоставка»,
+      // и бот отвечал не на тот вопрос. Фраза из нескольких слов так же
+      // проверяется целиком («до скольки вы»), а не по отдельным словам.
+      if (!hasSubstring && padded.includes(` ${kw} `)) {
         hasSubstring = true;
       }
     }
@@ -787,6 +794,137 @@ export function setAutoReplyEnabled(enabled) {
 }
 
 // =============================================================================
+// Settings: пауза между автоответами одному клиенту
+// =============================================================================
+
+/**
+ * По умолчанию 30 минут. Клиент, написавший «график» три раза подряд, не
+ * должен получить три одинаковых ответа; но и одна и та же тема, поднятая
+ * спустя время, заслуживает ответа.
+ */
+export const AUTO_REPLY_COOLDOWN_DEFAULT_MINUTES = 30;
+export const AUTO_REPLY_COOLDOWN_MAX_MINUTES = 1440;
+
+export function getAutoReplyCooldownMinutes() {
+  const row = db
+    .prepare(`SELECT value FROM settings WHERE key = ?`)
+    .get('bot_auto_reply_cooldown_minutes');
+  if (row === undefined || row === null) return AUTO_REPLY_COOLDOWN_DEFAULT_MINUTES;
+  const parsed = Number(row.value);
+  if (!Number.isFinite(parsed) || parsed < 0) return AUTO_REPLY_COOLDOWN_DEFAULT_MINUTES;
+  return Math.min(Math.floor(parsed), AUTO_REPLY_COOLDOWN_MAX_MINUTES);
+}
+
+export function setAutoReplyCooldownMinutes(minutes) {
+  const parsed = Number(minutes);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    const err = new Error('invalid_cooldown');
+    err.code = 'invalid_cooldown';
+    throw err;
+  }
+  const value = String(Math.min(Math.floor(parsed), AUTO_REPLY_COOLDOWN_MAX_MINUTES));
+  db.prepare(
+    `INSERT INTO settings (key, value) VALUES (?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+  ).run('bot_auto_reply_cooldown_minutes', value);
+  return Number(value);
+}
+
+/**
+ * Сколько минут осталось до конца паузы для клиента. 0 — можно отвечать.
+ *
+ * Отсчёт идёт от последнего сообщения КЛИЕНТА: пауза — это «не отвечать дважды
+ * на одну серию вопросов», поэтому важно, когда клиент писал, а не когда мы
+ * отвечали. Между его сообщениями могли лечь автоматические уведомления о
+ * заказе и ответы менеджера — на отсчёт они не влияют.
+ *
+ * Отдельно снимаем паузу, если менеджер ответил сам ПОСЛЕ последнего вопроса
+ * клиента: живой человек в диалоге лучше бота.
+ */
+export function autoReplyCooldownRemainingMinutes(telegramId) {
+  const cooldown = getAutoReplyCooldownMinutes();
+  if (cooldown <= 0) return 0;
+
+  const lastIncoming = db
+    .prepare(
+      `SELECT id, created_at
+         FROM bot_message_log
+        WHERE customer_telegram_id = ? AND direction = 'in'
+        ORDER BY id DESC
+        LIMIT 1`,
+    )
+    .get(String(telegramId));
+  if (!lastIncoming?.created_at) return 0;
+
+  // Ответ менеджера после вопроса клиента — автоответ уже не нужен.
+  // Учитываем только `manual`: `status` — автоматическое уведомление о заказе,
+  // и принимать его за ответ человека нельзя, иначе пауза будет сниматься
+  // каждым статусом заказа и клиент получит повторный автоответ.
+  const managerReply = db
+    .prepare(
+      `SELECT 1 FROM bot_message_log
+        WHERE customer_telegram_id = ?
+          AND direction = 'out'
+          AND message_type = 'manual'
+          AND id > ?
+        LIMIT 1`,
+    )
+    .get(String(telegramId), lastIncoming.id);
+  if (managerReply) return 0;
+
+  const last = Date.parse(String(lastIncoming.created_at).replace(' ', 'T') + 'Z');
+  if (!Number.isFinite(last)) return 0;
+  const elapsedMinutes = (Date.now() - last) / 60000;
+  const remaining = cooldown - elapsedMinutes;
+  return remaining > 0 ? Math.ceil(remaining) : 0;
+}
+
+/**
+ * Тип записи в журнале для автоответов по словам-триггерам.
+ *
+ * Отдельный от `quick_reply`, потому что то же значение использует userbot для
+ * ручных быстрых ответов (`/прайс`). Пока типы совпадали, пауза считала чужие
+ * записи: клиент, получивший приветствие «/прайс» при регистрации, 30 минут
+ * не получал автоответ на свой вопрос.
+ */
+export const AUTO_REPLY_MESSAGE_TYPE = 'auto_reply';
+
+/** Исходы отправки автоответа, попадающие в журнал. */
+export const AUTO_REPLY_OUTCOME_SENT = 'sent';
+
+/**
+ * Был ли этому клиенту УСПЕШНО отправлен автоответ за последние `minutes` минут.
+ *
+ * Страховка на случай, когда блокировка в памяти процесса потерялась (перезапуск
+ * бота) — пауза по журналу живёт в базе и переживает рестарт.
+ *
+ * Считаем только записи с outcome='sent': провалившаяся или неоднозначная
+ * отправка не должна включать паузу — иначе клиент не получил ответа, и бот
+ * молчит ещё полчаса.
+ */
+export function hasRecentAutoReply(telegramId, minutes) {
+  const window = Number(minutes);
+  if (!Number.isFinite(window) || window <= 0) return false;
+  const row = db
+    .prepare(
+      `SELECT 1 FROM bot_message_log
+        WHERE customer_telegram_id = ?
+          AND message_type = ?
+          AND direction = 'out'
+          AND json_extract(meta, '$.outcome') = ?
+          AND created_at >= DATETIME('now', ?)
+        LIMIT 1`,
+    )
+    .get(
+      String(telegramId),
+      AUTO_REPLY_MESSAGE_TYPE,
+      AUTO_REPLY_OUTCOME_SENT,
+      `-${Math.floor(window)} minutes`,
+    );
+  return Boolean(row);
+}
+
+// =============================================================================
 // Логирование
 // =============================================================================
 
@@ -830,27 +968,30 @@ export function logBotMessage({
   return Number(result.lastInsertRowid);
 }
 
-export function listBotLog({ limit = 50, offset = 0, chatId = null } = {}) {
+export function listBotLog({ limit = 50, offset = 0, chatId = null, messageType = null } = {}) {
   const safeLimit = Math.max(1, Math.min(500, Number(limit) || 50));
   const safeOffset = Math.max(0, Number(offset) || 0);
+
+  const conditions = [];
+  const params = [];
   if (chatId) {
-    return db
-      .prepare(
-        `SELECT * FROM bot_message_log
-           WHERE chat_id = ?
-           ORDER BY id DESC
-           LIMIT ? OFFSET ?`,
-      )
-      .all(String(chatId), safeLimit, safeOffset)
-      .map(parseLogRow);
+    conditions.push('chat_id = ?');
+    params.push(String(chatId));
   }
+  if (messageType) {
+    conditions.push('message_type = ?');
+    params.push(String(messageType));
+  }
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
   return db
     .prepare(
       `SELECT * FROM bot_message_log
+         ${where}
          ORDER BY id DESC
          LIMIT ? OFFSET ?`,
     )
-    .all(safeLimit, safeOffset)
+    .all(...params, safeLimit, safeOffset)
     .map(parseLogRow);
 }
 
@@ -888,6 +1029,35 @@ export function getRecentLogCount({ sinceHours = 24 } = {}) {
     )
     .get(`-${Math.max(1, Number(sinceHours) || 24)} hours`);
   return Number(row?.n ?? 0);
+}
+
+/**
+ * Сколько раз сработало каждое правило автоответа: { [ruleId]: count }.
+ *
+ * Считаем по всему журналу, а не по последним записям — иначе счётчик на
+ * карточке занижен: правило, сработавшее 300 раз, показывало бы «2 раза»
+ * только потому, что старые записи не попали в выборку.
+ *
+ * Учитываем только успешные отправки: провалившаяся попытка не должна
+ * выглядеть как срабатывание.
+ */
+export function countAutoReplyHits() {
+  const rows = db
+    .prepare(
+      `SELECT template_id, COUNT(*) AS n FROM bot_message_log
+        WHERE direction = 'out'
+          AND message_type = ?
+          AND template_id IS NOT NULL
+          AND json_extract(meta, '$.outcome') = ?
+        GROUP BY template_id`,
+    )
+    .all(AUTO_REPLY_MESSAGE_TYPE, AUTO_REPLY_OUTCOME_SENT);
+  const counts = {};
+  for (const row of rows) {
+    const id = Number(row.template_id);
+    if (Number.isFinite(id)) counts[id] = Number(row.n) || 0;
+  }
+  return counts;
 }
 
 // =============================================================================
@@ -1045,10 +1215,129 @@ export function handleIncomingBusinessMessage({
 
   const reply = matchQuickReply(text);
   if (!reply) return null;
+
+  // Пауза: клиент, написавший «график» трижды подряд, получает один ответ.
+  // Проверяем и по времени последнего сообщения, и по журналу отправок —
+  // второе переживает перезапуск бота, когда блокировка в памяти теряется.
+  const cooldown = getAutoReplyCooldownMinutes();
+  if (cooldown > 0 && hasRecentAutoReply(fromUserId, cooldown)) {
+    return null;
+  }
+
+  // Получатель для отправки через userbot (основной канал, как у уведомлений
+  // о заказе). Клиент только что написал сам, поэтому resolveUsername не нужен:
+  // диалог у userbot'а уже есть, но username берём как запасной путь.
+  const customer = db
+    .prepare(`SELECT id, telegram_id, telegram_username FROM customers WHERE telegram_id = ?`)
+    .get(String(fromUserId));
+
   return {
     text: reply.response_text,
     templateKind: 'quick_reply',
     templateId: reply.id,
     quickReplyTitle: reply.title,
+    customerId: customer?.id ?? null,
+    customerTelegramId: String(fromUserId),
+    customerUsername: customer?.telegram_username || null,
   };
+}
+
+// =============================================================================
+// Защита от одновременной отправки двум сообщениям подряд
+// =============================================================================
+
+/**
+ * Кто прямо сейчас ждёт отправки автоответа.
+ *
+ * Зачем: проверка паузы читает журнал, а запись в него идёт только ПОСЛЕ
+ * отправки. Отправка может занять до 20 секунд (таймаут userbot), и клиент,
+ * написавший дважды подряд, прошёл бы проверку два раза — он получил бы два
+ * одинаковых сообщения. Блокировка в памяти закрывает это окно.
+ *
+ * Не заменяет паузу по журналу, а дополняет её: журнал переживает перезапуск,
+ * память — нет.
+ */
+const autoReplyInFlight = new Set();
+
+/** Занять клиента перед отправкой. false — автоответ уже в процессе. */
+export function tryStartAutoReply(telegramId) {
+  const key = String(telegramId || '');
+  if (!key) return false;
+  if (autoReplyInFlight.has(key)) return false;
+  autoReplyInFlight.add(key);
+  return true;
+}
+
+/** Освободить клиента после отправки (в finally — иначе застрянет навсегда). */
+export function finishAutoReply(telegramId) {
+  autoReplyInFlight.delete(String(telegramId || ''));
+}
+
+// =============================================================================
+// Почему автоответы не срабатывают
+// =============================================================================
+
+/**
+ * Список причин, по которым автоответ сейчас не уйдёт. Пустой массив — всё
+ * готово. Нужен интерфейсу: менеджер видит причину, а не молчащий бот.
+ *
+ * Проверки идут от внешних к внутренним: сначала канал доставки, потом
+ * правила, потом доступ клиентов.
+ */
+export function getAutoReplyBlockers() {
+  const blockers = [];
+
+  if (!isAutoReplyEnabled()) {
+    blockers.push({
+      code: 'disabled',
+      message: 'Автоответы выключены',
+      hint: 'Включите переключатель справа.',
+    });
+  }
+
+  const active = listQuickReplies({ activeOnly: true });
+  if (active.length === 0) {
+    const total = listQuickReplies().length;
+    blockers.push({
+      code: 'no_rules',
+      message: total === 0 ? 'Нет ни одного правила' : 'Все правила скрыты',
+      hint: total === 0
+        ? 'Добавьте правило: слова-триггеры и готовый ответ.'
+        : 'Включите хотя бы одно правило или добавьте новое.',
+    });
+  }
+
+  // Правило без ключевых слов не сработает никогда — это частая незаметная
+  // ошибка, поэтому выносим отдельно от «нет правил».
+  const withoutKeywords = active.filter(
+    (r) => !Array.isArray(r.keywords) || r.keywords.length === 0,
+  );
+  if (active.length > 0 && withoutKeywords.length === active.length) {
+    blockers.push({
+      code: 'no_triggers',
+      message: 'У активных правил не заданы слова-триггеры',
+      hint: 'Добавьте хотя бы одно слово, на которое бот должен отвечать.',
+    });
+  } else if (withoutKeywords.length > 0) {
+    blockers.push({
+      code: 'partial_no_triggers',
+      message: `${withoutKeywords.length} правил без слов-триггеров`,
+      hint: 'Такие правила не сработают, пока вы не добавите слова.',
+    });
+  }
+
+  // Нет активного подключения — автоответ, скорее всего, не сработает. Но это
+  // не всегда так: обработчик входящих ищет подключение по id и не требует
+  // is_enabled=1, а основной канал отправки — userbot, которому Business mode
+  // не нужен. Поэтому формулируем как предупреждение, а не как «выключено»:
+  // иначе панель постоянно пугает менеджера, хотя ответы уходят.
+  if (!getActiveBusinessConnection()) {
+    blockers.push({
+      code: 'no_business_connection',
+      message: 'Telegram Business не числится активным',
+      hint: 'Автоответы могут уходить через userbot — он не требует Business. Если ответы не доходят, проверьте подключение Telegram.',
+    });
+  }
+
+  return blockers;
 }

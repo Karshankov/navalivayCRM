@@ -69,13 +69,6 @@ import {
   resumeGroup,
 } from '../utils/low-stock-groups.js';
 import {
-  computeRestockCandidates,
-  getRestockCandidatesSummary,
-  invalidateRestockCache,
-  setRestockMinVariants,
-  RESTOCK_MIN_VARIANTS_MAX,
-} from '../utils/restock-candidates.js';
-import {
   listAllAgreements,
   createAgreement,
   updateAgreement,
@@ -107,6 +100,8 @@ import {
   createQuickReply,
   updateQuickReply,
   deleteQuickReply,
+  matchQuickReply,
+  normalizeForMatch,
   listStatusTemplates,
   upsertStatusTemplate,
   generateVerificationCode,
@@ -116,6 +111,12 @@ import {
   normalizeCustomerOrderTerminology,
   isAutoReplyEnabled,
   setAutoReplyEnabled,
+  getAutoReplyCooldownMinutes,
+  setAutoReplyCooldownMinutes,
+  getAutoReplyBlockers,
+  countAutoReplyHits,
+  AUTO_REPLY_COOLDOWN_DEFAULT_MINUTES,
+  AUTO_REPLY_COOLDOWN_MAX_MINUTES,
   getRecentLogCount,
   listBotLog,
   logBotMessage,
@@ -131,6 +132,7 @@ import {
 import {
   sendViaUserbot,
   isUserbotAvailable,
+  listUserbotQuickReplies,
 } from '../utils/userbot-client.js';
 import {
   DISCOUNT_BLOCK_NOTIFY_TEMPLATE_KEY,
@@ -1201,45 +1203,6 @@ crmRouter.get('/api/admin/crm/low-stock-groups/:groupId/flavors', authMiddleware
   }
 });
 
-/**
- * Кандидаты на пополнение полки: в рознице 0–2 шт, на складе есть запас.
- * Используется значком «!» на экране заказов.
- */
-crmRouter.get('/api/admin/crm/restock-candidates', authMiddleware, (req, res) => {
-  try {
-    res.json(computeRestockCandidates());
-  } catch (error) {
-    console.error('[crm] Restock candidates error:', error);
-    res.status(500).json({ error: 'failed', message: error.message });
-  }
-});
-
-// Lightweight-проверка для значка: только числа, без списка позиций.
-crmRouter.get('/api/admin/crm/restock-candidates/summary', authMiddleware, (req, res) => {
-  try {
-    res.json(getRestockCandidatesSummary());
-  } catch (error) {
-    console.error('[crm] Restock candidates summary error:', error);
-    res.status(500).json({ error: 'failed', message: error.message });
-  }
-});
-
-// Порог срабатывания значка: сколько вкусов минимум должно закончиться.
-crmRouter.put('/api/admin/crm/restock-candidates/settings', authMiddleware, (req, res) => {
-  try {
-    const minVariants = setRestockMinVariants(req.body?.minVariants);
-    res.json({ ok: true, minVariants, summary: getRestockCandidatesSummary() });
-  } catch (error) {
-    if (error.code === 'invalid_restock_min_variants') {
-      return res.status(400).json({
-        error: 'invalid_restock_min_variants',
-        message: `Порог должен быть целым числом от 0 до ${RESTOCK_MIN_VARIANTS_MAX}.`,
-      });
-    }
-    console.error('[crm] Restock settings error:', error);
-    res.status(500).json({ error: 'failed', message: error.message });
-  }
-});
 
 // Скрыть линейку из плашки на N дней. reason: 'short' | 'no_supply' | 'not_produced'.
 crmRouter.post('/api/admin/crm/low-stock-groups/:groupId/pause', authMiddleware, (req, res) => {
@@ -1393,8 +1356,17 @@ crmRouter.get('/api/admin/crm/bot/status', authMiddleware, async (req, res) => {
       delivery_ready: userbotConnected || (tokenCheck.ok && Boolean(active)),
       quick_reply_count: listQuickReplies().length,
       quick_reply_active_count: listQuickReplies({ activeOnly: true }).length,
+      // Счётчик «Сработало N раз» на карточке правила: по всему журналу,
+      // а не по последним записям — иначе цифра занижена.
+      auto_reply_hits: countAutoReplyHits(),
       status_templates: listStatusTemplates(),
       recent_log_count: getRecentLogCount({ sinceHours: 24 }),
+      // Готовый список причин, по которым автоответ не уйдёт. Фронтенд не
+      // собирает эту логику сам — иначе причины расходятся с сервером.
+      auto_reply_blockers: getAutoReplyBlockers(),
+      cooldown_minutes: getAutoReplyCooldownMinutes(),
+      cooldown_default_minutes: AUTO_REPLY_COOLDOWN_DEFAULT_MINUTES,
+      cooldown_max_minutes: AUTO_REPLY_COOLDOWN_MAX_MINUTES,
     });
   } catch (err) {
     console.error('[crm] Bot status error:', err);
@@ -1404,15 +1376,33 @@ crmRouter.get('/api/admin/crm/bot/status', authMiddleware, async (req, res) => {
 
 crmRouter.put('/api/admin/crm/bot/settings', authMiddleware, (req, res) => {
   try {
-    const next =
-      req.body?.auto_replies_enabled === undefined
-        ? null
-        : Boolean(req.body.auto_replies_enabled);
-    if (next === null) {
-      return res.status(400).json({ error: 'auto_replies_enabled_required' });
+    const body = req.body ?? {};
+    const hasToggle = body.auto_replies_enabled !== undefined;
+    const hasCooldown = body.cooldown_minutes !== undefined;
+    if (!hasToggle && !hasCooldown) {
+      return res.status(400).json({ error: 'nothing_to_update' });
     }
-    const value = setAutoReplyEnabled(next);
-    res.json({ ok: true, auto_replies_enabled: value });
+
+    if (hasToggle) {
+      setAutoReplyEnabled(Boolean(body.auto_replies_enabled));
+    }
+    if (hasCooldown) {
+      try {
+        setAutoReplyCooldownMinutes(body.cooldown_minutes);
+      } catch (err) {
+        if (err.code === 'invalid_cooldown') {
+          return res.status(400).json({ error: 'invalid_cooldown' });
+        }
+        throw err;
+      }
+    }
+
+    res.json({
+      ok: true,
+      auto_replies_enabled: isAutoReplyEnabled(),
+      cooldown_minutes: getAutoReplyCooldownMinutes(),
+      blockers: getAutoReplyBlockers(),
+    });
   } catch (err) {
     console.error('[crm] Bot settings error:', err);
     res.status(500).json({ error: 'failed', message: err.message });
@@ -1690,6 +1680,99 @@ crmRouter.delete('/api/admin/crm/bot/quick-replies/:id', authMiddleware, (req, r
     res.json({ ok: true, removed });
   } catch (err) {
     console.error('[crm] Bot quick-reply delete error:', err);
+    res.status(500).json({ error: 'failed', message: err.message });
+  }
+});
+
+// Проверка фразы: какое правило сработает на этот текст. Нужна, чтобы менеджер
+// видел результат до сохранения и не гадал, почему бот молчит. Считается тем же
+// матчером, что и в бою — иначе проверка врала бы.
+// Заготовки из Telegram («Избранное» → Быстрые ответы, например «/график»).
+// Живут в аккаунте менеджера, а не в нашей базе: читаются через userbot.
+// Нужны форме правила как источник текста — чтобы не копировать ответ руками.
+crmRouter.get('/api/admin/crm/bot/telegram-quick-replies', authMiddleware, async (req, res) => {
+  try {
+    if (!(await isUserbotAvailable())) {
+      // Не 500: это ожидаемое состояние, когда userbot лежит. Форма покажет
+      // понятную подпись, а не «ошибка сервера».
+      return res.status(503).json({ error: 'userbot_unavailable' });
+    }
+    // Текст нужен всегда: без него кнопка нечего подставлять.
+    const result = await listUserbotQuickReplies({ withText: true });
+    if (!result.ok) {
+      return res.status(502).json({ error: result.error || 'quick_replies_failed' });
+    }
+    res.json({
+      ok: true,
+      items: (result.quick_replies || []).map((item) => ({
+        id: item.id,
+        name: item.name,
+        // Пусто, если Telegram не отдал сообщение-шаблон: форма подсветит
+        // такую заготовку как недоступную, а не подставит пустоту молча.
+        text: typeof item.text === 'string' ? item.text : '',
+      })),
+    });
+  } catch (err) {
+    console.error('[crm] Telegram quick-replies error:', err);
+    res.status(500).json({ error: 'failed', message: err.message });
+  }
+});
+
+crmRouter.post('/api/admin/crm/bot/quick-replies/test', authMiddleware, (req, res) => {
+  try {
+    const text = String(req.body?.text ?? '').trim();
+    if (!text) return res.status(400).json({ error: 'text_required' });
+    if (text.length > 1000) return res.status(400).json({ error: 'text_too_long' });
+
+    const matched = matchQuickReply(text);
+    res.json({
+      ok: true,
+      normalized: normalizeForMatch(text),
+      matched: matched
+        ? {
+            id: matched.id,
+            title: matched.title,
+            response_text: matched.response_text,
+          }
+        : null,
+    });
+  } catch (err) {
+    console.error('[crm] Bot quick-reply test error:', err);
+    res.status(500).json({ error: 'failed', message: err.message });
+  }
+});
+
+// Перестановка правил местами. Порядок определяет, какое правило выигрывает
+// при равном совпадении, поэтому «выше/ниже» в интерфейсе надёжнее ручного числа.
+crmRouter.post('/api/admin/crm/bot/quick-replies/:id/move', authMiddleware, (req, res) => {
+  try {
+    const direction = String(req.body?.direction ?? '');
+    if (direction !== 'up' && direction !== 'down') {
+      return res.status(400).json({ error: 'invalid_direction' });
+    }
+    const items = listQuickReplies();
+    const index = items.findIndex((r) => String(r.id) === String(req.params.id));
+    if (index === -1) return res.status(404).json({ error: 'quick_reply_not_found' });
+    const target = direction === 'up' ? index - 1 : index + 1;
+    if (target < 0 || target >= items.length) {
+      return res.json({ ok: true, moved: false, items });
+    }
+
+    // Перенумеровываем весь список с шагом 10, чтобы порядок был однозначным
+    // даже если у правил раньше стояли одинаковые или случайные sort_order.
+    const reordered = [...items];
+    [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
+    const update = db.prepare(
+      `UPDATE bot_quick_replies SET sort_order = ?, updated_at = DATETIME('now') WHERE id = ?`,
+    );
+    const applyOrder = db.transaction((list) => {
+      list.forEach((item, i) => update.run((i + 1) * 10, item.id));
+    });
+    applyOrder(reordered);
+
+    res.json({ ok: true, moved: true, items: listQuickReplies() });
+  } catch (err) {
+    console.error('[crm] Bot quick-reply move error:', err);
     res.status(500).json({ error: 'failed', message: err.message });
   }
 });
@@ -2016,7 +2099,11 @@ crmRouter.get('/api/admin/crm/bot/log', authMiddleware, (req, res) => {
     const limit = Number(req.query.limit) || 50;
     const offset = Number(req.query.offset) || 0;
     const chatId = req.query.chat_id ? String(req.query.chat_id) : null;
-    res.json({ items: listBotLog({ limit, offset, chatId }) });
+    // Фильтр по типу: панель автоответов запрашивает только свои записи.
+    // Без него в историю попадали ручные быстрые ответы (/прайс), которые
+    // пишутся под тем же типом 'quick_reply'.
+    const messageType = req.query.message_type ? String(req.query.message_type) : null;
+    res.json({ items: listBotLog({ limit, offset, chatId, messageType }) });
   } catch (err) {
     console.error('[crm] Bot log error:', err);
     res.status(500).json({ error: 'failed', message: err.message });

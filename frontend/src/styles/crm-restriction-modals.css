@@ -43,9 +43,13 @@
 .crm-restriction-template-editor { display: flex; align-items: stretch; gap: 8px; min-width: 0; }
 .crm-restriction-template-editor > input { flex: 1; }
 .crm-restriction-template-editor > button { flex-shrink: 0; padding: 9px 12px; font-size: 11px; }
-.crm-restriction-actions { display: flex; justify-content: flex-end; gap: 10px; padding-top: 2px; }
-.crm-restriction-secondary, .crm-restriction-danger { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 12px 20px; border-radius: 12px; font-size: 13px; font-weight: 750; line-height: 1.35; text-align: center; }
+.crm-restriction-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding-top: 2px; }
+.crm-restriction-secondary, .crm-restriction-primary, .crm-restriction-danger { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 12px 20px; border-radius: 12px; font-size: 13px; font-weight: 750; line-height: 1.35; text-align: center; }
 .crm-restriction-secondary { border: 1px solid #dce8fa; background: linear-gradient(#f7faff,#e9f0fa); color: #233e70; }
+/* Основное действие модалки. Градиент тот же, что --crm-ref-primary со страницы
+   «Заказы», но задан явно: форма модалки не лежит под .crm-ref, токен там не
+   виден. Так же поступают .crm-restriction-danger и .crm-note-secondary. */
+.crm-restriction-primary { border: 1px solid transparent; background: linear-gradient(100deg,#05b8ff,#185dff); color: #fff; box-shadow: 0 8px 16px #148cff30; }
 .crm-restriction-danger { border: 1px solid transparent; background: linear-gradient(115deg,#ff685a,#fa104f); color: #fff; box-shadow: 0 8px 16px #fa104f22; }
 .crm-restriction-actions > button:not(:disabled):hover { filter: brightness(1.04); }
 .crm-restriction-error { padding: 12px 14px; border: 1px solid #f5c9d3; border-radius: 12px; background: #fff1f3; color: #b92444; font-size: 12px; overflow-wrap: anywhere; }
@@ -71,3 +75,135 @@
   .crm-restriction-template-editor > button { width: 100%; }
 }
 @media (prefers-reduced-motion: reduce) { .crm-restriction-form *, .crm-restriction-form *::before { transition: none !important; animation: none !important; } }
+
+/* Поля ввода слов-триггеров и проверки фразы. Перенесены из стилей страницы
+   «Заказы» (были .crm-ref-*) в систему модалок: модалка должна быть собрана
+   из одной системы, иначе рядом стоят кнопки разной высоты и разные подсказки. */
+/* Ввод слов-триггеров чипами */
+.crm-restriction-trigger-box {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 7px;
+  padding: 9px 11px; border: 1px solid #dce8fa; border-radius: 12px; background: white;
+}
+.crm-restriction-trigger-box:focus-within { outline: 2px solid #0958ff; outline-offset: 1px; }
+.crm-restriction-trigger-box > input {
+  flex: 1 1 140px; min-width: 0; padding: 5px 2px; border: none; background: transparent;
+  color: #081b4b; font-family: inherit; font-size: 13px;
+}
+.crm-restriction-trigger-box > input:focus { outline: none; }
+.crm-restriction-trigger-box > input::placeholder { color: #9ba8c0; opacity: 1; }
+/* Ввод слов-триггеров чипами */
+.crm-restriction-trigger-box {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 7px;
+  padding: 9px 11px; border: 1px solid #dce8fa; border-radius: 12px; background: white;
+}
+.crm-restriction-trigger-box:focus-within { outline: 2px solid #0958ff; outline-offset: 1px; }
+.crm-restriction-trigger-box > input {
+  flex: 1 1 140px; min-width: 0; padding: 5px 2px; border: none; background: transparent;
+  color: #081b4b; font-family: inherit; font-size: 13px;
+}
+.crm-restriction-trigger-box > input:focus { outline: none; }
+.crm-restriction-trigger-box > input::placeholder { color: #9ba8c0; opacity: 1; }
+.crm-restriction-trigger {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 5px 6px 5px 10px; border: 1px solid #dce8fa; border-radius: 999px;
+  background: #f7fbff; color: #233e70; font-size: 12px; font-weight: 650;
+}
+.crm-restriction-trigger > button {
+  display: grid; place-items: center; width: 21px; height: 21px; padding: 0;
+  border: none; border-radius: 50%; background: #dbe5f3; color: #5b6f96;
+  cursor: pointer; transition: background .15s ease, color .15s ease;
+}
+.crm-restriction-trigger > button > svg { width: 11px; height: 11px; }
+.crm-restriction-trigger > button:focus-visible { outline: 2px solid #0958ff; outline-offset: 2px; }
+.crm-restriction-trigger > button:hover { background: #ffd7dc; color: #c22036; }
+/* Список заготовок из Telegram: кнопка на каждую, клик подставляет текст.
+   Отдельный класс, а не .crm-restriction-trigger: тот — чип слова-триггера
+   с крестиком внутри, и кнопка в нём выглядела бы неотличимо от него. */
+.crm-restriction-template {
+  display: inline-flex; align-items: center;
+  min-height: 30px; padding: 5px 12px;
+  border: 1px solid #dce8fa; border-radius: 999px;
+  background: #fff; color: #233e70;
+  font-family: inherit; font-size: 12px; font-weight: 650;
+  cursor: pointer; transition: border-color .15s ease, background .15s ease;
+}
+.crm-restriction-template:hover:not(:disabled) { border-color: #b8cef5; background: #f7fbff; }
+.crm-restriction-template:focus-visible { outline: 2px solid #0958ff; outline-offset: 2px; }
+.crm-restriction-template:disabled { opacity: .5; cursor: not-allowed; }
+
+/* Живая проверка фразы */
+.crm-restriction-check { display: flex; gap: 8px; }
+.crm-restriction-check > input { flex: 1; }
+.crm-restriction-check-result {
+  margin-top: 10px; padding: 11px 13px; border-radius: 12px;
+  border: 1px solid #dce8fa; background: #f7fbff; color: #425778;
+  font-size: 12px; line-height: 1.6; overflow-wrap: anywhere;
+}
+.crm-restriction-check-result--hit { border-color: #cfe9d9; background: #f1fbf5; color: #24704a; }
+.crm-restriction-check-result--miss { border-color: #f4e2c7; background: #fff8ed; color: #7d5d36; }
+.crm-restriction-check-result strong { font-weight: 750; }
+.crm-restriction-check-result code {
+  padding: 1px 5px; border-radius: 5px; background: #ffffffb0;
+  font-size: 11px; color: inherit;
+}
+
+/* Строка формы: подпись и поле без карточки-обводки. Эталонные модалки
+   (CustomerSettingsModal, DiscountBlockModal) строят форму плоским списком,
+   а не вложенными карточками — иначе в окне size="md" четыре рамки и тени
+   дают визуальный шум. */
+.crm-restriction-row { display: grid; gap: 7px; min-width: 0; }
+.crm-restriction-row--check { gap: 9px; padding-top: 2px; border-top: 1px solid #eef3fb; padding-top: 14px; }
+/* Счётчик рядом с подписью — тихая цифра, а не баннер. */
+.crm-restriction-counter { color: #66799e; font-size: 11px; font-weight: 650; white-space: nowrap; }
+
+/* Поле проверки фразы: ввод и кнопка в одну строку. */
+.crm-restriction-check { display: flex; gap: 10px; align-items: stretch; min-width: 0; }
+.crm-restriction-check > input { flex: 1 1 auto; }
+.crm-restriction-check-button { flex-shrink: 0; }
+.crm-restriction-check-result { padding: 11px 13px; border: 1px solid #dce8fa; border-radius: 12px; background: #f7fbff; color: #425778; font-size: 12px; line-height: 1.55; overflow-wrap: anywhere; }
+.crm-restriction-check-result strong { color: #081b4b; font-weight: 750; }
+.crm-restriction-check-result--hit { border-color: #cfe9d9; background: #f1fbf5; color: #24704a; }
+.crm-restriction-check-result--miss { border-color: #f4e2c7; background: #fff8ed; color: #7d5d36; }
+.crm-restriction-check-result--hit strong { color: #24704a; }
+.crm-restriction-check-result--miss strong { color: #7d5d36; }
+
+/* Слова-триггеры: контейнер с чипами и полем ввода внутри. */
+.crm-restriction-trigger-box {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 7px;
+  min-height: 44px; padding: 8px 11px; border: 1px solid #dce8fa; border-radius: 12px; background: #f7fbff;
+}
+.crm-restriction-trigger-box:focus-within { border-color: #b8cef5; outline: 2px solid #0958ff; outline-offset: 1px; }
+.crm-restriction-trigger-box > input {
+  flex: 1 1 140px; min-width: 0; padding: 4px 2px; border: none; background: transparent;
+  color: #081b4b; font-family: inherit; font-size: 13px;
+}
+.crm-restriction-trigger-box > input:focus { outline: none; }
+.crm-restriction-trigger-box > input::placeholder { color: #8999b7; opacity: 1; }
+.crm-restriction-trigger {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 6px 5px 11px; border: 1px solid #dce8fa; border-radius: 999px;
+  background: #fff; color: #233e70; font-size: 12px; font-weight: 650;
+}
+.crm-restriction-trigger > button {
+  display: grid; place-items: center; width: 21px; height: 21px; padding: 0;
+  border: none; border-radius: 50%; background: #dbe5f3; color: #5b6f96;
+  cursor: pointer; transition: background .15s ease, color .15s ease;
+}
+.crm-restriction-trigger > button > svg { width: 11px; height: 11px; }
+.crm-restriction-trigger > button:hover { background: #ffd7dc; color: #c22036; }
+.crm-restriction-trigger > button:focus-visible { outline: 2px solid #0958ff; outline-offset: 2px; }
+
+@media (max-width: 700px) {
+  .crm-restriction-check { flex-wrap: wrap; }
+  .crm-restriction-check > input { flex-basis: 100%; }
+  .crm-restriction-check-button { width: 100%; }
+}
+
+/* Предупреждение о необратимом действии. Отдельно от .crm-restriction-hint:
+   тот — тихая серая справка 11px, а здесь текст, который обязан быть замечен. */
+.crm-restriction-danger-note {
+  margin: 0; padding: 13px 15px;
+  border: 1px solid #f5c9d3; border-radius: 12px; background: #fff1f3;
+  color: #b92444; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere;
+}
+.crm-restriction-danger-note strong { font-weight: 750; }

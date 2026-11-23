@@ -848,7 +848,7 @@
 
               <AdminAgreementsSection />
               <AdminSignificanceMarksSection />
-              <AdminBotSection />
+              <AutoRepliesPanel />
             </div>
           </div>
           </template>
@@ -1282,7 +1282,7 @@ import ProductDiscountModal from '@/components/admin/ProductDiscountModal.vue'
 import AdminWholesaleLinksPanel from '@/components/admin/AdminWholesaleLinksPanel.vue'
 import IncompleteGroupsPanel from '@/components/admin/IncompleteGroupsPanel.vue'
 import AdminAgreementsSection from '@/components/admin/AdminAgreementsSection.vue'
-import AdminBotSection from '@/components/admin/AdminBotSection.vue'
+import AutoRepliesPanel from '@/components/admin/bot/AutoRepliesPanel.vue'
 import AdminSignificanceMarksSection from '@/components/admin/AdminSignificanceMarksSection.vue'
 import CashierLockScreen from '@/components/admin/CashierLockScreen.vue'
 import ProfitAccessGate from '@/components/admin/ProfitAccessGate.vue'

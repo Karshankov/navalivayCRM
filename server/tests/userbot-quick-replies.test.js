@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {
+  readQuickReplyText,
   buildStableRandomIds,
   findQuickReply,
   listQuickReplies,
@@ -27,8 +28,8 @@ const client = {
     if (call === 1) {
       return {
         quickReplies: [
-          { shortcutId: 11, shortcut: 'Прайс', count: 2 },
-          { shortcutId: 12, shortcut: 'Адрес', count: 1 },
+          { shortcutId: 11, shortcut: 'Прайс', count: 2, topMessage: 501 },
+          { shortcutId: 12, shortcut: 'Адрес', count: 1, topMessage: 502 },
         ],
       };
     }
@@ -39,8 +40,8 @@ const client = {
 
 const shortcuts = await listQuickReplies(client);
 assert.deepEqual(shortcuts, [
-  { id: 11, name: 'Прайс', count: 2 },
-  { id: 12, name: 'Адрес', count: 1 },
+  { id: 11, name: 'Прайс', count: 2, topMessage: 501 },
+  { id: 12, name: 'Адрес', count: 1, topMessage: 502 },
 ]);
 const result = await sendQuickReply({
   client,
@@ -52,5 +53,51 @@ assert.deepEqual(result.messageIds, [100, 101]);
 assert.equal(sentRequest.shortcutId, 11);
 assert.deepEqual(sentRequest.id, []);
 assert.deepEqual(sentRequest.randomId, buildStableRandomIds('welcome:c1', 2));
+
+// --- Текст заготовки ---------------------------------------------------------
+// Telegram хранит текст заготовки отдельным сообщением в «Избранном»; QuickReply
+// отдаёт лишь top_message. Читаем его через messages.GetMessages.
+assert.equal(
+  await readQuickReplyText(
+    { invoke: async () => ({ messages: [{ message: 'Работаем до 20:00' }] }) },
+    501,
+  ),
+  'Работаем до 20:00',
+  'текст заготовки читается по topMessage',
+);
+
+// Без topMessage запрос не нужен: не дёргаем сеть впустую.
+let calledWithoutId = false;
+await readQuickReplyText(
+  {
+    invoke: async () => {
+      calledWithoutId = true;
+      return {};
+    },
+  },
+  0,
+);
+assert.equal(calledWithoutId, false, 'без topMessage запрос к Telegram не уходит');
+assert.equal(await readQuickReplyText({ invoke: async () => ({}) }, 0), '', 'без topMessage — пустая строка');
+
+// Медиа-заготовка без текста и сбой Telegram не должны ломать список: форма
+// получит пустую строку и покажет заготовку недоступной.
+assert.equal(
+  await readQuickReplyText({ invoke: async () => ({ messages: [{ media: {} }] }) }, 7),
+  '',
+  'сообщение без текста даёт пустую строку',
+);
+assert.equal(
+  await readQuickReplyText(
+    {
+      invoke: async () => {
+        throw new Error('FLOOD_WAIT_30');
+      },
+    },
+    7,
+  ),
+  '',
+  'ошибка Telegram не выбрасывается наружу',
+);
 
 console.log('userbot-quick-replies.test.js: ok');
