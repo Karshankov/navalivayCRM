@@ -572,8 +572,12 @@ type LiquidGroup = {
   coverImage: string | null;
   /** Расположение обложки из CRM: множитель масштаба в процентах. */
   coverZoom?: number | null;
-  /** Наклон обложки в градусах. */
+  /** Сдвиг обложки вбок в процентах. */
   coverShift?: number | null;
+  /** Сдвиг обложки по вертикали в процентах. */
+  coverOffsetY?: number | null;
+  /** Кадр настроен руками: автоподбор не применяется. */
+  coverManual?: boolean | null;
   products: Product[];
   productCount: number;
   badge?: string | null;
@@ -689,6 +693,10 @@ const liquidStructure = computed(() => {
         coverImage: group.coverImage || null,
         coverZoom: (group as any).coverZoom ?? null,
         coverShift: (group as any).coverShift ?? null,
+        /* Без этих двух строк витрина теряла ручной кадр: карточка
+           показывала автоподбор, а сотрудник в CRM — свой кадр. */
+        coverOffsetY: (group as any).coverOffsetY ?? null,
+        coverManual: (group as any).coverManual ?? null,
         products: groupProducts,
         productCount: groupProducts.length,
         badge: group.badge ?? null,

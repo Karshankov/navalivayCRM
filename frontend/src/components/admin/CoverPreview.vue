@@ -3,21 +3,39 @@
        Внутри окна — тот же ImageFade, что в карточке мини-аппа, поэтому
        сотрудник видит ровно тот кадр, который получит покупатель. -->
   <div class="cover-preview">
-    <div class="cover-preview__frame">
-      <div class="cover-preview__art">
-        <ImageFade
-          :src="src"
-          :alt="alt"
-          :zoom="zoom / 100"
-          :shift-x="shiftX"
-          :shift-y="shiftY"
-          :manual="manual"
-        />
-      </div>
-      <div class="cover-preview__info">
-        <span class="cover-preview__title">{{ title }}</span>
-        <span v-if="meta" class="cover-preview__meta">{{ meta }}</span>
-        <span class="cover-preview__reviews">★ 5 Отзывы · 12</span>
+    <!-- Карточка собрана по составу настоящей (LiquidLineCard): те же
+         строки, тот же шеврон справа и та же пилюля «Избранное». Это не
+         украшение — от состава зависит высота карточки, а по высоте
+         растянута область фото. Строкой меньше — и кадр обрежется иначе.
+
+         Ширина задана жёстко (369px = телефон 393px минус отступы
+         страницы), а не берётся от модалки. Иначе в узкой модалке
+         название переносилось бы раньше, чем у покупателя, карточка
+         вышла бы выше — и кадр разошёлся бы. На маленьких экранах
+         превью масштабируется целиком, сохраняя внутренние размеры. -->
+    <div class="cover-preview__stage">
+      <div class="cover-preview__frame">
+        <div class="cover-preview__main">
+          <div class="cover-preview__art">
+            <ImageFade
+              :src="src"
+              :alt="alt"
+              :zoom="zoom / 100"
+              :shift-x="shiftX"
+              :shift-y="shiftY"
+              :manual="manual"
+            />
+          </div>
+          <div class="cover-preview__info">
+            <span class="cover-preview__title">{{ title }}</span>
+            <span v-if="meta" class="cover-preview__meta">{{ meta }}</span>
+            <span class="cover-preview__reviews">★ 5,0 · 12 отзывов</span>
+            <span class="cover-preview__favorite">Избранное</span>
+          </div>
+        </div>
+        <div class="cover-preview__side">
+          <span class="cover-preview__toggle" aria-hidden="true">⌄</span>
+        </div>
       </div>
     </div>
     <p class="cover-preview__hint">
@@ -271,6 +289,16 @@ function reset() {
   gap: 6px;
 }
 
+/* Обёртка превью: держит настоящую ширину карточки независимо от того,
+   сколько места даёт модалка. Если позволить превью сжиматься, длинное
+   название перенесётся раньше, чем у покупателя: карточка станет выше,
+   а вместе с ней вытянется область фото — и кадр разойдётся.
+   369px = телефон 393px минус отступы страницы (12px с боков). */
+.cover-preview__stage {
+  width: 369px;
+  max-width: 100%;
+}
+
 /* Карточка в масштабе телефона: ширина мини-аппа, пропорции сохранены. */
 .cover-preview__frame {
   display: flex;
@@ -282,7 +310,36 @@ function reset() {
   border: 1px solid #e6e9ed;
 }
 
-/* Область фото: те же габариты, что в мини-аппе. */
+/* Шапка карточки: ровно как .liquid-line-main в мини-аппе. */
+.cover-preview__main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Боковой блок с шевроном: в мини-аппе он занимает 40px по высоте.
+   Без него карточка в превью была бы ниже настоящей. */
+.cover-preview__side {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+}
+
+.cover-preview__toggle {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  background: #f5f6f8;
+  color: #6b7280;
+  font-size: 16px;
+  line-height: 1;
+}
+
+/* Область фото: те же габариты и то же поведение, что в мини-аппе. */
 .cover-preview__art {
   position: relative;
   flex: 0 0 auto;
@@ -297,8 +354,11 @@ function reset() {
 .cover-preview__info {
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
   gap: 2px;
   min-width: 0;
+  flex: 1;
   font-family: "Montserrat", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
@@ -307,6 +367,7 @@ function reset() {
   font-weight: 700;
   line-height: 20px;
   color: #3a3a3a;
+  max-width: 100%;
   overflow-wrap: break-word;
 }
 
@@ -319,10 +380,30 @@ function reset() {
 
 .cover-preview__reviews {
   margin-top: 1px;
+  min-height: 14px;
   font-size: 12px;
   font-weight: 400;
   line-height: 14px;
   color: #0273f5;
+}
+
+/* Пилюля «Избранное»: в мини-аппе она есть у каждого покупателя с
+   Telegram-контекстом и добавляет карточке 30px высоты. Без неё
+   карточка в превью была бы ниже настоящей, а область фото — уже. */
+.cover-preview__favorite {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 2px;
+  min-height: 30px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid #e6e9ed;
+  background: #ffffff;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+  color: #3a3a3a;
+  white-space: nowrap;
 }
 
 .cover-preview__hint {
@@ -547,6 +628,20 @@ function reset() {
 
   .cover-editor__position-value {
     min-width: 0;
+  }
+}
+
+/* Превью шире модалки на телефоне. Уменьшаем его целиком, а не сжимаем
+   содержимое: сжатие поменяло бы перенос строк и высоту карточки, а
+   значит и обрезку фото. Масштаб сохраняет картинку карточки 1в1 —
+   она просто показывается меньше, как уменьшенный снимок экрана. */
+@media (max-width: 480px) {
+  .cover-preview__stage {
+    transform: scale(0.8);
+    transform-origin: left top;
+    /* Место под уменьшенное превью: высота карточки умножается на
+       масштаб, иначе осталась бы пустая полоса снизу. */
+    margin-bottom: -10px;
   }
 }
 </style>
