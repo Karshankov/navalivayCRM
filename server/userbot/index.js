@@ -1003,7 +1003,11 @@ app.post('/send-message', checkSecret, async (req, res) => {
   try {
     const chatId = parseUserChatId(req.body?.chat_id);
     const text = String(req.body?.text || '').trim();
-    if (!chatId || !text) {
+    // При отправке быстрой заготовки текст не нужен: Telegram берёт его из
+    // самой заготовки. Он остаётся запасным — если заготовка не уйдёт,
+    // отправим его.
+    const hasShortcut = Boolean(Number(req.body?.shortcut_id));
+    if (!chatId || (!text && !hasShortcut)) {
       return res.status(400).json({ ok: false, error: 'chat_id_and_text_required' });
     }
     if (text.length > MAX_TEXT_LEN) {
@@ -1081,11 +1085,49 @@ app.post('/send-message', checkSecret, async (req, res) => {
     //   0 — ни одна не сработала (entity_not_found_no_dialog)
     let result;
     let viaAttempt = 0;
+
+    // Отправка быстрой заготовки Telegram вместо текста.
+    //
+    // Зачем: копия текста теряет кастомные (анимированные) эмодзи — они живут
+    // только в самом объекте сообщения как MessageEntityCustomEmoji с
+    // documentId. SendQuickReplyMessages просит Telegram отправить заготовку
+    // целиком, поэтому эмодзи остаются живыми — ровно как когда менеджер сам
+    // жмёт заготовку в приложении.
+    //
+    // Если заготовку отправить не удалось — ниже отработает обычная отправка
+    // текстом, чтобы клиент всё равно получил ответ.
+    const shortcutId = Number(req.body?.shortcut_id) || 0;
+    let shortcutSent = false;
+    if (shortcutId) {
+      try {
+        const peer = await getKnownRecipientPeer(chatId);
+        if (peer) {
+          await rateLimitedDelay();
+          await sendQuickReply({
+            client,
+            peer,
+            // count нужен для randomId: у заготовки может быть не одно
+            // сообщение, а несколько подряд.
+            shortcut: { id: shortcutId, count: Number(req.body?.shortcut_count) || 1 },
+            idempotencyKey: String(req.body?.idempotency_key || `auto-${chatId}-${Date.now()}`),
+          });
+          shortcutSent = true;
+          viaAttempt = 5; // 5 — заготовка целиком, кастомные эмодзи сохранены
+          logEvent('send', { outcome: 'sent', attempt: 5, chat_id: chatId, shortcut_id: shortcutId });
+        } else {
+          logEvent('quick_reply', { outcome: 'entity_miss', chat_id: chatId, shortcut_id: shortcutId });
+        }
+      } catch (shortcutErr) {
+        const msg = shortcutErr?.errorMessage || shortcutErr?.message || String(shortcutErr);
+        logEvent('send', { outcome: 'failed', attempt: 5, chat_id: chatId, shortcut_id: shortcutId, error: msg });
+      }
+    }
+
     try {
-      result = await client.sendMessage(BigInt(chatId), sendOptions);
-      viaAttempt = 1; // прямая отправка — entity был в кэше
+      result = shortcutSent ? { shortcut: true } : await client.sendMessage(BigInt(chatId), sendOptions);
+      if (!shortcutSent) viaAttempt = 1; // прямая отправка — entity был в кэше
       const c1 = req.body?.order_id ? { order_id: req.body.order_id } : {};
-      logEvent('send', { outcome: 'sent', attempt: 1, chat_id: chatId, ...c1 });
+      logEvent('send', { outcome: 'sent', attempt: viaAttempt, chat_id: chatId, ...c1 });
     } catch (firstErr) {
       const firstMsg = firstErr?.errorMessage || firstErr?.message || String(firstErr);
       if (!ENTITY_NOT_FOUND_RX.test(firstMsg)) throw firstErr;

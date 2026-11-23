@@ -62,7 +62,7 @@ function hasSelfSocket() {
   return socketAvailable;
 }
 
-async function sendThroughSelfSocket({ chatId, text, username, auto }) {
+async function sendThroughSelfSocket({ chatId, text, username, auto, shortcutId, shortcutCount }) {
   const { Agent } = await import('undici');
   const dispatcher = new Agent({ connect: { socketPath: SELF_SOCKET_PATH } });
   const headers = { 'Content-Type': 'application/json' };
@@ -72,7 +72,17 @@ async function sendThroughSelfSocket({ chatId, text, username, auto }) {
       method: 'POST',
       headers,
       // Контракт тот же, что у sendViaUserbot: эндпоинт один и тот же.
-      body: JSON.stringify({ chat_id: chatId, text, username, auto }),
+      // shortcut_id просит Telegram отправить заготовку целиком — так
+      // сохраняются кастомные (анимированные) эмодзи, которые теряются
+      // при отправке копии текста.
+      body: JSON.stringify({
+        chat_id: chatId,
+        text,
+        username,
+        auto,
+        shortcut_id: shortcutId || undefined,
+        shortcut_count: shortcutCount || undefined,
+      }),
       signal: AbortSignal.timeout(SELF_SEND_TIMEOUT_MS),
       dispatcher,
     });
@@ -188,20 +198,20 @@ export async function processIncomingAutoReply(
   });
   if (!reply) return null;
 
-  // Правило может ссылаться на быструю заготовку Telegram. Тогда её текст
-  // читается здесь и сейчас — правки в Telegram подхватываются без правок в
-  // CRM. Свой текст правила остаётся запасным: если заготовку не прочитать,
-  // клиент всё равно получит ответ, а не тишину.
+  // Правило может ссылаться на быструю заготовку Telegram. Тогда Telegram
+  // отправляет её сам (см. shortcut_id ниже) — так сохраняются кастомные
+  // анимированные эмодзи, которые есть только в самой заготовке. Копия текста
+  // их теряет.
+  //
+  // Текст всё равно читаем: он запасной на случай, если заготовку отправить не
+  // удастся, и он же нужен журналу, чтобы в истории был видимый ответ.
   let answerText = reply.text;
+  let shortcutReady = false;
   if (reply.telegramShortcutId) {
     const fromShortcut = await readShortcut({ shortcutId: reply.telegramShortcutId });
     if (fromShortcut) {
       answerText = fromShortcut;
-    } else {
-      console.warn(
-        `[userbot] автоответ: текст заготовки #${reply.telegramShortcutId} не прочитан, ` +
-          'отправляю текст правила',
-      );
+      shortcutReady = true;
     }
   }
 
@@ -211,15 +221,19 @@ export async function processIncomingAutoReply(
   if (!start(fromUserId)) return null;
 
   try {
-    // Отправка идёт через HTTP-эндпоинт userbot: там уже собраны три попытки
+    // Отправка идёт через HTTP-эндпоинт userbot: там уже собраны попытки
     // доставки (кэш entity → сохранённый access_hash → prefetch), общий
     // лимитер и защита от FloodWait. Вызывать client.sendMessage отсюда
     // напрямую значило бы продублировать всё это и разойтись с ним.
     const result = await send({
       chatId,
+      // text уходит запасным: если заготовка не отправится, userbot пришлёт его.
       text: answerText,
       username: reply.customerUsername || null,
       auto: true,
+      // Просьба отправить заготовку целиком. Telegram возьмёт текст и
+      // кастомные эмодзи из неё самой.
+      shortcutId: shortcutReady ? reply.telegramShortcutId : null,
     });
 
     // 'ambiguous' — ответ мог уйти, а подтверждение потерялось. Повторять

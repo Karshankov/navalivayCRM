@@ -306,8 +306,47 @@ async function testShortcutTextReplacesRuleText() {
   );
 
   assert.equal(result.outcome, 'sent', 'ответ ушёл');
-  assert.equal(sent[0].text, 'НЕ РАБОТАЕМ ПО ТЕХ ПРИЧИНАМ', 'ушёл текст заготовки, а не правила');
-  assert.equal(logged[0].text, 'НЕ РАБОТАЕМ ПО ТЕХ ПРИЧИНАМ', 'в журнале тоже текст заготовки');
+  // Главное: отправляется сама заготовка, а не копия её текста. Копия теряет
+  // кастомные анимированные эмодзи — они живут только в объекте заготовки.
+  assert.equal(
+    sent[0].shortcutId,
+    137,
+    'отправляем заготовку целиком — иначе анимированные эмодзи потеряются',
+  );
+  assert.equal(logged[0].text, 'НЕ РАБОТАЕМ ПО ТЕХ ПРИЧИНАМ', 'в журнале видимый текст ответа');
+}
+
+async function testShortcutFailureSendsTextInstead() {
+  console.log('\n=== заготовку не прочитать — уходит текст правила, без shortcutId ===');
+  const sent = [];
+  await processIncomingAutoReply(
+    { chatId: CLIENT, fromUserId: CLIENT, ownerUserId: OWNER, text: 'Проверка' },
+    {
+      decide: () => ({
+        text: 'Работаем до 21:00',
+        telegramShortcutId: 137,
+        templateKind: 'quick_reply',
+        templateId: 4,
+        quickReplyTitle: 'Тест',
+        customerId: null,
+        customerTelegramId: CLIENT,
+        customerUsername: null,
+      }),
+      readShortcut: async () => null,
+      send: async (payload) => {
+        sent.push(payload);
+        return { ok: true };
+      },
+      log: () => {},
+      start: () => true,
+      finish: () => {},
+    },
+  );
+
+  // Просить заготовку, текст которой не прочитан, нельзя: отправка провалится
+  // и клиент не получит ничего.
+  assert.equal(sent[0].shortcutId, null, 'shortcutId не передан — шлём текстом');
+  assert.equal(sent[0].text, 'Работаем до 21:00', 'подставлен запасной текст правила');
 }
 
 async function testShortcutFailureFallsBackToRuleText() {
@@ -389,6 +428,7 @@ await testOwnerEchoIsNotAnswered();
 await testSendsThroughSelfSocket();
 await testShortcutTextReplacesRuleText();
 await testShortcutFailureFallsBackToRuleText();
+await testShortcutFailureSendsTextInstead();
 await testRuleWithoutShortcutIsUntouched();
 
 console.log('\nвсе проверки автоответа через userbot пройдены');

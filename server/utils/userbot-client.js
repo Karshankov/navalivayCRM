@@ -148,8 +148,12 @@ export async function sendViaUserbot({
   auto = false,
   username = null,
   verified = false,
+  shortcutId = null,
 } = {}) {
-  if (!chatId || !text) {
+  // При отправке заготовки текст не обязателен: Telegram берёт его из неё.
+  // Он остаётся запасным — если заготовка не уйдёт, userbot пришлёт текст.
+  const hasShortcut = Boolean(Number(shortcutId));
+  if (!chatId || (!text && !hasShortcut)) {
     return { ok: false, outcome: 'rejected', error: 'invalid_payload' };
   }
   let normalizedParseMode;
@@ -176,6 +180,9 @@ export async function sendViaUserbot({
         auto: auto === true,
         username: username ? String(username).replace(/^@/, '') : null,
         verified: verified === true,
+        // Просьба отправить быструю заготовку целиком: так сохраняются
+        // кастомные анимированные эмодзи, которые не переживают копию текста.
+        ...(hasShortcut ? { shortcut_id: Number(shortcutId) } : {}),
       }),
       signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
     });
