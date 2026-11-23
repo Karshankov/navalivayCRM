@@ -24,6 +24,8 @@
  */
 import 'dotenv/config';
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
 import express from 'express';
 import { Api } from 'telegram';
 import { NewMessage } from 'telegram/events/index.js';
@@ -1273,6 +1275,39 @@ app.post('/send-message', checkSecret, async (req, res) => {
 const httpServer = app.listen(PORT, '127.0.0.1', () => {
   console.log(`[userbot] HTTP API listens on 127.0.0.1:${PORT}`);
 });
+
+// Дополнительный слушатель на unix-сокете — для вызовов из самого userbot.
+//
+// Зачем: процесс работает под proxychains4 (см. start.sh), и proxychains
+// перехватывает ВЕСЬ TCP, включая 127.0.0.1 — запрос к своему же порту
+// уходит в прокси и падает с ECONNREFUSED. Проверено: то же соединение
+// через unix-сокет проходит, потому что proxychains сокеты не трогает.
+//
+// Нужен ровно для одного сценария — автоответ на входящее сообщение
+// отправляется тем же отлаженным путём /send-message (три попытки доставки,
+// лимитер, защита от FloodWait), а не своей копией логики в index.js.
+const SELF_SOCKET_PATH = (process.env.USERBOT_SELF_SOCKET || '/tmp/navalivay-userbot.sock').trim();
+let socketServer = null;
+try {
+  fs.mkdirSync(path.dirname(SELF_SOCKET_PATH), { recursive: true });
+  // Сокет от прошлого запуска остался после жёсткого падения — снимаем,
+  // иначе listen упадёт с EADDRINUSE.
+  try {
+    fs.unlinkSync(SELF_SOCKET_PATH);
+  } catch {
+    /* сокета не было — обычный случай */
+  }
+  socketServer = app.listen(SELF_SOCKET_PATH, () => {
+    console.log(`[userbot] HTTP API listens on ${SELF_SOCKET_PATH} (для вызовов изнутри)`);
+  });
+  socketServer.on('error', (err) => {
+    // Никак не роняем процесс: сокет нужен только автоответам, а приём
+    // команд от api продолжает работать через TCP.
+    console.error('[userbot] self-socket недоступен:', redactSecrets(err?.message || err));
+  });
+} catch (err) {
+  console.error('[userbot] self-socket не поднялся:', redactSecrets(err?.message || err));
+}
 
 // ---------------------------------------------------------------------------
 // Self-watchdog: страхует от залипания GramJS update-loop.

@@ -201,6 +201,79 @@ async function testOwnerEchoIsNotAnswered() {
   assert.equal(seen.fromUserId, OWNER, 'автор передан как есть — решение само отсечёт');
 }
 
+async function testSendsThroughSelfSocket() {
+  console.log('\n=== на проде отвечает через unix-сокет ===');
+  // Регрессия: userbot работает под proxychains4, который перехватывает весь
+  // TCP вместе с 127.0.0.1 — запрос к своему же порту падал с ECONNREFUSED и
+  // автоответ не уходил. Сокет proxychains не трогает.
+  //
+  // База здесь не нужна: решение подменено, проверяется транспорт. Так тест
+  // не зависит от данных и не требует поднимать всю схему.
+  const express = (await import('express')).default;
+  const fs = (await import('fs')).default;
+
+  const sock = `/tmp/auto-reply-test-${process.pid}.sock`;
+  const secret = 'test-secret';
+  process.env.USERBOT_SELF_SOCKET = sock;
+  process.env.USERBOT_SECRET = secret;
+
+  const server = express();
+  server.use(express.json());
+  const received = [];
+  server.post('/send-message', (req, res) => {
+    if ((req.header('X-Userbot-Secret') || '') !== secret) {
+      return res.status(401).json({ ok: false, error: 'unauthorized' });
+    }
+    received.push(req.body);
+    res.json({ ok: true });
+  });
+  try {
+    fs.unlinkSync(sock);
+  } catch {
+    /* сокета не было */
+  }
+  const listener = server.listen(sock);
+  await new Promise((resolve) => listener.once('listening', resolve));
+
+  try {
+    // Свежий экземпляр модуля: наличие сокета он кэширует на 30 секунд, иначе
+    // тест увидел бы результат проверки, сделанной до его поднятия.
+    const mod = await import(`../userbot/auto-reply.js?cachebust=${Date.now()}`);
+
+    const result = await mod.processIncomingAutoReply(
+      { chatId: CLIENT, fromUserId: CLIENT, ownerUserId: OWNER, text: 'Проверка' },
+      {
+        // Решение подменено: проверяем именно транспорт.
+        decide: () => ({
+          text: 'Работаем до 21:00',
+          templateKind: 'quick_reply',
+          templateId: 4,
+          quickReplyTitle: 'График работы',
+          customerId: null,
+          customerTelegramId: CLIENT,
+          customerUsername: 'client',
+        }),
+        log: () => {},
+        start: () => true,
+        finish: () => {},
+      },
+    );
+
+    assert.equal(result?.outcome, 'sent', 'ответ ушёл через сокет');
+    assert.equal(received.length, 1, 'заглушка получила ровно один вызов');
+    assert.equal(received[0].chat_id, CLIENT, 'id чата на месте');
+    assert.equal(received[0].text, 'Работаем до 21:00', 'текст ответа на месте');
+    assert.equal(received[0].auto, true, 'помечено как автоответ');
+  } finally {
+    listener.close();
+    try {
+      fs.unlinkSync(sock);
+    } catch {
+      /* уже удалён */
+    }
+  }
+}
+
 await testSendsToCorrectChat();
 await testLogsSentOnSuccess();
 await testFailureDoesNotArmCooldown();
@@ -210,5 +283,6 @@ await testBusyClientIsSkipped();
 await testAlwaysReleasesClient();
 await testSendThrowStillReleases();
 await testOwnerEchoIsNotAnswered();
+await testSendsThroughSelfSocket();
 
 console.log('\nвсе проверки автоответа через userbot пройдены');
