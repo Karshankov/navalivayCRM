@@ -21,14 +21,6 @@
         <path d="M21 15l-5-5L5 21" />
       </svg>
     </span>
-
-    <!-- Белый наплыв: растворяет правый край фото в фоне карточки.
-         pointer-events сняты — нажатия проходят сквозь.
-
-         В редакторе обложки наплыв выключен: там важно видеть самый край
-         кадра, а наплыв его забеливает — и не понять, обрезано фото или
-         растворено. -->
-    <span v-if="fade && src && !failed" class="image-fade__fade" aria-hidden="true" />
   </span>
 </template>
 
@@ -46,11 +38,8 @@ const props = withDefaults(
     shiftY?: number;
     /** Кадр настроен руками: автоподбор не применяется. */
     manual?: boolean;
-    /** Растворять правый край в фоне карточки. По умолчанию да — так
-     *  задумано у клиента. В редакторе выключаем, чтобы видеть край. */
-    fade?: boolean;
   }>(),
-  { alt: "", zoom: undefined, shiftX: undefined, shiftY: undefined, manual: false, fade: true },
+  { alt: "", zoom: undefined, shiftX: undefined, shiftY: undefined, manual: false },
 );
 
 const areaRef = ref<HTMLElement | null>(null);
@@ -137,30 +126,6 @@ defineExpose({ loaded, failed });
   fill: none;
   stroke: currentColor;
   stroke-width: 1.5;
-}
-
-/* Наплыв: лёгкий у основной части, плотнее у границы с текстом.
-   Нижний слабее бокового. Цвет — фон карточки, иначе виден шов. */
-.image-fade__fade {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  --fade: var(--customer-surface, #ffffff);
-  background:
-    linear-gradient(
-      90deg,
-      color-mix(in srgb, var(--fade) 5%, transparent) 0%,
-      color-mix(in srgb, var(--fade) 5%, transparent) 40%,
-      color-mix(in srgb, var(--fade) 18%, transparent) 62%,
-      color-mix(in srgb, var(--fade) 61%, transparent) 82%,
-      var(--fade) 100%
-    ),
-    linear-gradient(
-      0deg,
-      color-mix(in srgb, var(--fade) 55%, transparent) 0%,
-      transparent 32%
-    );
-  pointer-events: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
