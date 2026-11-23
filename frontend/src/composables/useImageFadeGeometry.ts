@@ -105,10 +105,18 @@ export function useImageFadeGeometry(overrides: Ref<ImageFadeOverrides | undefin
         Math.min(MANUAL_SCALE_MAX, manualZoom),
       );
 
-      /* Сдвиги приходят в процентах от габаритов области. translate
-         берёт проценты от размера самого элемента, а он равен области,
-         умноженной на масштаб, — поэтому делим на масштаб. */
-      const shiftXPercent = (overrides.value.shiftX ?? 0) / manualScale;
+      /* Сдвиги приходят в процентах от габаритов области, и знак у них
+         человеческий: плюс — вправо и вниз. translate берёт проценты от
+         размера самого элемента, а он равен области, умноженной на
+         масштаб, — поэтому делим на масштаб.
+
+         По X знак переворачиваем. В шаблоне стиля стоит
+         translate(${-offsetX}%), и это соглашение заведено для
+         автоподбора, где положительный offsetX означает «свисаем
+         влево». Ручной сдвиг живёт в человеческих координатах, поэтому
+         плюс здесь должен дать движение вправо, а не влево. Без минуса
+         фото уезжало навстречу мыши. */
+      const shiftXPercent = -(overrides.value.shiftX ?? 0) / manualScale;
       const shiftYPercent = (overrides.value.shiftY ?? 0) / manualScale;
 
       return {

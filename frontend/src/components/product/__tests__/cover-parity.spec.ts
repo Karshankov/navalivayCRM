@@ -9,12 +9,14 @@ import { ref, nextTick } from "vue";
  * геометрию одинаково. Оба используют один компонент и один расчёт —
  * здесь это проверяется на одних и тех же входных данных.
  *
- * Область фото в мини-аппе — 76x92 (см. .liquid-line-art).
+ * Область фото в мини-аппе — 76x124: ширина задана жёстко, высота
+ * приходит от растяжения по карточке. Замерено в браузере, а не взято
+ * из min-height: 92px — это лишь нижняя граница.
  */
 async function geometryFor(
   natural: { w: number; h: number },
   props: Record<string, unknown>,
-  area = { w: 76, h: 92 },
+  area = { w: 76, h: 124 },
 ) {
   const rect = {
     width: area.w, height: area.h,
@@ -48,7 +50,7 @@ describe("Сверка редактора CRM и мини-аппа", () => {
     /* Обрезка зависит от отношения сторон области, а не от её размера.
        Разойдись пропорции хоть на процент — сотрудник увидит в окне
        не тот кадр, что попадёт в карточку. */
-    const APP_AREA = { w: 76, h: 92 };
+    const APP_AREA = { w: 76, h: 124 };
     const APP_RATIO = APP_AREA.w / APP_AREA.h;
 
     /* Габариты заданы в CSS-классе, а не инлайном: в jsdom scoped-стили
@@ -96,8 +98,8 @@ describe("Сверка редактора CRM и мини-аппа", () => {
 
     // Редактор в CRM: область окна 140x170.
     const editor = await geometryFor({ w: 800, h: 800 }, saved, { w: 140, h: 170 });
-    // Карточка мини-аппа: область 76x92.
-    const app = await geometryFor({ w: 800, h: 800 }, saved, { w: 76, h: 92 });
+    // Карточка мини-аппа: область 76x124.
+    const app = await geometryFor({ w: 800, h: 800 }, saved, { w: 76, h: 124 });
 
     console.log("редактор CRM:", editor);
     console.log("карточка мини-аппа:", app);
@@ -110,7 +112,7 @@ describe("Сверка редактора CRM и мини-аппа", () => {
   });
 
   it("масштаб в ручном режиме не зависит от габаритов окна", async () => {
-    const small = await geometryFor({ w: 800, h: 800 }, { manual: true, zoom: 2.5 }, { w: 76, h: 92 });
+    const small = await geometryFor({ w: 800, h: 800 }, { manual: true, zoom: 2.5 }, { w: 76, h: 124 });
     const big = await geometryFor({ w: 800, h: 800 }, { manual: true, zoom: 2.5 }, { w: 300, h: 360 });
 
     console.log("малое окно:", small.scale, "| большое окно:", big.scale);
@@ -120,7 +122,7 @@ describe("Сверка редактора CRM и мини-аппа", () => {
   it("автоподбор наоборот зависит от области — в этом его смысл", async () => {
     /* Автоматический режим считается от габаритов области: он вписывает
        фото. Ручной режим от них не зависит. */
-    const small = await geometryFor({ w: 800, h: 800 }, {}, { w: 76, h: 92 });
+    const small = await geometryFor({ w: 800, h: 800 }, {}, { w: 76, h: 124 });
     const big = await geometryFor({ w: 800, h: 800 }, {}, { w: 300, h: 360 });
 
     console.log("авто, малое окно:", small, "| авто, большое:", big);
@@ -141,9 +143,9 @@ describe("Сверка редактора CRM и мини-аппа", () => {
     console.log("воспроизведено:", w);
 
     expect(w.scale).toBeCloseTo(1.8, 5);
-    // Сдвиг вправо на 15% даёт отрицательный translate по X.
-    expect(w.x).toBeLessThan(0);
-    // Сдвиг вверх на 20% даёт отрицательный translate по Y.
+    // Сдвиг вправо на 15% двигает фото вправо — знак без переворота.
+    expect(w.x).toBeGreaterThan(0);
+    // Сдвиг вверх на 20% двигает фото вверх.
     expect(w.y).toBeLessThan(0);
   });
 });

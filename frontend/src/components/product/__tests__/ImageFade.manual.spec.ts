@@ -85,14 +85,16 @@ describe("ImageFade: ручной кадр из CRM", () => {
     w.unmount();
   });
 
-  it("ручной сдвиг вбок переносится в отрицательный translate", async () => {
+  it("сдвиг идёт в ту же сторону, что и мышь: влево — влево, вправо — вправо", async () => {
+    /* Сотрудник тащит фото вправо — фото обязано ехать вправо. Раньше
+       знак был перевёрнут, и картинка уходила навстречу руке. */
     const left = transformOf(await mountArea({ w: 500, h: 500 }, { manual: true, zoom: 1, shiftX: -10 }));
     const right = transformOf(await mountArea({ w: 500, h: 500 }, { manual: true, zoom: 1, shiftX: 10 }));
     console.log("влево:", left, "| вправо:", right);
 
-    // Знак на языке CSS обратный: минус в offset — это влево.
-    expect(left.x).toBeGreaterThan(0);
-    expect(right.x).toBeLessThan(0);
+    // Знак translate совпадает со знаком сдвига — без переворота.
+    expect(left.x).toBeLessThan(0);
+    expect(right.x).toBeGreaterThan(0);
   });
 
   it("ручной сдвиг по вертикали двигает фото вниз и вверх", async () => {

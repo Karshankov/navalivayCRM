@@ -1,131 +1,137 @@
 <template>
-  <!-- Редактор обложки: окно с фото, которое двигают мышью и приближают.
-       Внутри окна — тот же ImageFade, что в карточке мини-аппа, поэтому
-       сотрудник видит ровно тот кадр, который получит покупатель. -->
+  <!-- Редактор обложки.
+       Работают в окне, а смотрят на карточку: окно крупное, чтобы точно
+       двигать, карточка — чтобы видеть результат у клиента. Обе берут
+       один кадр из одного состояния, поэтому расходятся не могут. -->
   <div class="cover-preview">
-    <!-- Карточка собрана по составу настоящей (LiquidLineCard): те же
-         строки, тот же шеврон справа и та же пилюля «Избранное». Это не
-         украшение — от состава зависит высота карточки, а по высоте
-         растянута область фото. Строкой меньше — и кадр обрежется иначе.
+    <!-- Окно: то же соотношение сторон, что у области фото в карточке.
+         Всё, что внутри синей рамки, попадёт в карточку; за рамкой —
+         запас, который обрежется. -->
+    <div class="cover-editor" data-test="cover-editor">
+      <div class="cover-editor__head">
+        <span class="cover-editor__title">Кадр крупным планом</span>
+        <span class="cover-editor__note">
+          <template v-if="!touched">Тяните фото мышью.</template>
+          В синей рамке — то, что увидит клиент
+        </span>
+      </div>
+
+      <div class="cover-editor__body">
+        <div class="cover-editor__stage">
+          <div
+            class="cover-editor__viewport"
+            :class="{ 'cover-editor__viewport--dragging': dragging }"
+            data-test="cover-viewport"
+            @pointerdown="startDrag"
+            @pointermove="onDrag"
+            @pointerup="endDrag"
+            @pointercancel="endDrag"
+            @wheel.prevent="onWheel"
+          >
+            <!-- Слой фото: увеличен, сдвинут и обрезан рамкой окна. -->
+            <div class="cover-editor__canvas">
+              <ImageFade
+                :src="src"
+                :alt="alt"
+                :zoom="zoom / 100"
+                :shift-x="shiftX"
+                :shift-y="shiftY"
+                manual
+              />
+            </div>
+          </div>
+        </div>
+
+        <div class="cover-editor__controls">
+          <label class="cover-editor__control">
+            <span class="cover-editor__control-label">
+              Размер <b>{{ zoom }}%</b>
+            </span>
+            <input
+              :value="zoom"
+              type="range"
+              min="60"
+              max="400"
+              step="5"
+              class="cover-editor__slider"
+              data-test="cover-zoom"
+              @input="onZoomInput"
+            />
+          </label>
+
+          <div class="cover-editor__position">
+            <span class="cover-editor__control-label">Положение</span>
+            <!-- Точное положение стрелками: мышь даёт грубо, а тут ровный
+                 шаг. Кнопки нужны и для доступности с клавиатуры. -->
+            <div class="cover-editor__nudge">
+              <button
+                v-for="dir in nudgeDirections"
+                :key="dir.key"
+                type="button"
+                class="cover-editor__nudge-button"
+                :data-test="`cover-nudge-${dir.key}`"
+                :aria-label="dir.label"
+                :title="dir.label"
+                @click="nudge(dir.dx, dir.dy)"
+              >
+                {{ dir.glyph }}
+              </button>
+            </div>
+            <span class="cover-editor__position-value">
+              {{ positionLabel }}
+            </span>
+          </div>
+
+          <button
+            type="button"
+            class="cover-editor__reset"
+            data-test="cover-reset"
+            :disabled="!manual"
+            :title="manual ? 'Вернуть автоматический кадр' : 'Кадр и так автоматический'"
+            @click="reset"
+          >
+            Вернуть автомат
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Карточка: собрана по составу настоящей (LiquidLineCard) — те же
+         строки, шеврон справа и пилюля «Избранное». Это не украшение: от
+         состава зависит высота карточки, а по высоте растянута область
+         фото. Строкой меньше — и кадр обрежется иначе.
 
          Ширина задана жёстко (369px = телефон 393px минус отступы
          страницы), а не берётся от модалки. Иначе в узкой модалке
          название переносилось бы раньше, чем у покупателя, карточка
          вышла бы выше — и кадр разошёлся бы. На маленьких экранах
          превью масштабируется целиком, сохраняя внутренние размеры. -->
-    <div class="cover-preview__stage">
-      <div class="cover-preview__frame">
-        <div class="cover-preview__main">
-          <div class="cover-preview__art">
-            <ImageFade
-              :src="src"
-              :alt="alt"
-              :zoom="zoom / 100"
-              :shift-x="shiftX"
-              :shift-y="shiftY"
-              :manual="manual"
-            />
+    <div class="cover-preview__result">
+      <span class="cover-preview__result-title">Так увидит клиент</span>
+      <div class="cover-preview__stage">
+        <div class="cover-preview__frame">
+          <div class="cover-preview__main">
+            <div class="cover-preview__art">
+              <ImageFade
+                :src="src"
+                :alt="alt"
+                :zoom="zoom / 100"
+                :shift-x="shiftX"
+                :shift-y="shiftY"
+                :manual="manual"
+              />
+            </div>
+            <div class="cover-preview__info">
+              <span class="cover-preview__title">{{ title }}</span>
+              <span v-if="meta" class="cover-preview__meta">{{ meta }}</span>
+              <span class="cover-preview__reviews">★ 5,0 · 12 отзывов</span>
+              <span class="cover-preview__favorite">Избранное</span>
+            </div>
           </div>
-          <div class="cover-preview__info">
-            <span class="cover-preview__title">{{ title }}</span>
-            <span v-if="meta" class="cover-preview__meta">{{ meta }}</span>
-            <span class="cover-preview__reviews">★ 5,0 · 12 отзывов</span>
-            <span class="cover-preview__favorite">Избранное</span>
-          </div>
-        </div>
-        <div class="cover-preview__side">
-          <span class="cover-preview__toggle" aria-hidden="true">⌄</span>
-        </div>
-      </div>
-    </div>
-    <p class="cover-preview__hint">
-      Так карточка выглядит в мини-аппе
-    </p>
-
-    <!-- Окно редактора: видимая зона обведена рамкой, вокруг — запас.
-         Фото можно тащить мышью или пальцем, приближать колесом. -->
-    <div class="cover-editor" data-test="cover-editor">
-      <div class="cover-editor__stage">
-        <div
-          class="cover-editor__viewport"
-          :class="{ 'cover-editor__viewport--dragging': dragging }"
-          data-test="cover-viewport"
-          @pointerdown="startDrag"
-          @pointermove="onDrag"
-          @pointerup="endDrag"
-          @pointercancel="endDrag"
-          @wheel.prevent="onWheel"
-        >
-          <!-- Слой фото: увеличен, сдвинут и обрезан рамкой окна. -->
-          <div class="cover-editor__canvas">
-            <ImageFade
-              :src="src"
-              :alt="alt"
-              :zoom="zoom / 100"
-              :shift-x="shiftX"
-              :shift-y="shiftY"
-              manual
-            />
+          <div class="cover-preview__side">
+            <span class="cover-preview__toggle" aria-hidden="true">⌄</span>
           </div>
         </div>
-
-        <!-- Подсказка внутри окна: показывается, пока кадр не трогали. -->
-        <p v-if="!touched" class="cover-editor__overlay-hint">
-          Перетащите фото, чтобы выбрать кадр
-        </p>
-      </div>
-
-      <div class="cover-editor__controls">
-        <label class="cover-editor__control">
-          <span class="cover-editor__control-label">
-            Размер <b>{{ zoom }}%</b>
-          </span>
-          <input
-            :value="zoom"
-            type="range"
-            min="60"
-            max="400"
-            step="5"
-            class="cover-editor__slider"
-            data-test="cover-zoom"
-            @input="onZoomInput"
-          />
-        </label>
-
-        <div class="cover-editor__position">
-          <span class="cover-editor__control-label">
-            Положение
-          </span>
-          <!-- Точное положение стрелками: мышь даёт грубо, а тут шаг 1%.
-               Кнопки нужны и для доступности с клавиатуры. -->
-          <div class="cover-editor__nudge">
-            <button
-              v-for="dir in nudgeDirections"
-              :key="dir.key"
-              type="button"
-              class="cover-editor__nudge-button"
-              :data-test="`cover-nudge-${dir.key}`"
-              :aria-label="dir.label"
-              :title="dir.label"
-              @click="nudge(dir.dx, dir.dy)"
-            >
-              {{ dir.glyph }}
-            </button>
-          </div>
-          <span class="cover-editor__position-value">
-            {{ positionLabel }}
-          </span>
-        </div>
-
-        <button
-          type="button"
-          class="cover-editor__reset"
-          data-test="cover-reset"
-          :disabled="!manual"
-          @click="reset"
-        >
-          Сбросить
-        </button>
       </div>
     </div>
   </div>
@@ -286,17 +292,36 @@ function reset() {
 .cover-preview {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 14px;
+}
+
+/* Блок результата: карточка под окном. Отделён от редактора, чтобы
+   взгляд сам находил ответ на вопрос «а как у клиента». */
+.cover-preview__result {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cover-preview__result-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b7280;
 }
 
 /* Обёртка превью: держит настоящую ширину карточки независимо от того,
    сколько места даёт модалка. Если позволить превью сжиматься, длинное
    название перенесётся раньше, чем у покупателя: карточка станет выше,
    а вместе с ней вытянется область фото — и кадр разойдётся.
-   369px = телефон 393px минус отступы страницы (12px с боков). */
+   369px = телефон 393px минус отступы страницы (12px с боков).
+
+   max-width здесь НЕ ставим. Если разрешить сжатие, в узкой модалке
+   карточка станет уже, название перенесётся в две строки, карточка
+   вытянется — и кадр разойдётся с клиентским. Вместо сжатия превью
+   целиком уменьшается через transform: внутренние размеры остаются
+   настоящими, а на экран оно занимает меньше места. */
 .cover-preview__stage {
   width: 369px;
-  max-width: 100%;
 }
 
 /* Карточка в масштабе телефона: ширина мини-аппа, пропорции сохранены. */
@@ -422,10 +447,37 @@ function reset() {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 10px 12px 12px;
+  padding: 12px;
   border-radius: 8px;
   background: #f9fafb;
   border: 1px solid #e5e7eb;
+}
+
+/* Шапка окна: что это за поверхность и что в ней значит рамка. */
+.cover-editor__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+}
+
+.cover-editor__title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.cover-editor__note {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+/* Окно и управление рядом: двигаешь фото и тут же тянешься к ползунку,
+   не перескакивая взглядом через полкарточки. */
+.cover-editor__body {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
 }
 
 .cover-editor__stage {
@@ -443,14 +495,16 @@ function reset() {
   background-position: 0 0, 8px 8px;
 }
 
-/* Видимая зона: ровно те пропорции, что в карточке мини-аппа (76x92).
-   Габариты увеличены примерно в 1.86 раза, отношение сторон сохранено
-   точно: 76 * 1.86 = 141.4, 92 * 1.86 = 171.1. Пропорции важнее размера —
-   от них зависит кадр, и расхождение даже в полпроцента сдвинет обрезку. */
+/* Видимая зона: те же пропорции, что у области фото в карточке клиента.
+   Область растянута по высоте карточки и выходит 76x124 (замерено в
+   браузере, не по min-height) — пропорция 0.6129. Окно ровно вдвое
+   крупнее: 152x248. Пропорции важнее размера, потому что от них зависит
+   кадр: пока в окне был квадрат 141x171, сотрудник видел другую обрезку,
+   чем покупатель. */
 .cover-editor__viewport {
   position: relative;
-  width: 141px;
-  height: 171px;
+  width: 152px;
+  height: 248px;
   overflow: hidden;
   border-radius: 8px;
   background: #ffffff;
@@ -470,35 +524,22 @@ function reset() {
   inset: 0;
 }
 
-.cover-editor__overlay-hint {
-  position: absolute;
-  left: 50%;
-  bottom: 6px;
-  transform: translateX(-50%);
-  margin: 0;
-  padding: 3px 8px;
-  border-radius: 6px;
-  background: #081b4be6;
-  color: #ffffff;
-  font-size: 10px;
-  line-height: 1.3;
-  white-space: nowrap;
-  pointer-events: none;
-}
-
+/* Управление — столбиком справа от окна: подписи читаются сверху вниз,
+   руками ни за что не задеваешь. */
 .cover-editor__controls {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-start;
   gap: 12px;
+  flex: 1;
+  min-width: 0;
 }
 
 .cover-editor__control {
   display: flex;
   align-items: center;
   gap: 8px;
-  min-width: 180px;
-  flex: 1;
+  width: 100%;
 }
 
 .cover-editor__control-label {
@@ -514,7 +555,7 @@ function reset() {
 
 .cover-editor__slider {
   flex: 1;
-  min-width: 90px;
+  min-width: 80px;
   accent-color: #0958ff;
   cursor: pointer;
 }
@@ -597,6 +638,15 @@ function reset() {
    модалка становится широкой (sm:max-w-lg) — иначе на 480..640px строка
    управления ломалась бы на две. */
 @media (max-width: 640px) {
+  /* Окно и управление встают друг под друга: рядом им уже тесно, и
+     подписи с ползунком начали бы наползать. Порядок сохраняем —
+     сверху окно, под ним управление, как на большом экране. */
+  .cover-editor__body {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
   .cover-editor__controls {
     flex-direction: column;
     align-items: stretch;
@@ -607,10 +657,9 @@ function reset() {
   }
 
   .cover-editor__viewport {
-    /* Те же пропорции 76:92, меньше размером: 76 * 1.55 = 117.8,
-       92 * 1.55 = 142.6. */
-    width: 118px;
-    height: 143px;
+    /* Те же пропорции 76:124, масштаб 1.4: 76*1.4 = 106.4, 124*1.4 = 173.6. */
+    width: 106px;
+    height: 174px;
   }
 }
 
@@ -621,9 +670,9 @@ function reset() {
   }
 
   .cover-editor__viewport {
-    /* Пропорции держим те же: 76 * 1.35 = 102.6, 92 * 1.35 = 124.2. */
-    width: 103px;
-    height: 125px;
+    /* Пропорции держим те же, масштаб 1.2: 76*1.2 = 91.2, 124*1.2 = 148.8. */
+    width: 91px;
+    height: 149px;
   }
 
   .cover-editor__position-value {
@@ -633,15 +682,34 @@ function reset() {
 
 /* Превью шире модалки на телефоне. Уменьшаем его целиком, а не сжимаем
    содержимое: сжатие поменяло бы перенос строк и высоту карточки, а
-   значит и обрезку фото. Масштаб сохраняет картинку карточки 1в1 —
-   она просто показывается меньше, как уменьшенный снимок экрана. */
-@media (max-width: 480px) {
+   значит и обрезку фото. Масштаб сохраняет карточку 1в1 — она просто
+   показывается меньше, как уменьшенный снимок экрана.
+
+   Масштаб 0.75 подобран по самой узкой цели: 369 * 0.75 = 276.75, а это
+   меньше 280 — ширины контента модалки на телефоне 360px. На 375px и
+   393px остаётся запас. Обёртка получает усечённую высоту, иначе под
+   превью осталась бы пустая полоса: высота карточки после масштаба
+   составляет примерно 0.75 от исходной. */
+@media (max-width: 640px) {
   .cover-preview__stage {
-    transform: scale(0.8);
+    transform: scale(0.75);
     transform-origin: left top;
-    /* Место под уменьшенное превью: высота карточки умножается на
-       масштаб, иначе осталась бы пустая полоса снизу. */
-    margin-bottom: -10px;
+  }
+
+  .cover-preview__result {
+    /* transform не влияет на разметку: сама обёртка осталась бы во всю
+       высоту карточки и под уменьшенной картинкой зияла бы пустая
+       полоса. Обрезаем обёртку по размерам после масштаба.
+
+       В высоту входит и подпись: она лежит вне уменьшаемой части, поэтому
+       складываем её с уже уменьшенной карточкой, а не умножаем целиком.
+       17 (подпись) + 4 (зазор) + 126 * 0.75 = 116.
+
+       Ширину берём с запасом к 369 * 0.75 = 276.75. Впритык правый край
+       карточки (шеврон) срезался бы от одного округления. */
+    max-width: 279px;
+    max-height: 117px;
+    overflow: hidden;
   }
 }
 </style>
