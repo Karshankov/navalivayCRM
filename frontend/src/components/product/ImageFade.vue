@@ -143,6 +143,14 @@ defineExpose({ loaded, failed });
    Край вместо 100 стал 55: белой пелены нет, фото у края видно, но стык
    смягчён заметнее.
 
+   Правый наплыв сдвинут влево, ближе к фото: нарастание начинается
+   раньше, 5, 8, 22, 42. Раньше до 40% ширины он почти не читался (3%),
+   и смягчался только самый край. Край 55 оставлен — его не двигали.
+
+   Нижний наплыв растянут вверх: держит 30% первые 10% высоты и сходит на
+   нет к 50%. Раньше 30% стояло только у самого края и гасло уже к 32%,
+   поэтому снизу он читался слабо.
+
    Цвет — фон карточки, иначе на стыке виден шов. */
 .image-fade__fade {
   position: absolute;
@@ -152,16 +160,17 @@ defineExpose({ loaded, failed });
   background:
     linear-gradient(
       90deg,
-      color-mix(in srgb, var(--fade) 3%, transparent) 0%,
-      color-mix(in srgb, var(--fade) 3%, transparent) 40%,
-      color-mix(in srgb, var(--fade) 10%, transparent) 62%,
-      color-mix(in srgb, var(--fade) 34%, transparent) 82%,
+      color-mix(in srgb, var(--fade) 5%, transparent) 0%,
+      color-mix(in srgb, var(--fade) 8%, transparent) 40%,
+      color-mix(in srgb, var(--fade) 22%, transparent) 62%,
+      color-mix(in srgb, var(--fade) 42%, transparent) 82%,
       color-mix(in srgb, var(--fade) 55%, transparent) 100%
     ),
     linear-gradient(
       0deg,
       color-mix(in srgb, var(--fade) 30%, transparent) 0%,
-      transparent 32%
+      color-mix(in srgb, var(--fade) 30%, transparent) 10%,
+      transparent 50%
     );
   pointer-events: none;
 }

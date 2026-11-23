@@ -40,10 +40,15 @@ function fadeRule(source: string): string {
   return rule.replace(/\/\*[\s\S]*?\*\//g, "");
 }
 
-/** Плотность нижнего наплыва: первая точка градиента `0deg`. */
-function bottomDensity(rule: string): number | null {
+/** Точки нижнего наплыва: пары «плотность -> высота». Разбираем именно
+ *  градиент `0deg`: у бокового точки тоже вида `--fade) N%, transparent`,
+ *  и поиск по всему правилу нашёл бы их вместо нижних. */
+function bottomStops(rule: string): Array<{ density: number; at: number }> {
   const bottom = rule.slice(Math.max(0, rule.search(/\(\s*0deg/)));
-  return Number(bottom.match(/--fade\) (\d+)%, transparent/)?.[1] ?? NaN);
+  return [...bottom.matchAll(/--fade\) (\d+)%, transparent\) (\d+)%/g)].map((m) => ({
+    density: Number(m[1]),
+    at: Number(m[2]),
+  }));
 }
 
 /** Плотность по точкам бокового градиента. Правило содержит два градиента,
@@ -87,24 +92,35 @@ describe("Белый наплыв вернулся и стал плотнее", 
     w.unmount();
   });
 
-  it("плотность — 55% от исходной", async () => {
+  it("плотность в основе — 55% от исходной, край не сдвинут", async () => {
     const rule = fadeRule(await imageFadeSource());
     const values = densities(rule);
     console.log("плотность по точкам:", values);
 
     /* Порядок точек: 0%, 40%, 62%, 82%, 100% (боковой градиент). */
-    expect(values).toEqual([3, 3, 10, 34, 55]);
+    expect(values).toEqual([5, 8, 22, 42, 55]);
 
-    /* Это ровно 55% от исходного: 5, 5, 18, 61, 100. Сперва поставили
-       40%, затем прибавили 15. Держим пропорцию явно, чтобы значение не
-       «уехало» при следующей правке. */
-    const source = [5, 5, 18, 61, 100];
-    console.log("исходный:", source.join(", "), "-> 55%:", values.join(", "));
+    /* Край — 55% от исходных 100; его не двигали при сдвиге влево,
+       иначе поехала бы плотность у самого стыка. */
+    expect(values[4]).toBe(Math.round(100 * 0.55));
+  });
 
-    for (const [i, value] of values.entries()) {
-      const expected = Math.max(1, Math.round(source[i]! * 0.55));
-      expect(value, `точка ${i}: 55% от ${source[i]}`).toBe(expected);
+  it("правый наплыв сдвинут влево — нарастает раньше", async () => {
+    /* Просили: «справа наплыв сдвинь влево, чтобы он был ближе к фото».
+       Это значит плотность набирается раньше по ширине фото, а не только
+       у самого края. Сравниваем с прошлым вариантом 3, 3, 10, 34. */
+    const values = densities(fadeRule(await imageFadeSource()));
+    const before = [3, 3, 10, 34, 55];
+    console.log("было:", before.join(", "), "-> стало:", values.join(", "));
+
+    // Каждая точка до края стала плотнее — переход начался раньше.
+    for (const i of [0, 1, 2, 3]) {
+      expect(values[i], `точка ${i} должна быть плотнее`).toBeGreaterThan(before[i]!);
     }
+
+    // И у середины фото наплыв уже читается, а не только у края.
+    console.log("у 62% ширины:", values[2] + "% (было 10%)");
+    expect(values[2]).toBeGreaterThanOrEqual(20);
   });
 
   it("правый край не сплошной — фото у края остаётся видно", async () => {
@@ -121,17 +137,27 @@ describe("Белый наплыв вернулся и стал плотнее", 
     expect(edge).toBeLessThan(70);
   });
 
-  it("нижний наплыв как исходно — до 32% высоты", async () => {
+  it("нижний наплыв держит 30% и тянется выше", async () => {
+    /* Просили: «снизу блока там где фото, этот белый наплыв — около 30%».
+       Раньше 30% стояло только у самого края и гасло уже к 32% высоты,
+       поэтому снизу читалось слабо. Теперь плотность держится первые 10%
+       высоты, а сходит на нет к 50%. */
     const rule = fadeRule(await imageFadeSource());
-    const stop = rule.match(/transparent (\d+)%/)?.[1];
-    const bottom = bottomDensity(rule);
-    console.log("низ:", bottom + "%", "до", stop + "% высоты");
+    const stops = bottomStops(rule);
+    const end = Number(rule.match(/transparent (\d+)%/)?.[1]);
+    console.log("низ:", stops.map((s) => `${s.density}% до ${s.at}%`).join(", "),
+      "| сходит к", end + "% высоты");
 
-    // Высоту вернули к исходной, плотность — 55% от исходных 55.
-    expect(Number(stop)).toBe(32);
-    expect(bottom).toBe(30);
-    // И это тоже 55% от исходного значения.
-    expect(bottom).toBe(Math.round(55 * 0.55));
+    /* Две точки на 30%: у самого низа и на 10% высоты. Так плотность
+       держится, а не гаснет сразу от края. */
+    expect(stops).toEqual([
+      { density: 30, at: 0 },
+      { density: 30, at: 10 },
+    ]);
+    expect(end).toBe(50);
+
+    // И тянется выше прежнего: раньше сходило к 32% высоты.
+    expect(end).toBeGreaterThan(32);
   });
 
   it("направляющие лежат выше слоя фото", async () => {
