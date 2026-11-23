@@ -56,9 +56,12 @@ describe("CoverPreview: редактор обложки", () => {
        «а как это у клиента» — приходится догадываться. */
     const w = mount(CoverPreview, { props: { src: "/cover.png" } });
 
-    const editorTitle = w.find(".cover-editor__title").text();
+    // Заголовок именно окна работы: в колонке-эталоне класс тот же.
+    const editorTitle = w.find(".cover-editor .cover-editor__title").text();
     const resultTitle = w.find(".cover-preview__result-title").text();
-    const editorNote = w.find(".cover-editor__note").text();
+    const editorNote = w.find(".cover-editor .cover-editor__note").text();
+    const guidesTitle = w.find(".cover-guides .cover-editor__title").text();
+    console.log("колонка-эталон:", guidesTitle);
 
     console.log("окно:", editorTitle, "| примечание:", editorNote);
     console.log("результат:", resultTitle);

@@ -329,6 +329,8 @@
         :src="currentPreview"
         :title="form.name || 'Название линейки'"
         :meta="previewMeta"
+        :previous="coverNeighbours.previous"
+        :next="coverNeighbours.next"
       />
 
       <div
@@ -494,8 +496,9 @@
 <script setup lang="ts">
 import { reactive, ref, watch, computed } from 'vue'
 import PosPublicationField, { type PosPublicationValue } from './PosPublicationField.vue'
-import CoverPreview from './CoverPreview.vue'
+import CoverPreview, { type CoverNeighbour } from './CoverPreview.vue'
 
+import { siblingNeighbours, type GroupOrderRow } from '@/utils/categoryGroupOrder'
 import { useAdminStore, type SignificanceMark } from '@/stores/admin'
 
 /** Срок плашки по умолчанию, столько же стоит на сервере. */
@@ -560,7 +563,7 @@ interface WholesaleTier {
   sortOrder?: number
 }
 
-const props = withDefaults(defineProps<{ editingGroup?: CategoryGroup | null; isSubmitting?: boolean; availableGroups?: Array<CategoryGroup & { depth?: number }>; wholesaleTiers?: WholesaleTier[]; showStrengthTier?: boolean }>(), {
+const props = withDefaults(defineProps<{ editingGroup?: CategoryGroup | null; isSubmitting?: boolean; availableGroups?: Array<GroupOrderRow>; wholesaleTiers?: WholesaleTier[]; showStrengthTier?: boolean }>(), {
   editingGroup: null,
   isSubmitting: false,
   availableGroups: () => [],
@@ -951,6 +954,53 @@ const currentPreview = computed(() => {
 
 const hasPreview = computed(() => Boolean(currentPreview.value))
 const isRemotePreview = computed(() => /^https?:\/\//i.test(currentPreview.value || ''))
+
+/** Соседи линейки в ленте: та, что выше, и та, что ниже. Нужны
+ *  направляющим — по ним сотрудник видит, на какой высоте стоят картинки
+ *  у соседей, и ставит свою на ту же.
+ *
+ *  Для существующей линейки берём соседей по её месту в списке, для новой —
+ *  первые две строки как ориентир: у новой ещё нет идентификатора, а
+ *  колонка без ориентира была бы пустой.
+ *
+ *  Категорию и родителя для новой линейки берём из списка: у локального
+ *  типа формы этих полей нет, они приходят только в availableGroups. */
+const coverNeighbours = computed(() => {
+  /* В админском списке нет готового адреса обложки — приходит только флаг
+     hasCoverImage, как и у категорий. Адрес собираем по тому же правилу,
+     что использует витрина; иначе направляющие показывали бы пустые места
+     и сравнивать было бы не с чем. */
+  const coverUrlOf = (group: GroupOrderRow): string | null => {
+    if (group.coverImage) return group.coverImage
+    return group.hasCoverImage ? `/api/category-groups/${group.id}/cover` : null
+  }
+
+  const toNeighbour = (group: GroupOrderRow | null): CoverNeighbour | null =>
+    group
+      ? {
+          id: group.id,
+          name: group.name,
+          coverImage: coverUrlOf(group),
+          coverZoom: group.coverZoom ?? null,
+          coverShift: group.coverShift ?? null,
+          coverOffsetY: group.coverOffsetY ?? null,
+          coverManual: group.coverManual ?? null,
+        }
+      : null
+
+  const editingId = props.editingGroup?.id ?? null
+  const anchor = editingId
+    ? props.availableGroups.find((group) => group.id === editingId) ?? null
+    : null
+
+  const { previous, next } = siblingNeighbours(props.availableGroups, editingId, {
+    categoryId: anchor?.categoryId ?? null,
+    parentId: anchor?.parentId ?? form.parentId ?? null,
+  })
+
+  return { previous: toNeighbour(previous), next: toNeighbour(next) }
+})
+
 
 function setCoverMode(mode: 'url' | 'file') {
   coverMode.value = mode

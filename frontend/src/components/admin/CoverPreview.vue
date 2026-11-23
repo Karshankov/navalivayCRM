@@ -4,6 +4,101 @@
        двигать, карточка — чтобы видеть результат у клиента. Обе берут
        один кадр из одного состояния, поэтому расходятся не могут. -->
   <div class="cover-preview">
+    <!-- Колонка-эталон: три области фото подряд, ровно как в ленте у
+         клиента и в натуральную величину. Соседи сверху и снизу дают то,
+         чего не даёт никакая сетка, — видно, на какой высоте стоят их
+         картинки, и свою ставят на ту же. Между областями тот же зазор,
+         что в ленте, а сквозь все три проходят направляющие: на одной
+         высоте у всех должна быть середина кадра. -->
+    <div class="cover-guides" data-test="cover-guides">
+      <div class="cover-guides__head">
+        <span class="cover-editor__title">Ряд с соседями</span>
+        <span class="cover-editor__note">Натуральный размер, как у клиента</span>
+      </div>
+
+      <div class="cover-guides__column">
+        <!-- Сосед выше -->
+        <div class="cover-guides__slot">
+          <span class="cover-guides__caption">
+            <b>Выше</b>
+            <template v-if="previous">{{ previous.name }}</template>
+          </span>
+          <div v-if="previous" class="cover-guides__area" data-test="guide-previous">
+            <ImageFade
+              :src="previous.coverImage"
+              :alt="previous.name"
+              :zoom="(previous.coverZoom ?? 100) / 100"
+              :shift-x="previous.coverShift ?? 0"
+              :shift-y="previous.coverOffsetY ?? 0"
+              :manual="previous.coverManual ?? false"
+            />
+            <span class="cover-guides__lines" aria-hidden="true">
+              <i class="cover-guides__line cover-guides__line--quarter" />
+              <i class="cover-guides__line cover-guides__line--center" />
+              <i class="cover-guides__line cover-guides__line--three-quarter" />
+            </span>
+          </div>
+          <div v-else class="cover-guides__area cover-guides__area--empty">
+            <span>Первая в списке</span>
+          </div>
+        </div>
+
+        <!-- Ваша линейка: тот же кадр, что в окне, но в натуральную величину -->
+        <div class="cover-guides__slot">
+          <span class="cover-guides__caption cover-guides__caption--own">
+            <b>Ваша</b>
+            <span>{{ title }}</span>
+          </span>
+          <div class="cover-guides__area cover-guides__area--own" data-test="guide-own">
+            <ImageFade
+              :src="src"
+              :alt="alt"
+              :zoom="zoom / 100"
+              :shift-x="shiftX"
+              :shift-y="shiftY"
+              :manual="manual"
+            />
+            <span class="cover-guides__lines cover-guides__lines--own" aria-hidden="true">
+              <i class="cover-guides__line cover-guides__line--quarter" />
+              <i class="cover-guides__line cover-guides__line--center" />
+              <i class="cover-guides__line cover-guides__line--three-quarter" />
+            </span>
+          </div>
+        </div>
+
+        <!-- Сосед ниже -->
+        <div class="cover-guides__slot">
+          <span class="cover-guides__caption">
+            <b>Ниже</b>
+            <template v-if="next">{{ next.name }}</template>
+          </span>
+          <div v-if="next" class="cover-guides__area" data-test="guide-next">
+            <ImageFade
+              :src="next.coverImage"
+              :alt="next.name"
+              :zoom="(next.coverZoom ?? 100) / 100"
+              :shift-x="next.coverShift ?? 0"
+              :shift-y="next.coverOffsetY ?? 0"
+              :manual="next.coverManual ?? false"
+            />
+            <span class="cover-guides__lines" aria-hidden="true">
+              <i class="cover-guides__line cover-guides__line--quarter" />
+              <i class="cover-guides__line cover-guides__line--center" />
+              <i class="cover-guides__line cover-guides__line--three-quarter" />
+            </span>
+          </div>
+          <div v-else class="cover-guides__area cover-guides__area--empty">
+            <span>Последняя в списке</span>
+          </div>
+        </div>
+      </div>
+
+      <p class="cover-guides__legend">
+        Пунктир — четверти кадра, синяя линия — середина. Ставьте фото так,
+        чтобы у соседей и у вас середина была на одной высоте.
+      </p>
+    </div>
+
     <!-- Окно: то же соотношение сторон, что у области фото в карточке.
          Всё, что внутри синей рамки, попадёт в карточку; за рамкой —
          запас, который обрежется. -->
@@ -155,6 +250,11 @@ const props = withDefaults(
     shiftY?: number;
     /** Кадр настроен руками: автоподбор не применяется. */
     manual?: boolean;
+    /** Линейка, которая показывается выше в ленте. Ориентир для центровки:
+     *  по ней видно, на какой высоте стоит картинка у соседа. */
+    previous?: CoverNeighbour | null;
+    /** Линейка, которая показывается ниже в ленте. */
+    next?: CoverNeighbour | null;
   }>(),
   {
     title: "Название линейки",
@@ -164,8 +264,21 @@ const props = withDefaults(
     shiftX: 0,
     shiftY: 0,
     manual: false,
+    previous: null,
+    next: null,
   },
 );
+
+/** Соседняя линейка в том виде, в каком она нужна направляющим. */
+export interface CoverNeighbour {
+  id: string;
+  name: string;
+  coverImage: string | null;
+  coverZoom: number | null;
+  coverShift: number | null;
+  coverOffsetY: number | null;
+  coverManual: boolean | null;
+}
 
 const emit = defineEmits<{
   "update:zoom": [value: number];
@@ -330,6 +443,153 @@ function reset() {
   display: flex;
   flex-direction: column;
   gap: 14px;
+}
+
+/* Колонка-эталон: соседи сверху и снизу в натуральную величину. */
+.cover-guides {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border-radius: 8px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+}
+
+.cover-guides__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+}
+
+/* Колонка областей. Ширина только под области: подписи стоят слева и в
+   расчёт шага не входят — иначе они раздвинули бы области и ряд перестал
+   бы совпадать с лентой клиента. */
+.cover-guides__column {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  width: 100%;
+}
+
+/* Слот — строка «подпись слева, область справа». Высота слота задаёт шаг
+   ряда: 124 (область) + 10 (зазор между карточками у клиента) = 134. Тот
+   же шаг, что в ленте, — иначе «в ряд с соседями» показывало бы неправду. */
+.cover-guides__slot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 124px;
+  margin-bottom: 10px;
+}
+
+.cover-guides__slot:last-child {
+  margin-bottom: 0;
+}
+
+/* Подпись слева. Название соседа длинное, поэтому даём две строки и
+   фиксированную ширину: в узкую колонку оно не влезало и обрезалось
+   многоточием, а тогда непонятно, чей это кадр. */
+.cover-guides__caption {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 0 0 auto;
+  width: 92px;
+  font-size: 10px;
+  line-height: 13px;
+  color: #9ca3af;
+  overflow-wrap: anywhere;
+}
+
+.cover-guides__caption b {
+  color: #6b7280;
+  font-weight: 600;
+}
+
+.cover-guides__caption--own {
+  color: #0958ff;
+}
+
+.cover-guides__caption--own b {
+  color: #0958ff;
+}
+
+/* Область фото — ровно 76x124, как у клиента. Не масштабируем: смысл
+   колонки в том, что видно НАСТОЯЩИЙ размер, и по нему можно сверить,
+   не выбивается ли картинка из соседних. */
+.cover-guides__area {
+  position: relative;
+  flex: 0 0 auto;
+  width: 76px;
+  height: 124px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #eef1f5;
+}
+
+/* Своя область обведена, чтобы не путалась с соседями. */
+.cover-guides__area--own {
+  box-shadow: 0 0 0 2px #0958ff;
+}
+
+/* Нет соседа — пустое место в размер области с пунктирной рамкой: видно,
+   что линейка крайняя, и колонка не прыгает по высоте. */
+.cover-guides__area--empty {
+  display: grid;
+  place-items: center;
+  padding: 0 4px;
+  border: 1px dashed #d1d5db;
+  background: transparent;
+  text-align: center;
+  font-size: 9px;
+  line-height: 12px;
+  color: #9ca3af;
+}
+
+/* Направляющие: лежат поверх фото и нажатий не перехватывают. */
+.cover-guides__lines {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.cover-guides__line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 0;
+  border-top: 1px dashed #9ca3af;
+  opacity: 0.75;
+}
+
+.cover-guides__line--quarter {
+  top: 25%;
+}
+
+.cover-guides__line--three-quarter {
+  top: 75%;
+}
+
+/* Середина кадра — сплошная и синяя: это главная ось, по ней и
+   выравнивают картинки в ряд. */
+.cover-guides__line--center {
+  top: 50%;
+  border-top: 1px solid #0958ff;
+  opacity: 1;
+}
+
+/* На своей области линии заметнее: с ними работают. */
+.cover-guides__lines--own .cover-guides__line {
+  opacity: 1;
+}
+
+.cover-guides__legend {
+  margin: 0;
+  font-size: 11px;
+  line-height: 15px;
+  color: #6b7280;
 }
 
 /* Блок результата: карточка под окном. Отделён от редактора, чтобы
