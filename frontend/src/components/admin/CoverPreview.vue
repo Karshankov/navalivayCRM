@@ -214,8 +214,12 @@ function clampShift(value: number) {
   return Math.max(-100, Math.min(100, Math.round(value)));
 }
 
+/** Границы зума. Ниже фото разваливается на пиксели, выше — мыло. */
+const ZOOM_MIN = 60;
+const ZOOM_MAX = 400;
+
 function clampZoom(value: number) {
-  return Math.max(60, Math.min(400, Math.round(value)));
+  return Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, Math.round(value)));
 }
 
 function startDrag(event: PointerEvent) {
@@ -258,11 +262,41 @@ function endDrag(event: PointerEvent) {
   target?.releasePointerCapture?.(event.pointerId);
 }
 
-/** Колесо мыши над окном приближает и отдаляет фото. */
+/** Чувствительность колеса и тачпада: сколько процентов зума даёт
+ *  единица deltaY. Подобрано так, чтобы одно движение колеса мыши
+ *  (deltaY около 100) давало около 6%, а плавный жест по тачпаду
+ *  набирал те же проценты постепенно, а не рывком. */
+const WHEEL_SENSITIVITY = 0.06;
+
+/** Предел шага за одно событие. Некоторые мыши и программы прокрутки
+ *  шлют deltaY в сотни единиц — без потолка кадр прыгал бы сразу на
+ *  треть. */
+const WHEEL_MAX_STEP = 12;
+
+/** Накопленная дробная часть зума. Тачпад присылает десятки событий с
+ *  deltaY в единицы, и каждое по отдельности дало бы меньше десятой
+ *  процента. Округлять на каждом шаге — значит терять движение целиком,
+ *  поэтому копим дробь здесь, а наружу отдаём целое значение. */
+let wheelRemainder = 0;
+
+/** Колесо мыши и жест по тачпаду над окном приближают и отдаляют фото. */
 function onWheel(event: WheelEvent) {
   if (!props.src) return;
-  const step = event.deltaY > 0 ? -10 : 10;
-  emit("update:zoom", clampZoom(props.zoom + step));
+
+  /* deltaY отрицательный при прокрутке вверх — это приближение. */
+  const rawStep = -event.deltaY * WHEEL_SENSITIVITY;
+  const step = Math.max(-WHEEL_MAX_STEP, Math.min(WHEEL_MAX_STEP, rawStep));
+
+  const exact = props.zoom + wheelRemainder + step;
+  const next = clampZoom(exact);
+
+  /* Остаток — только дробная часть. Если упёрлись в границу, копить
+     дальше нечего: иначе накопилось бы «в стену» и фото поехало бы
+     обратно само. */
+  const hitLimit = next === ZOOM_MIN || next === ZOOM_MAX;
+  wheelRemainder = hitLimit ? 0 : exact - next;
+
+  if (next !== props.zoom) emit("update:zoom", next);
   markManual();
 }
 

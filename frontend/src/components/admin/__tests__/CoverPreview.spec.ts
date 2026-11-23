@@ -189,7 +189,78 @@ describe("CoverPreview: редактор обложки", () => {
     const emitted = w.emitted("update:zoom");
     console.log("зум колесом вверх:", emitted);
     expect(emitted).toBeTruthy();
-    expect(emitted![0]).toEqual([110]);
+    // Один щелчок колеса (deltaY 100) даёт 6%.
+    expect(emitted![0]).toEqual([106]);
+
+    // Вниз — обратно и симметрично.
+    await w.setProps({ zoom: 106 });
+    await w.find('[data-test="cover-viewport"]').trigger("wheel", { deltaY: 100 });
+    const out = w.emitted("update:zoom")!.at(-1)![0];
+    console.log("зум колесом вниз:", out);
+    expect(out).toBe(100);
+    w.unmount();
+  });
+
+  it("плавный жест по тачпаду набирает зум постепенно, а не рывком", async () => {
+    /* Тачпад шлёт десятки событий с крошечным deltaY. При фиксированном
+       шаге каждое событие добавляло 10% — за один жест фото улетало
+       в максимум. Теперь шаг пропорционален deltaY, и жест из 40 событий
+       должен дать примерно столько же, сколько три щелчка колеса. */
+    const w = mount(CoverPreview, {
+      props: { src: "/cover.png", zoom: 100 },
+      attachTo: document.body,
+    });
+    const viewport = w.find('[data-test="cover-viewport"]');
+
+    // Жест: 40 событий по deltaY -2 (это ощутимое движение по тачпаду).
+    for (let i = 0; i < 40; i += 1) {
+      await viewport.trigger("wheel", { deltaY: -2 });
+      // Компонент управляемый: подхватываем выданное значение как родитель.
+      const last = w.emitted("update:zoom")?.at(-1)?.[0] as number | undefined;
+      if (last !== undefined) await w.setProps({ zoom: last });
+    }
+
+    const final = w.emitted("update:zoom")!.at(-1)![0] as number;
+    console.log("жест тачпада (40 событий) -> зум:", final, "%");
+    console.log("  прибавка:", final - 100, "% за жест");
+
+    /* Событие deltaY -2 даёт 0.12%, за 40 событий — около 5%. Дробь
+       копится внутри, иначе округление съело бы движение целиком. */
+    expect(final).toBeGreaterThan(103);
+    expect(final, "жест не должен улетать в максимум").toBeLessThan(115);
+    w.unmount();
+  });
+
+  it("резкий скролл не прыгает на треть кадра", async () => {
+    /* Некоторые мыши и программы прокрутки шлют deltaY в сотни единиц. */
+    const w = mount(CoverPreview, { props: { src: "/cover.png", zoom: 100 } });
+    await w.find('[data-test="cover-viewport"]').trigger("wheel", { deltaY: -600 });
+
+    const out = w.emitted("update:zoom")!.at(-1)![0] as number;
+    console.log("резкий скролл deltaY -600 -> зум:", out, "%");
+    expect(out - 100).toBeLessThanOrEqual(12);
+    w.unmount();
+  });
+
+  it("мелкие события тачпада не теряются из-за округления", async () => {
+    /* Самая коварная часть: deltaY -1 даёт 0.06%, и при округлении на
+       каждом шаге это ровный ноль — фото не двигалось бы вообще. */
+    const w = mount(CoverPreview, {
+      props: { src: "/cover.png", zoom: 100 },
+      attachTo: document.body,
+    });
+    const viewport = w.find('[data-test="cover-viewport"]');
+
+    for (let i = 0; i < 50; i += 1) {
+      await viewport.trigger("wheel", { deltaY: -1 });
+      const last = w.emitted("update:zoom")?.at(-1)?.[0] as number | undefined;
+      if (last !== undefined) await w.setProps({ zoom: last });
+    }
+
+    const final = w.emitted("update:zoom")!.at(-1)![0] as number;
+    console.log("50 событий по deltaY -1 -> зум:", final, "%");
+    expect(final, "мелкое движение съедено округлением").toBeGreaterThan(100);
+    w.unmount();
   });
 
   it("фото едет за мышью в ту же сторону — без инверсии", async () => {
