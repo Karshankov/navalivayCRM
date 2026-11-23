@@ -36,6 +36,7 @@
                 :zoom="zoom / 100"
                 :shift-x="shiftX"
                 :shift-y="shiftY"
+                :fade="false"
                 manual
               />
             </div>
@@ -134,6 +135,7 @@
                   :zoom="(previous.coverZoom ?? 100) / 100"
                   :shift-x="previous.coverShift ?? 0"
                   :shift-y="previous.coverOffsetY ?? 0"
+                  :fade="false"
                   :manual="previous.coverManual ?? false"
                 />
               </div>
@@ -165,6 +167,7 @@
                   :zoom="zoom / 100"
                   :shift-x="shiftX"
                   :shift-y="shiftY"
+                  :fade="false"
                   :manual="manual"
                 />
               </div>
@@ -194,6 +197,7 @@
                   :zoom="(next.coverZoom ?? 100) / 100"
                   :shift-x="next.coverShift ?? 0"
                   :shift-y="next.coverOffsetY ?? 0"
+                  :fade="false"
                   :manual="next.coverManual ?? false"
                 />
               </div>

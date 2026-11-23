@@ -23,8 +23,12 @@
     </span>
 
     <!-- Белый наплыв: растворяет правый край фото в фоне карточки.
-         pointer-events сняты — нажатия проходят сквозь. -->
-    <span v-if="src && !failed" class="image-fade__fade" aria-hidden="true" />
+         pointer-events сняты — нажатия проходят сквозь.
+
+         В редакторе обложки наплыв выключен: там важно видеть самый край
+         кадра, а наплыв его забеливает — и не понять, обрезано фото или
+         растворено. -->
+    <span v-if="fade && src && !failed" class="image-fade__fade" aria-hidden="true" />
   </span>
 </template>
 
@@ -42,8 +46,11 @@ const props = withDefaults(
     shiftY?: number;
     /** Кадр настроен руками: автоподбор не применяется. */
     manual?: boolean;
+    /** Растворять правый край в фоне карточки. По умолчанию да — так
+     *  задумано у клиента. В редакторе выключаем, чтобы видеть край. */
+    fade?: boolean;
   }>(),
-  { alt: "", zoom: undefined, shiftX: undefined, shiftY: undefined, manual: false },
+  { alt: "", zoom: undefined, shiftX: undefined, shiftY: undefined, manual: false, fade: true },
 );
 
 const areaRef = ref<HTMLElement | null>(null);
