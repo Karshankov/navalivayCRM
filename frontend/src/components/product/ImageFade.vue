@@ -21,6 +21,10 @@
         <path d="M21 15l-5-5L5 21" />
       </svg>
     </span>
+
+    <!-- Белый наплыв: растворяет правый край фото в фоне карточки.
+         pointer-events сняты — нажатия проходят сквозь. -->
+    <span v-if="src && !failed" class="image-fade__fade" aria-hidden="true" />
   </span>
 </template>
 
@@ -126,6 +130,37 @@ defineExpose({ loaded, failed });
   fill: none;
   stroke: currentColor;
   stroke-width: 1.5;
+}
+
+/* Наплыв: мягкий. Смягчает стык фото с карточкой, но самого фото не
+   прячет — раньше правый край закрывался белым полностью, и картинка
+   у края пропадала.
+
+   Плотность — 40% от исходной. Исходно было 5, 5, 18, 61, 100 (боковой)
+   и 55 (низ); отсюда 2, 2, 7, 24, 40 и 22. Край вместо 100 стал 40 —
+   белой пелены нет, но стык смягчён заметно.
+
+   Цвет — фон карточки, иначе на стыке виден шов. */
+.image-fade__fade {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  --fade: var(--customer-surface, #ffffff);
+  background:
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--fade) 2%, transparent) 0%,
+      color-mix(in srgb, var(--fade) 2%, transparent) 40%,
+      color-mix(in srgb, var(--fade) 7%, transparent) 62%,
+      color-mix(in srgb, var(--fade) 24%, transparent) 82%,
+      color-mix(in srgb, var(--fade) 40%, transparent) 100%
+    ),
+    linear-gradient(
+      0deg,
+      color-mix(in srgb, var(--fade) 22%, transparent) 0%,
+      transparent 32%
+    );
+  pointer-events: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
