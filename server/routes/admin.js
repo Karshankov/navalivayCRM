@@ -287,6 +287,11 @@ function enrichAdminCategoryGroup(group) {
     waive_wholesale: Number(group.waive_wholesale ?? 0),
     strength_tier: group.strength_tier ?? null,
     waive_strength_tier: Number(group.waive_strength_tier ?? 0),
+    /* Расположение обложки: фронт читает camelCase, база хранит snake_case. */
+    cover_zoom: group.cover_zoom ?? null,
+    cover_shift: group.cover_shift ?? null,
+    coverZoom: group.cover_zoom ?? null,
+    coverShift: group.cover_shift ?? null,
   };
 }
 
@@ -2962,6 +2967,8 @@ adminRouter.get('/api/admin/category-groups/:id', authMiddleware, (req, res) => 
       g.slug,
       g.name,
       g.cover_image,
+      g.cover_zoom,
+      g.cover_shift,
       g.[order],
       g.hide_empty,
       g.parent_group_id,
@@ -3332,6 +3339,11 @@ adminRouter.put('/api/admin/category-groups/:id', authMiddleware, async (req, re
     name,
     slug,
     coverImage,
+    /* Расположение обложки: читаем оба написания, как и остальные поля. */
+    coverZoom,
+    cover_zoom,
+    coverShift,
+    cover_shift,
     hide_empty,
     order,
     parentId,
@@ -3457,6 +3469,29 @@ adminRouter.put('/api/admin/category-groups/:id', authMiddleware, async (req, re
       nextCover = null;
     }
   }
+  /* Расположение обложки в карточке: множитель масштаба и наклон.
+     Как и с coverImage, ключа нет в теле — значение не трогаем.
+     Иначе старое сохранение формы затрёт подобранные настройки. */
+  const coverZoomProvided = 'coverZoom' in (req.body || {}) || 'cover_zoom' in (req.body || {});
+  const coverShiftProvided = 'coverShift' in (req.body || {}) || 'cover_shift' in (req.body || {});
+
+  const normalizeCoverNumber = (raw, min, max) => {
+    if (raw === null || raw === '' || raw === undefined) return null;
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed)) return null;
+    return Math.max(min, Math.min(max, Math.round(parsed)));
+  };
+
+  let nextCoverZoom = current.cover_zoom ?? null;
+  if (coverZoomProvided) {
+    nextCoverZoom = normalizeCoverNumber(coverZoom ?? cover_zoom, 60, 200);
+  }
+
+  let nextCoverShift = current.cover_shift ?? null;
+  if (coverShiftProvided) {
+    nextCoverShift = normalizeCoverNumber(coverShift ?? cover_shift, -40, 40);
+  }
+
   const nextHideEmpty = hide_empty !== undefined ? (hide_empty ? 1 : 0) : current.hide_empty;
   const nextOrder = Number.isFinite(Number(order)) ? Number(order) : current.order;
   // Проверяем, было ли поле явно передано в запросе (включая null для очистки)
@@ -3550,6 +3585,7 @@ adminRouter.put('/api/admin/category-groups/:id', authMiddleware, async (req, re
       db.prepare(`
         UPDATE category_groups
         SET name = ?, slug = ?, cover_image = ?, hide_empty = ?, [order] = ?,
+            cover_zoom = ?, cover_shift = ?,
             meta_label = ?, meta_value = ?, parent_group_id = ?, min_stock_threshold = ?,
             total_control = ?,
             waive_description = ?, waive_min_stock = ?, waive_wholesale = ?,
@@ -3563,6 +3599,8 @@ adminRouter.put('/api/admin/category-groups/:id', authMiddleware, async (req, re
         nextCover,
         nextHideEmpty,
         nextOrder,
+        nextCoverZoom,
+        nextCoverShift,
         nextMetaLabel,
         nextMetaValue,
         nextParentId,

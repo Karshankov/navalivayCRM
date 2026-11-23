@@ -17,28 +17,16 @@
         @keyup.enter.prevent="toggle"
         @keyup.space.prevent="toggle"
       >
-        <div class="liquid-line-image-wrapper">
+        <!-- Область фото: своя ширина, обрезка по её границам. -->
+        <div class="liquid-line-art">
+          <ImageFade
+            :src="coverUrl ?? null"
+            :alt="title"
+            :zoom="coverZoom != null ? coverZoom / 100 : undefined"
+            :shift-x="coverShift ?? undefined"
+          />
           <span v-if="topRank && showPromoBadges" class="liquid-line-top-rank">#{{ topRank }}</span>
-          <div class="liquid-line-image-box">
-            <div v-if="coverUrl" class="liquid-line-image">
-              <img :src="coverUrl" :alt="title" loading="lazy" decoding="async" />
-            </div>
-            <div v-else class="liquid-line-image liquid-line-image-placeholder">
-              <svg
-                width="40"
-                height="40"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="#E6E9ED"
-                stroke-width="1.5"
-              >
-                <rect x="3" y="3" width="18" height="18" rx="2" />
-                <circle cx="8.5" cy="8.5" r="1.5" />
-                <path d="M21 15l-5-5L5 21" />
-              </svg>
-            </div>
-            <DiscountBadge v-if="hasDiscount && showPromoBadges" class="liquid-line-discount" />
-          </div>
+          <DiscountBadge v-if="hasDiscount && showPromoBadges" class="liquid-line-discount" />
         </div>
         <div class="liquid-line-info">
           <h3 class="liquid-line-title">{{ title }}</h3>
@@ -118,29 +106,9 @@
               class="liquid-subline-header"
               @click="toggleVariantProductExpansion(product.id)"
             >
-              <div class="liquid-subline-image-wrapper">
-                <div class="liquid-subline-image">
-                  <img
-                    v-if="getProductImage(product)"
-                    :src="getProductImage(product)!"
-                    :alt="product.title"
-                    loading="lazy"
-                    decoding="async"
-                  />
-                  <svg
-                    v-else
-                    width="24"
-                    height="24"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="#E6E9ED"
-                    stroke-width="1.5"
-                  >
-                    <rect x="3" y="3" width="18" height="18" rx="2" />
-                    <circle cx="8.5" cy="8.5" r="1.5" />
-                    <path d="M21 15l-5-5L5 21" />
-                  </svg>
-                </div>
+              <!-- Область фото вкуса: та же схема, что у линейки. -->
+              <div class="liquid-flavour-art">
+                <ImageFade :src="getProductImage(product)" :alt="product.title" />
               </div>
               <div class="liquid-subline-info">
                 <h4 class="liquid-subline-title">{{ product.title }}</h4>
@@ -337,6 +305,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch, nextTick } from "vue";
 import ReviewsFeedPanel from "@/components/reviews/ReviewsFeedPanel.vue";
 import ReviewRatingLink from "@/components/reviews/ReviewRatingLink.vue";
+import ImageFade from "@/components/product/ImageFade.vue";
 import SignificanceMark from "@/components/product/SignificanceMark.vue";
 import type { ProductMark } from "@/stores/catalog";
 import { useCustomerOrders } from "@/composables/useCustomerOrders";
@@ -392,6 +361,10 @@ const props = withDefaults(
     isNew?: boolean;
     metaLabel?: string | null;
     metaValue?: string | null;
+    /** Расположение обложки из CRM: множитель масштаба в процентах. */
+    coverZoom?: number | null;
+    /** Наклон обложки в градусах. */
+    coverShift?: number | null;
     topRank?: number | null;
     /** Пометка значимости линейки: ярлык в строке, рядом с отзывами. */
     mark?: ProductMark | null;
@@ -988,11 +961,6 @@ function closeColorPreview() {
 <style scoped>
 /* Figma Redesign - Карточка линейки жидкостей */
 /* Плашка лежит на обложке линейки, ровно как на карточке категории. */
-.liquid-line-image-box {
-  position: relative;
-  display: flex;
-}
-
 .liquid-line-discount {
   position: absolute;
   left: 50%;
@@ -1077,15 +1045,6 @@ function closeColorPreview() {
   color: #aab2bd;
 }
 
-.liquid-line-card--unavailable .liquid-line-image img {
-  filter: grayscale(1);
-  opacity: 0.6;
-}
-
-.liquid-line-card--unavailable .liquid-line-image-placeholder svg {
-  opacity: 0.5;
-}
-
 .liquid-line-unavailable {
   display: flex;
   align-items: center;
@@ -1124,13 +1083,22 @@ function closeColorPreview() {
   min-width: 0;
 }
 
-.liquid-line-image-wrapper {
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
+/* Область фото: зарезервированная ширина, обрезка по её границам.
+   Фото крупнее и смещено — за пределы области не выходит. */
+.liquid-line-art {
   position: relative;
+  flex: 0 0 auto;
+  width: 76px;
+  /* Тянется на всю высоту карточки: фото уходит за её нижний край
+     и обрезается им, а не висит внутри с отступом. */
+  align-self: stretch;
+  min-height: 92px;
+  margin-right: 10px;
+  /* Отрицательные поля съедают паддинг карточки: область доходит
+     до её настоящих границ. */
+  margin-top: -16px;
+  margin-bottom: -16px;
+  /* Обрезка живёт в самом компоненте фото — здесь только габариты. */
 }
 
 .liquid-line-top-rank {
@@ -1156,30 +1124,6 @@ function closeColorPreview() {
 
 /* Фото линейки: 75x88 — на 15% меньше прежних 88x104. Рамки нет:
    светлый фон карточки и так отделяет картинку. */
-.liquid-line-image {
-  width: 75px;
-  height: 88px;
-  background: #ffffff;
-  border: 0;
-  border-radius: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-  box-sizing: border-box;
-  padding: 5px;
-}
-
-.liquid-line-image img {
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
-}
-
-.liquid-line-image-placeholder {
-  background: #fafafa;
-}
-
 .liquid-line-info {
   /* Единый вертикальный контейнер: название, крепость, рейтинг и кнопка
      «Избранное». Родитель (liquid-line-main) центрирует его по высоте
@@ -1310,31 +1254,16 @@ function closeColorPreview() {
   min-width: 0;
 }
 
-.liquid-subline-image-wrapper {
-  flex-shrink: 0;
+/* Область фото вкуса: меньше, чем у линейки — строка компактнее. */
+.liquid-flavour-art {
+  position: relative;
+  flex: 0 0 auto;
+  width: 64px;
+  height: 78px;
+  margin-right: 10px;
 }
 
-/* Фото вкуса: те же размеры, что у фото линейки — 75x88 без рамки. */
-.liquid-subline-image {
-  width: 75px;
-  height: 88px;
-  background: #ffffff;
-  border: 0;
-  border-radius: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-  box-sizing: border-box;
-  padding: 5px;
-}
-
-.liquid-subline-image img {
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
-}
-
+/*
 .liquid-subline-info {
   display: flex;
   flex-direction: column;
@@ -1342,6 +1271,7 @@ function closeColorPreview() {
   flex: 1;
   min-width: 0;
 }
+*/
 
 .liquid-subline-title {
   margin: 0;
@@ -1685,31 +1615,7 @@ function closeColorPreview() {
     padding: 16px 16px 16px 12px;
   }
 
-  .liquid-line-image {
-    width: 75px;
-    height: 88px;
-    border-radius: 14px;
-    padding: 5px;
-  }
-
-  .liquid-line-image img {
-    max-width: 100%;
-    max-height: 100%;
-  }
-
-  .liquid-subline-image {
-    width: 75px;
-    height: 88px;
-    border-radius: 14px;
-    padding: 5px;
-  }
-
-  .liquid-subline-image img {
-    max-width: 100%;
-    max-height: 100%;
-  }
-
-  .liquid-line-title {
+      .liquid-line-title {
     font-size: 16px;
     line-height: 20px;
   }
@@ -1774,31 +1680,7 @@ function closeColorPreview() {
     gap: 12px;
   }
 
-  .liquid-line-image {
-    width: 75px;
-    height: 88px;
-    border-radius: 14px;
-    padding: 5px;
-  }
-
-  .liquid-line-image img {
-    max-width: 100%;
-    max-height: 100%;
-  }
-
-  .liquid-subline-image {
-    width: 75px;
-    height: 88px;
-    border-radius: 14px;
-    padding: 5px;
-  }
-
-  .liquid-subline-image img {
-    max-width: 100%;
-    max-height: 100%;
-  }
-
-  .liquid-line-info {
+      .liquid-line-info {
     gap: 2px;
   }
 
@@ -1892,31 +1774,7 @@ function closeColorPreview() {
     gap: 12px;
   }
 
-  .liquid-line-image {
-    width: 75px;
-    height: 88px;
-    border-radius: 14px;
-    padding: 5px;
-  }
-
-  .liquid-line-image img {
-    max-width: 100%;
-    max-height: 100%;
-  }
-
-  .liquid-subline-image {
-    width: 75px;
-    height: 88px;
-    border-radius: 14px;
-    padding: 5px;
-  }
-
-  .liquid-subline-image img {
-    max-width: 100%;
-    max-height: 100%;
-  }
-
-  .liquid-line-info {
+      .liquid-line-info {
     gap: 2px;
   }
 
@@ -2021,31 +1879,7 @@ function closeColorPreview() {
     gap: 10px;
   }
 
-  .liquid-line-image {
-    width: 80px;
-    height: 96px;
-    border-radius: 14px;
-    padding: 4px;
-  }
-
-  .liquid-line-image img {
-    max-width: 100%;
-    max-height: 100%;
-  }
-
-  .liquid-subline-image {
-    width: 80px;
-    height: 96px;
-    border-radius: 14px;
-    padding: 4px;
-  }
-
-  .liquid-subline-image img {
-    max-width: 100%;
-    max-height: 100%;
-  }
-
-  .liquid-line-info {
+      .liquid-line-info {
     gap: 2px;
   }
 

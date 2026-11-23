@@ -1249,6 +1249,7 @@ publicRouter.get("/api/categories", (req, res) => {
       `
     SELECT g.id, g.categoryId, g.slug, g.name, 
            CASE WHEN g.cover_image IS NOT NULL AND g.cover_image != '' THEN 1 ELSE 0 END as hasCoverImage,
+           g.cover_zoom, g.cover_shift,
            g.[order], g.hide_empty, g.parent_group_id, g.meta_label, g.meta_value,
            g.strength_tier,
            g.new_since,
@@ -1369,6 +1370,9 @@ publicRouter.get("/api/categories", (req, res) => {
     // Готовый адрес обложки: витрина ставит его прямо в <img>, и картинку
     // тянет сам браузер — лениво, параллельно и с кэшем.
     coverImage: group.hasCoverImage === 1 ? `/api/category-groups/${group.id}/cover` : null,
+    /* Расположение обложки, подобранное в CRM. null значит автоподбор. */
+    coverZoom: group.cover_zoom ?? null,
+    coverShift: group.cover_shift ?? null,
     hideEmpty: group.hide_empty === 1,
     parentId: group.parent_group_id || null,
     metaLabel: group.meta_label || null,
@@ -1422,6 +1426,8 @@ publicRouter.get("/api/categories", (req, res) => {
         order: node.order,
         hasCoverImage: node.hasCoverImage,
         coverImage: node.coverImage,
+        coverZoom: node.coverZoom ?? null,
+        coverShift: node.coverShift ?? null,
         hideEmpty: node.hideEmpty,
         parentId: node.parentId,
         metaLabel: node.metaLabel || null,

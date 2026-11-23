@@ -13,32 +13,15 @@
       @click="toggle"
     >
       <span class="group-line-main">
-        <span class="group-line-image-wrapper">
+        <!-- Область фото: та же схема, что у линеек жидкостей. -->
+        <span class="group-line-art">
+          <ImageFade :src="coverImage" :alt="node.name" />
           <span v-if="topRank" class="group-line-top-rank">#{{ topRank }}</span>
-          <span class="group-line-image-box">
-            <span v-if="coverImage" class="group-line-image">
-              <img :src="coverImage" :alt="node.name" loading="lazy" decoding="async" />
-            </span>
-            <span v-else class="group-line-image group-line-image-placeholder">
-              <svg
-                width="40"
-                height="40"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="#E6E9ED"
-                stroke-width="1.5"
-              >
-                <rect x="3" y="3" width="18" height="18" rx="2" />
-                <circle cx="8.5" cy="8.5" r="1.5" />
-                <path d="M21 15l-5-5L5 21" />
-              </svg>
-            </span>
-            <DiscountBadge v-if="hasDiscount" class="group-line-discount" />
-          </span>
-          <span v-if="firstProductPrice" class="group-line-image-price">
-            <span class="group-line-image-price-amount">{{ formatPrice(firstProductPrice) }}</span>
-            <span class="group-line-image-price-currency">BYN</span>
-          </span>
+          <DiscountBadge v-if="hasDiscount" class="group-line-discount" />
+        </span>
+        <span v-if="firstProductPrice" class="group-line-image-price">
+          <span class="group-line-image-price-amount">{{ formatPrice(firstProductPrice) }}</span>
+          <span class="group-line-image-price-currency">BYN</span>
         </span>
 
         <span class="group-line-info">
@@ -140,6 +123,7 @@ import {
 } from "vue";
 import ReviewsFeedPanel from "@/components/reviews/ReviewsFeedPanel.vue";
 import ReviewRatingLink from "@/components/reviews/ReviewRatingLink.vue";
+import ImageFade from "@/components/product/ImageFade.vue";
 import SignificanceMark from "@/components/product/SignificanceMark.vue";
 import {
   isParentGroupLine,
@@ -462,11 +446,6 @@ onBeforeUnmount(() => {
 }
 
 /* Плашка лежит на обложке линейки, ровно как на карточке категории. */
-.group-line-image-box {
-  position: relative;
-  display: flex;
-}
-
 .group-line-discount {
   position: absolute;
   left: 50%;
@@ -505,13 +484,17 @@ onBeforeUnmount(() => {
   min-width: 0;
 }
 
-.group-line-image-wrapper {
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
+/* Область фото: зарезервированная ширина, обрезка по её границам. */
+.group-line-art {
   position: relative;
+  flex: 0 0 auto;
+  width: 76px;
+  /* Тянется на всю высоту карточки: фото уходит за её нижний край. */
+  align-self: stretch;
+  min-height: 92px;
+  margin-right: 10px;
+  margin-top: -16px;
+  margin-bottom: -16px;
 }
 
 .group-line-top-rank {
@@ -533,30 +516,6 @@ onBeforeUnmount(() => {
   font-weight: 800;
   color: #ffffff;
   box-shadow: 0 4px 10px rgba(230, 0, 0, 0.35);
-}
-
-.group-line-image {
-  width: 88px;
-  height: 104px;
-  background: #ffffff;
-  border: 1px solid #e6e9ed;
-  border-radius: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-  box-sizing: border-box;
-  padding: 6px;
-}
-
-.group-line-image img {
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
-}
-
-.group-line-image-placeholder {
-  background: #fafafa;
 }
 
 .group-line-image-price {
@@ -710,19 +669,7 @@ onBeforeUnmount(() => {
     padding: 16px;
   }
 
-  .group-line-image {
-    width: 88px;
-    height: 104px;
-    border-radius: 16px;
-    padding: 6px;
-  }
-
-  .group-line-image img {
-    max-width: 100%;
-    max-height: 100%;
-  }
-
-  .group-line-title {
+    .group-line-title {
     font-size: 16px;
     line-height: 20px;
   }
@@ -766,19 +713,7 @@ onBeforeUnmount(() => {
     gap: 12px;
   }
 
-  .group-line-image {
-    width: 88px;
-    height: 104px;
-    border-radius: 16px;
-    padding: 6px;
-  }
-
-  .group-line-image img {
-    max-width: 100%;
-    max-height: 100%;
-  }
-
-  .group-line-info {
+    .group-line-info {
     gap: 6px;
   }
 
@@ -817,19 +752,7 @@ onBeforeUnmount(() => {
     gap: 12px;
   }
 
-  .group-line-image {
-    width: 88px;
-    height: 104px;
-    border-radius: 16px;
-    padding: 6px;
-  }
-
-  .group-line-image img {
-    max-width: 100%;
-    max-height: 100%;
-  }
-
-  .group-line-info {
+    .group-line-info {
     gap: 6px;
   }
 
@@ -868,19 +791,7 @@ onBeforeUnmount(() => {
     gap: 10px;
   }
 
-  .group-line-image {
-    width: 80px;
-    height: 96px;
-    border-radius: 14px;
-    padding: 4px;
-  }
-
-  .group-line-image img {
-    max-width: 100%;
-    max-height: 100%;
-  }
-
-  .group-line-info {
+    .group-line-info {
     gap: 5px;
   }
 

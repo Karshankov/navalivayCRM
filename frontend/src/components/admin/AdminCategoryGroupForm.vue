@@ -317,15 +317,21 @@
         </div>
       </div>
 
+      <!-- Превью как в мини-аппе: сотрудник видит, что увидят покупатели,
+           а не просто «тот ли файл загружен». -->
+      <CoverPreview
+        v-if="hasPreview"
+        v-model:zoom="coverZoom"
+        v-model:shift="coverShift"
+        :src="currentPreview"
+        :title="form.name || 'Название линейки'"
+        :meta="previewMeta"
+      />
+
       <div
         v-if="hasPreview"
         class="flex flex-col gap-3 rounded-xl border border-gray-200 bg-gray-50 p-3 sm:flex-row sm:items-center"
       >
-        <img
-          :src="currentPreview"
-          alt="Превью обложки"
-          class="h-20 w-32 flex-shrink-0 rounded-lg object-cover ring-1 ring-white/80 shadow"
-        />
         <div class="flex-1 space-y-1 text-xs text-gray-600">
           <p class="break-all leading-snug" v-if="coverMode === 'url'">{{ form.coverImage }}</p>
           <p v-else-if="uploadedFileName" class="font-medium">{{ uploadedFileName }}</p>
@@ -485,6 +491,8 @@
 <script setup lang="ts">
 import { reactive, ref, watch, computed } from 'vue'
 import PosPublicationField, { type PosPublicationValue } from './PosPublicationField.vue'
+import CoverPreview from './CoverPreview.vue'
+
 import { useAdminStore, type SignificanceMark } from '@/stores/admin'
 
 /** Срок плашки по умолчанию, столько же стоит на сервере. */
@@ -507,6 +515,10 @@ interface CategoryGroup {
   id?: string
   name: string
   coverImage?: string | null
+  /** Расположение обложки: множитель масштаба в процентах. */
+  coverZoom?: number | null
+  /** Сдвиг обложки вбок в процентах. */
+  coverShift?: number | null
   hideEmpty?: boolean
   parentId?: string | null
   metaLabel?: string | null
@@ -550,7 +562,7 @@ const props = withDefaults(defineProps<{ editingGroup?: CategoryGroup | null; is
 })
 
 const emit = defineEmits<{
-  (e: 'submit', payload: { name: string; coverImage?: string | null; hideEmpty?: boolean; parentId?: string | null; metaLabel?: string | null; metaValue?: string | null; minStockThreshold?: number | null; totalControl?: boolean; isNew?: boolean; newDays?: number; discount?: { price: number | null; untilDate: string | null }; wholesalePrices?: Record<string, number | null>; waiveDescription?: boolean; waiveMinStock?: boolean; waiveWholesale?: boolean; waiveStrengthTier?: boolean; strengthTier?: string | null; significanceMarkId?: string | null; posPublication?: PosPublicationValue }): void
+  (e: 'submit', payload: { name: string; coverImage?: string | null; coverZoom?: number | null; coverShift?: number | null; hideEmpty?: boolean; parentId?: string | null; metaLabel?: string | null; metaValue?: string | null; minStockThreshold?: number | null; totalControl?: boolean; isNew?: boolean; newDays?: number; discount?: { price: number | null; untilDate: string | null }; wholesalePrices?: Record<string, number | null>; waiveDescription?: boolean; waiveMinStock?: boolean; waiveWholesale?: boolean; waiveStrengthTier?: boolean; strengthTier?: string | null; significanceMarkId?: string | null; posPublication?: PosPublicationValue }): void
   (e: 'cancel'): void
 }>()
 
@@ -630,6 +642,19 @@ const form = reactive({
   waiveStrengthTier: false,
   strengthTier: '',
 })
+
+/** Строка характеристик для превью: та же, что увидит покупатель. */
+const previewMeta = computed(() => {
+  const label = (form.metaLabel || '').trim()
+  const value = (form.metaValue || '').trim()
+  if (label && value) return `${label} ${value}`
+  return label || value || 'Крепость 20 мг'
+})
+
+/* Расположение обложки: 100% и 0 значат «как подобрал алгоритм».
+   Эти значения сохраняются вместе с линейкой и работают у покупателей. */
+const coverZoom = ref(100)
+const coverShift = ref(0)
 
 const strengthOptions = [
   { value: 'very_strong', label: 'Очень крепкая' },
@@ -728,6 +753,11 @@ watch(
       form.waiveStrengthTier = Boolean(group.waiveStrengthTier)
       form.strengthTier = group.strengthTier || ''
       form.significanceMarkId = group.significanceMarkId || ''
+      /* Расположение обложки: сервер отдаёт и camelCase, и snake_case. */
+      const rawZoom = (group as any).coverZoom ?? (group as any).cover_zoom
+      const rawShift = (group as any).coverShift ?? (group as any).cover_shift
+      coverZoom.value = Number.isFinite(Number(rawZoom)) && rawZoom !== null ? Number(rawZoom) : 100
+      coverShift.value = Number.isFinite(Number(rawShift)) && rawShift !== null ? Number(rawShift) : 0
       posPublication.value = (group as any).pos_publication ?? null
       syncWholesalePriceInputs(group)
       if ((group.coverImage || '').startsWith('data:')) {
@@ -868,6 +898,9 @@ function onSubmit() {
   emit('submit', {
     name: form.name.trim(),
     coverImage: form.coverImage.trim() ? form.coverImage.trim() : null,
+    /* Расположение сохраняем всегда: сотрудник подобрал его в превью. */
+    coverZoom: coverZoom.value,
+    coverShift: coverShift.value,
     hideEmpty: form.hideEmpty,
     parentId: form.parentId ? form.parentId : null,
     metaLabel: null,

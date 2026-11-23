@@ -570,6 +570,10 @@ type LiquidGroup = {
   slug: string;
   order: number;
   coverImage: string | null;
+  /** Расположение обложки из CRM: множитель масштаба в процентах. */
+  coverZoom?: number | null;
+  /** Наклон обложки в градусах. */
+  coverShift?: number | null;
   products: Product[];
   productCount: number;
   badge?: string | null;
@@ -683,6 +687,8 @@ const liquidStructure = computed(() => {
         slug: group.slug,
         order: group.order ?? 0,
         coverImage: group.coverImage || null,
+        coverZoom: (group as any).coverZoom ?? null,
+        coverShift: (group as any).coverShift ?? null,
         products: groupProducts,
         productCount: groupProducts.length,
         badge: group.badge ?? null,

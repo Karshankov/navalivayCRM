@@ -10,6 +10,8 @@
       :badge="group.badge ?? undefined"
       :badge-color="group.badgeColor ?? undefined"
       :is-new="group.isNew ?? false"
+      :cover-zoom="group.coverZoom ?? null"
+      :cover-shift="group.coverShift ?? null"
       :meta-label="group.metaLabel ?? null"
       :meta-value="group.metaValue ?? null"
       :mark="group.mark ?? null"
@@ -80,6 +82,9 @@ interface LiquidGroup {
   badgeColor?: string | null;
   metaLabel?: string | null;
   metaValue?: string | null;
+  /** Расположение обложки из CRM. */
+  coverZoom?: number | null;
+  coverShift?: number | null;
   strengthTier?: string | null;
   isNew?: boolean;
   newSince?: string | null;

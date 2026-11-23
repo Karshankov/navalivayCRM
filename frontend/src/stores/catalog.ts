@@ -24,6 +24,10 @@ export interface CategoryGroup {
   order: number
   mark?: ProductMark | null
   coverImage?: string | null
+  /** Расположение обложки из CRM: множитель масштаба в процентах. */
+  coverZoom?: number | null
+  /** Наклон обложки в градусах. */
+  coverShift?: number | null
   hasCoverImage?: boolean
   productCount: number
   totalProductCount?: number
@@ -386,6 +390,10 @@ export const useCatalogStore = defineStore('catalog', () => {
               name: group.name,
               order: group.order ?? 0,
               coverImage: group.coverImage ?? groupImageCache.value.get(String(group.id)) ?? null,
+              // Расположение обложки, подобранное в CRM. Без этих строк
+              // поля терялись при нормализации ответа.
+              coverZoom: group.coverZoom ?? group.cover_zoom ?? null,
+              coverShift: group.coverShift ?? group.cover_shift ?? null,
               hasCoverImage: group.hasCoverImage ?? false,
               productCount: group.productCount ?? 0,
               totalProductCount: group.totalProductCount ?? group.productCount ?? 0,

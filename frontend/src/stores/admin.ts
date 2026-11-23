@@ -1228,7 +1228,7 @@ async function createCategory(category: {
     }
   }
 
-  async function createCategoryGroup(payload: { categoryId: string; name: string; slug?: string; coverImage?: string | null; hideEmpty?: boolean; parentId?: string | null; metaLabel?: string | null; metaValue?: string | null; minStockThreshold?: number | null; totalControl?: boolean; isNew?: boolean; newDays?: number; wholesalePrices?: Record<string, number | null>; waiveDescription?: boolean; waiveMinStock?: boolean; waiveWholesale?: boolean; waiveStrengthTier?: boolean; strengthTier?: string | null; significanceMarkId?: string | null; posPublication?: PosPublication }) {
+  async function createCategoryGroup(payload: { categoryId: string; name: string; slug?: string; coverImage?: string | null; coverZoom?: number | null; coverShift?: number | null; hideEmpty?: boolean; parentId?: string | null; metaLabel?: string | null; metaValue?: string | null; minStockThreshold?: number | null; totalControl?: boolean; isNew?: boolean; newDays?: number; wholesalePrices?: Record<string, number | null>; waiveDescription?: boolean; waiveMinStock?: boolean; waiveWholesale?: boolean; waiveStrengthTier?: boolean; strengthTier?: string | null; significanceMarkId?: string | null; posPublication?: PosPublication }) {
     try {
       isLoading.value = true
       error.value = null
@@ -1241,6 +1241,8 @@ async function createCategory(category: {
           name: payload.name,
           slug: payload.slug,
           coverImage: payload.coverImage ?? null,
+          coverZoom: payload.coverZoom ?? null,
+          coverShift: payload.coverShift ?? null,
           hide_empty: payload.hideEmpty ?? false,
           parentId: payload.parentId ?? null,
           metaLabel: payload.metaLabel ?? null,
@@ -1330,6 +1332,10 @@ async function createCategory(category: {
       if ('name' in updates) body.name = updates.name
       if ('slug' in updates) body.slug = updates.slug
       if ('coverImage' in updates) body.coverImage = updates.coverImage ?? null
+      // Расположение обложки: та же защита, что и у самой картинки —
+      // ключа нет, значит не трогаем сохранённые настройки.
+      if ('coverZoom' in updates) body.coverZoom = updates.coverZoom ?? null
+      if ('coverShift' in updates) body.coverShift = updates.coverShift ?? null
       if ('hideEmpty' in updates) body.hide_empty = updates.hideEmpty
       if ('order' in updates) body.order = updates.order
       if ('parentId' in updates) body.parentId = updates.parentId ?? null
