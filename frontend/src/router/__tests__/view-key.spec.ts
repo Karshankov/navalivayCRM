@@ -26,8 +26,8 @@ describe("ключ верхнего RouterView", () => {
   it("не меняется при переходе между разделами CRM", () => {
     // Вложенные записи рисует <RouterView> внутри AdminView, а не верхний.
     const orders = route("/admin/crm/orders", ["/admin", "/admin/crm/orders"]);
-    const customers = route("/admin/crm/customers", ["/admin", "/admin/crm/customers"]);
-    expect(topLevelViewKey(orders)).toBe(topLevelViewKey(customers));
+    const procurements = route("/admin/crm/procurements", ["/admin", "/admin/crm/procurements"]);
+    expect(topLevelViewKey(orders)).toBe(topLevelViewKey(procurements));
   });
 
   it("не меняется при открытии карточки внутри раздела CRM", () => {

@@ -318,12 +318,16 @@ console.log("card tariffs: adjust daily limit supports negative delta");
 
 console.log("card tariffs: months list returns current and next with limits");
 {
-  const months = getCardAdminSnapshot().months;
+  const snapshot = getCardAdminSnapshot();
+  const months = snapshot.months;
+  const currentMonth = snapshot.limits.business_date.slice(0, 7);
+  const [year, month] = currentMonth.split('-').map(Number);
+  const nextMonth = new Date(Date.UTC(year, month, 1)).toISOString().slice(0, 7);
   assert.equal(months.length, 2);
   assert.equal(months[0].is_current, true);
-  assert.equal(months[0].month_key, "2026-10");
+  assert.equal(months[0].month_key, currentMonth);
   assert.ok(Number(months[0].limit_minor) >= 0);
-  assert.equal(months[1].month_key, "2026-11");
+  assert.equal(months[1].month_key, nextMonth);
 }
 
 console.log("card tariffs: exceeded_today_minor computed when over limit");

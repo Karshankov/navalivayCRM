@@ -149,8 +149,14 @@ import {
   createInviteBan,
   createInviteBanByUsername,
   grantStaffAccess,
+  getCustomerAuthorizationInfo,
   isReferralAuthorizationEnabled,
   listDisallowedInviterUsernames,
+  listDisallowedInviterUsernamesPage,
+  listInviteBansPage,
+  listReferralAuthorizationsPage,
+  listStaffAccessGrantsPage,
+  getCustomerListCounts,
   listInviteBans,
   listReferralAuthorizations,
   listStaffAccessGrants,
@@ -161,6 +167,9 @@ import {
   revokeStaffAccess,
   setReferralAuthorizationEnabled,
 } from '../utils/referral-authorization.js';
+
+import { parseListPaging } from '../utils/list-paging.js';
+import { listBlocksPage } from '../utils/customer-blocks.js';
 
 export const crmRouter = express.Router();
 const staffManagerAccess = createStaffAccessMiddleware({ manager: true });
@@ -345,14 +354,183 @@ crmRouter.put('/api/admin/crm/wholesale-settings/:username', authMiddleware, (re
 });
 
 // Единый хаб действий с клиентом: агрегирует всё, что CRM показывает в
-// карточке клиента — блокировку, запрет приглашений, пригласившего,
-// карточный профиль и оптовый минимум. Точка расширения будущих действий.
-crmRouter.get('/api/admin/crm/customer-hub/:username', authMiddleware, (req, res) => {
+// карточке клиента — блокировку, авторизацию, запрет приглашений, пригласившего,
+// карточный профиль, оптовый минимум и последние заказы. Всё читается точечно
+// по одному клиенту. Принимает @username, username или числовой Telegram ID.
+// Если клиента ещё нет в базе («призрак»), собирает ответ из отложенных записей.
+const HUB_USERNAME_RE = /^[a-zA-Z0-9_]{5,32}$/;
+
+function findCustomerByTelegramIdForHub(telegramId) {
+  return db.prepare(`
+    SELECT c.id, c.telegram_id, c.telegram_username, c.first_name, c.last_name,
+      c.wholesale_min_override, c.total_orders, c.notes,
+      c.discount_blocked_until, c.discount_block_comment,
+      c.access_authorized_at, c.access_authorization_source, c.access_authorized_by,
+      c.bot_verified_at
+    FROM customers c
+    WHERE c.telegram_id = ? AND c.deleted_at IS NULL
+    LIMIT 1
+  `).get(String(telegramId)) || null;
+}
+
+function loadHubAuthorizationFields(customerRow) {
+  return db.prepare(`
+    SELECT access_authorized_at, access_authorization_source, access_authorized_by, bot_verified_at
+    FROM customers WHERE id = ?
+  `).get(customerRow.id) || {};
+}
+
+function serializeHubTiers() {
+  return getActiveWholesaleTiers().map((tier) => ({
+    id: tier.id,
+    code: tier.code,
+    label: tier.label,
+    min_order_quantity: tier.minOrderQuantity === null || tier.minOrderQuantity === undefined
+      ? null
+      : Number(tier.minOrderQuantity),
+    sort_order: Number(tier.sortOrder ?? 0),
+  }));
+}
+
+// Сводка по клиенту для блока «Статистика»: только выданные заказы считаются покупками.
+function loadCustomerHubStats(customerId) {
+  const orders = db.prepare(`
+    SELECT
+      COUNT(*) AS total,
+      SUM(CASE WHEN status IN ('new', 'in_progress') THEN 1 ELSE 0 END) AS active,
+      SUM(CASE WHEN status IN ('delivered', 'completed') THEN 1 ELSE 0 END) AS delivered,
+      SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled,
+      SUM(CASE WHEN status IN ('delivered', 'completed') THEN COALESCE(final_amount, total_amount, 0) ELSE 0 END) AS spent,
+      MIN(CASE WHEN status IN ('delivered', 'completed') THEN created_at END) AS first_order_at,
+      MAX(CASE WHEN status IN ('delivered', 'completed') THEN created_at END) AS last_order_at
+    FROM orders
+    WHERE customer_id = ?
+  `).get(customerId) || {};
+  const invites = db.prepare(`
+    SELECT
+      COUNT(*) AS total,
+      SUM(CASE WHEN EXISTS (
+        SELECT 1 FROM orders o
+        WHERE o.customer_id = cr.invitee_customer_id AND o.status IN ('delivered', 'completed')
+      ) THEN 1 ELSE 0 END) AS with_orders
+    FROM customer_referrals cr
+    WHERE cr.inviter_customer_id = ?
+  `).get(customerId) || {};
+  const favorite = db.prepare(`
+    SELECT COALESCE(NULLIF(TRIM(oi.base_product_title), ''), oi.product_title) AS title,
+           SUM(oi.quantity) AS quantity
+    FROM order_items oi
+    JOIN orders o ON o.id = oi.order_id
+    WHERE o.customer_id = ? AND o.status IN ('delivered', 'completed')
+    GROUP BY title
+    ORDER BY quantity DESC, title ASC
+    LIMIT 1
+  `).get(customerId) || null;
+  const delivered = Number(orders.delivered || 0);
+  const spent = Math.round(Number(orders.spent || 0) * 100) / 100;
+  return {
+    orders_total: Number(orders.total || 0),
+    orders_active: Number(orders.active || 0),
+    orders_delivered: delivered,
+    orders_cancelled: Number(orders.cancelled || 0),
+    total_spent: spent,
+    average_check: delivered > 0 ? Math.round((spent / delivered) * 100) / 100 : 0,
+    first_order_at: orders.first_order_at || null,
+    last_order_at: orders.last_order_at || null,
+    invited_total: Number(invites.total || 0),
+    invited_with_orders: Number(invites.with_orders || 0),
+    favorite_product: favorite?.title
+      ? { title: favorite.title, quantity: Number(favorite.quantity || 0) }
+      : null,
+  };
+}
+
+// Строки заказов клиента для хаба: последние N или вся история (limit = HUB_ORDER_HISTORY_LIMIT).
+const HUB_RECENT_ORDERS_LIMIT = 5;
+const HUB_ORDER_HISTORY_LIMIT = 500;
+function loadCustomerHubOrders(customerId, limit) {
+  return db.prepare(`
+    SELECT id, order_number, created_at, status, COALESCE(final_amount, total_amount, 0) AS amount
+    FROM orders
+    WHERE customer_id = ?
+    ORDER BY created_at DESC
+    LIMIT ?
+  `).all(customerId, limit).map((row) => ({
+    id: row.id,
+    order_number: row.order_number,
+    created_at: row.created_at,
+    status: row.status,
+    amount: Number(row.amount || 0),
+  }));
+}
+
+// Вся история заказов клиента — раскрывается в блоке «Последние заказы».
+crmRouter.get('/api/admin/crm/customer-hub/:customerId/orders', authMiddleware, (req, res) => {
   try {
-    const customerRow = findCustomerByUsernameForWholesaleSettings(req.params.username);
-    if (!customerRow) {
-      return res.status(404).json({ error: 'customer_not_found', message: 'Клиент с таким username не найден' });
+    const customerId = String(req.params.customerId || '').trim();
+    const exists = customerId && db.prepare('SELECT 1 FROM customers WHERE id = ?').get(customerId);
+    if (!exists) {
+      return res.status(404).json({ error: 'customer_not_found', message: 'Клиент не найден' });
     }
+    return res.json({ orders: loadCustomerHubOrders(customerId, HUB_ORDER_HISTORY_LIMIT) });
+  } catch (error) {
+    console.error('[crm] Failed to load customer hub orders:', error);
+    return res.status(500).json({ error: 'customer_hub_orders_failed', message: error.message });
+  }
+});
+
+crmRouter.get('/api/admin/crm/customer-hub/:query', authMiddleware, (req, res) => {
+  try {
+    const raw = String(req.params.query || '').trim().replace(/^@+/, '');
+    const byTelegramId = /^\d{3,20}$/.test(raw);
+    if (!byTelegramId && !HUB_USERNAME_RE.test(raw)) {
+      return res.status(404).json({ error: 'invalid_query', message: 'Укажите @username или Telegram ID' });
+    }
+
+    let customerRow = byTelegramId
+      ? findCustomerByTelegramIdForHub(raw)
+      : findCustomerByUsernameForWholesaleSettings(raw);
+
+    if (!customerRow && byTelegramId) {
+      // Клиента нет, но по этому TG ID могла остаться запись авторизации.
+      const authState = db.prepare('SELECT 1 FROM referral_auth_states WHERE telegram_id = ?').get(raw);
+      if (!authState) {
+        return res.status(404).json({ error: 'customer_not_found', message: 'Клиент с таким Telegram ID не найден' });
+      }
+    }
+
+    if (!customerRow) {
+      // «Призрак»: клиента нет в базе — показываем только отложенные записи.
+      const username = byTelegramId ? null : raw.toLowerCase();
+      const pendingBlock = username ? getPendingBanForUsername(username) : null;
+      const pendingInviteBan = username
+        ? db.prepare(`
+            SELECT id, reason, banned_by, created_at
+            FROM pending_customer_invite_bans
+            WHERE telegram_username = ? COLLATE NOCASE
+          `).get(username) || null
+        : null;
+      return res.json({
+        ghost: true,
+        customer: null,
+        username,
+        telegram_id: byTelegramId ? raw : null,
+        block: pendingBlock ? serializeBlock(pendingBlock, 'pending') : null,
+        invite_ban: null,
+        pending_invite_ban: pendingInviteBan,
+        authorization: getCustomerAuthorizationInfo({ customer: null, username, telegramId: byTelegramId ? raw : null }),
+        inviter: null,
+        card_profile: null,
+        tiers: [],
+        active_wholesale_order: null,
+        recent_orders: [],
+        last_order_at: null,
+        stats: null,
+      });
+    }
+
+    // findCustomerByUsernameForWholesaleSettings не отдаёт поля доступа.
+    customerRow = { ...customerRow, ...loadHubAuthorizationFields(customerRow) };
 
     const activeBlock = getActiveBlockForCustomerId(customerRow.id);
     const pendingBlock = activeBlock
@@ -366,10 +544,19 @@ crmRouter.get('/api/admin/crm/customer-hub/:username', authMiddleware, (req, res
       LIMIT 1
     `).get(customerRow.id) || null;
 
+    const pendingInviteBan = inviteBan || !customerRow.telegram_username
+      ? null
+      : db.prepare(`
+          SELECT id, reason, banned_by, created_at
+          FROM pending_customer_invite_bans
+          WHERE telegram_username = ? COLLATE NOCASE
+        `).get(customerRow.telegram_username) || null;
+
     // Пригласивший — как в crm-order-enrichment (одна запись на клиента).
     const referralRow = db.prepare(`
       SELECT
         cr.inviter_customer_id,
+        cr.authorized_at AS invited_at,
         COALESCE(NULLIF(TRIM(ic.telegram_username), ''), cr.inviter_username_snapshot) AS inviter_username,
         ic.first_name AS inviter_first_name,
         ic.last_name AS inviter_last_name,
@@ -384,18 +571,8 @@ crmRouter.get('/api/admin/crm/customer-hub/:username', authMiddleware, (req, res
     `).get(customerRow.id) || null;
 
     const cardProfile = findCardAccountProfileByUsername(
-      customerRow.telegram_username || req.params.username,
+      customerRow.telegram_username || raw,
     );
-
-    const tiers = getActiveWholesaleTiers().map((tier) => ({
-      id: tier.id,
-      code: tier.code,
-      label: tier.label,
-      min_order_quantity: tier.minOrderQuantity === null || tier.minOrderQuantity === undefined
-        ? null
-        : Number(tier.minOrderQuantity),
-      sort_order: Number(tier.sortOrder ?? 0),
-    }));
 
     const activeWholesaleOrder = db.prepare(`
       SELECT id, order_number, wholesale_tier_label, wholesale_min_quantity
@@ -405,7 +582,12 @@ crmRouter.get('/api/admin/crm/customer-hub/:username', authMiddleware, (req, res
       LIMIT 1
     `).get(customerRow.id) || null;
 
+    const recentOrders = loadCustomerHubOrders(customerRow.id, HUB_RECENT_ORDERS_LIMIT);
+
+    const stats = loadCustomerHubStats(customerRow.id);
+
     return res.json({
+      ghost: false,
       customer: {
         ...serializeWholesaleCustomer(customerRow),
         total_orders: Number(customerRow.total_orders || 0),
@@ -415,6 +597,8 @@ crmRouter.get('/api/admin/crm/customer-hub/:username', authMiddleware, (req, res
         ? serializeBlock(activeBlock)
         : (pendingBlock ? serializeBlock(pendingBlock, 'pending') : null),
       invite_ban: inviteBan,
+      pending_invite_ban: pendingInviteBan,
+      authorization: getCustomerAuthorizationInfo({ customer: customerRow }),
       inviter: referralRow && (referralRow.inviter_customer_id || referralRow.inviter_username)
         ? {
           customer_id: referralRow.inviter_customer_id || null,
@@ -423,10 +607,11 @@ crmRouter.get('/api/admin/crm/customer-hub/:username', authMiddleware, (req, res
           last_name: referralRow.inviter_last_name || null,
           invite_ban_id: referralRow.inviter_invite_ban_id || null,
           is_invite_banned: Number(referralRow.inviter_is_invite_banned || 0) === 1,
+          invited_at: referralRow.invited_at || null,
         }
         : null,
       card_profile: cardProfile,
-      tiers,
+      tiers: serializeHubTiers(),
       active_wholesale_order: activeWholesaleOrder
         ? {
           id: activeWholesaleOrder.id,
@@ -438,10 +623,23 @@ crmRouter.get('/api/admin/crm/customer-hub/:username', authMiddleware, (req, res
             : Number(activeWholesaleOrder.wholesale_min_quantity),
         }
         : null,
+      recent_orders: recentOrders,
+      last_order_at: recentOrders[0]?.created_at ?? null,
+      stats,
     });
   } catch (error) {
     console.error('[crm] Failed to load customer hub:', error);
     return res.status(500).json({ error: 'customer_hub_failed', message: error.message });
+  }
+});
+
+// Только COUNT — бейджи вкладки «Списки» в модалке «Клиент».
+crmRouter.get('/api/admin/crm/customer-lists/counts', authMiddleware, (_req, res) => {
+  try {
+    return res.json(getCustomerListCounts());
+  } catch (error) {
+    console.error('[crm] customer list counts error:', error);
+    return res.status(500).json({ error: 'failed' });
   }
 });
 
@@ -1103,18 +1301,12 @@ crmRouter.get('/api/admin/crm/customers', authMiddleware, (req, res) => {
     const requestedLimit = Number.parseInt(String(req.query.limit || ''), 10);
     const limit = Number.isFinite(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 100) : null;
     const rawQuery = typeof req.query.q === 'string' ? req.query.q.trim().replace(/^@+/, '') : '';
-    const unprocessedOnly = parseTruthyParam(req.query.unprocessed);
     
     const conditions = [];
     const params = {};
     
-    if (filter === 'inactive') {
-      conditions.push("c.last_order_at IS NOT NULL AND c.last_order_at < DATETIME('now', '-45 days')");
-    } else if (filter === 'cold') {
+    if (filter === 'cold') {
       conditions.push('COALESCE(c.total_orders, 0) = 0');
-    }
-    if (unprocessedOnly) {
-      conditions.push('NOT EXISTS (SELECT 1 FROM customer_feedbacks cf WHERE cf.customer_id = c.id)');
     }
     if (rawQuery) {
       params.query = `%${rawQuery}%`;
@@ -1440,8 +1632,13 @@ crmRouter.put('/api/admin/crm/block-reason-templates', authMiddleware, (req, res
 });
 
 // ----- Авторизация через пригласившего -------------------------------------
-crmRouter.get('/api/admin/crm/referral-authorizations', authMiddleware, (_req, res) => {
+crmRouter.get('/api/admin/crm/referral-authorizations', authMiddleware, (req, res) => {
   try {
+    const paging = parseListPaging(req.query);
+    const filter = ['errors', 'blocked'].includes(req.query.filter) ? req.query.filter : null;
+    if (paging.paged || filter) {
+      return res.json(listReferralAuthorizationsPage(paging, filter));
+    }
     res.json({ items: listReferralAuthorizations() });
   } catch (error) {
     console.error('[crm] referral authorizations list error:', error);
@@ -1449,7 +1646,9 @@ crmRouter.get('/api/admin/crm/referral-authorizations', authMiddleware, (_req, r
   }
 });
 
-crmRouter.get('/api/admin/crm/referral-authorization/staff-access', authMiddleware, (_req, res) => {
+crmRouter.get('/api/admin/crm/referral-authorization/staff-access', authMiddleware, (req, res) => {
+  const paging = parseListPaging(req.query);
+  if (paging.paged) return res.json(listStaffAccessGrantsPage(paging));
   return res.json(listStaffAccessGrants());
 });
 
@@ -1503,7 +1702,9 @@ crmRouter.put('/api/admin/crm/referral-authorization/settings', authMiddleware, 
   return res.json({ enabled });
 });
 
-crmRouter.get('/api/admin/crm/referral-authorization/disallowed-usernames', authMiddleware, (_req, res) => {
+crmRouter.get('/api/admin/crm/referral-authorization/disallowed-usernames', authMiddleware, (req, res) => {
+  const paging = parseListPaging(req.query);
+  if (paging.paged) return res.json(listDisallowedInviterUsernamesPage(paging));
   return res.json({ items: listDisallowedInviterUsernames() });
 });
 
@@ -1573,7 +1774,9 @@ crmRouter.put('/api/admin/crm/invite-ban-reason-templates', authMiddleware, (req
   return res.json({ templates });
 });
 
-crmRouter.get('/api/admin/crm/invite-bans', authMiddleware, (_req, res) => {
+crmRouter.get('/api/admin/crm/invite-bans', authMiddleware, (req, res) => {
+  const paging = parseListPaging(req.query);
+  if (paging.paged) return res.json(listInviteBansPage(paging));
   const result = listInviteBans();
   res.json({ items: result.active, pending: result.pending });
 });
@@ -2465,6 +2668,8 @@ crmRouter.delete('/api/admin/crm/blocks/:id', authMiddleware, (req, res) => {
 // Включает и реальные блоки и pending — с указанием kind.
 crmRouter.get('/api/admin/crm/blocks', authMiddleware, (req, res) => {
   try {
+    const paging = parseListPaging(req.query);
+    if (paging.paged) return res.json(listBlocksPage(paging));
     // Тот же предикат «активный блок», что и в utils/customer-blocks.js,
     // но с явным префиксом cb.* — без хрупких строковых replace.
     const activeBlocks = db.prepare(`
@@ -2642,60 +2847,6 @@ crmRouter.put('/api/admin/crm/discount-block-notify-template', authMiddleware, (
   }
 });
 
-// Legacy endpoint — оставлен для обратной совместимости с кодом, который ходил
-// по /customers/:id/block (например старый CrmCustomerDetail). Внутри использует
-// тот же createBlock.
-crmRouter.post('/api/admin/crm/customers/:id/block', authMiddleware, (req, res) => {
-  try {
-    const { id } = req.params;
-    const customer = db.prepare('SELECT id FROM customers WHERE id = ?').get(id);
-    if (!customer) return res.status(404).json({ error: 'not_found' });
-    let block_until = null;
-    try {
-      block_until = computeBlockUntil(req.body?.duration || { unit: 'forever' });
-    } catch (err) {
-      return res.status(400).json({ error: err.message });
-    }
-    try {
-      const result = createBlock({
-        customer_id: id,
-        block_until,
-        reason: req.body?.reason || null,
-        blocked_by: req.user?.u || 'admin',
-      });
-      res.json({ ok: true, blockId: result.block.id });
-    } catch (err) {
-      if (err.code === 'already_blocked') {
-        // Backward-compat: legacy caller (CrmCustomers all-tab, CrmCustomerDetail)
-        // ожидает идемпотентного поведения — повторный вызов «заблокировать»
-        // когда клиент уже заблокирован не должен бросать. Возвращаем 200
-        // с id существующего блока, чтобы UI остался консистентным.
-        return res.json({ ok: true, blockId: err.existing?.id ?? null, already_blocked: true });
-      }
-      throw err;
-    }
-  } catch (error) {
-    console.error('[crm] Legacy block customer error:', error);
-    res.status(500).json({ error: 'failed', message: error.message });
-  }
-});
-
-crmRouter.post('/api/admin/crm/customers/:id/unblock', authMiddleware, (req, res) => {
-  try {
-    const { id } = req.params;
-    const block = getActiveBlockForCustomerId(id);
-    if (!block) return res.json({ ok: true });
-    unblockCustomerBlock(block.id, {
-      unblocked_by: req.user?.u || 'admin',
-      unblock_reason: req.body?.unblock_reason || null,
-    });
-    res.json({ ok: true });
-  } catch (error) {
-    console.error('[crm] Legacy unblock customer error:', error);
-    res.status(500).json({ error: 'failed', message: error.message });
-  }
-});
-
 // Проверка блокировки (публичный API — миниапка).
 // Возвращает полный объект блока для рендера экрана с таймером/датой.
 crmRouter.get('/api/customers/:telegramId/check-blocks', (req, res) => {
@@ -2812,105 +2963,6 @@ crmRouter.delete('/api/admin/crm/message-templates/:id', authMiddleware, (req, r
     res.json({ ok: true });
   } catch (error) {
     console.error('[crm] Delete message template error:', error);
-    res.status(500).json({ error: 'failed', message: error.message });
-  }
-});
-
-// =========================
-// CUSTOMER FEEDBACKS (Обратная связь по клиентам)
-// =========================
-
-// Получить все feedbacks
-crmRouter.get('/api/admin/crm/customer-feedbacks', authMiddleware, (req, res) => {
-  try {
-    const feedbacks = db.prepare(`
-      SELECT * FROM customer_feedbacks
-      ORDER BY processed_at DESC
-    `).all();
-    res.json(feedbacks);
-  } catch (error) {
-    console.error('[crm] Get customer feedbacks error:', error);
-    res.status(500).json({ error: 'failed', message: error.message });
-  }
-});
-
-// Создать feedback
-crmRouter.post('/api/admin/crm/customer-feedbacks', authMiddleware, (req, res) => {
-  try {
-    const { customer_id, reason } = req.body;
-    
-    if (!customer_id || !reason) {
-      return res.status(400).json({ error: 'missing_fields' });
-    }
-    
-    // Получаем информацию о клиенте
-    const customer = db.prepare('SELECT * FROM customers WHERE id = ?').get(customer_id);
-    if (!customer) {
-      return res.status(404).json({ error: 'customer_not_found' });
-    }
-    
-    const id = generateId('feedback');
-    const customerName = [customer.first_name, customer.last_name].filter(Boolean).join(' ') || null;
-    
-    db.prepare(`
-      INSERT INTO customer_feedbacks (id, customer_id, telegram_username, customer_name, reason)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(id, customer_id, customer.telegram_username, customerName, reason);
-    
-    const feedback = db.prepare('SELECT * FROM customer_feedbacks WHERE id = ?').get(id);
-    res.json(feedback);
-  } catch (error) {
-    console.error('[crm] Create customer feedback error:', error);
-    res.status(500).json({ error: 'failed', message: error.message });
-  }
-});
-
-// Удалить feedback
-crmRouter.delete('/api/admin/crm/customer-feedbacks/:id', authMiddleware, (req, res) => {
-  try {
-    const { id } = req.params;
-    db.prepare('DELETE FROM customer_feedbacks WHERE id = ?').run(id);
-    res.json({ ok: true });
-  } catch (error) {
-    console.error('[crm] Delete customer feedback error:', error);
-    res.status(500).json({ error: 'failed', message: error.message });
-  }
-});
-
-// Удалить клиента
-crmRouter.delete('/api/admin/crm/customers/:id', authMiddleware, (req, res) => {
-  try {
-    const { id } = req.params;
-
-    const activeBlock = getActiveBlockForCustomerId(id);
-    const blockedAuthorization = db.prepare(`
-      SELECT 1
-      FROM referral_auth_states ras
-      JOIN customers c ON c.telegram_id = ras.telegram_id
-      WHERE c.id = ? AND ras.status = 'blocked'
-      LIMIT 1
-    `).get(id);
-    if (activeBlock || blockedAuthorization) {
-      return res.status(400).json({
-        error: 'must_unblock_first',
-        message: 'Сначала снимите блокировку клиента',
-      });
-    }
-    
-    // Проверяем, есть ли у клиента заказы
-    const orders = db.prepare('SELECT COUNT(*) as count FROM orders WHERE customer_id = ?').get(id);
-    if (orders && orders.count > 0) {
-      return res.status(400).json({ 
-        error: 'has_orders', 
-        message: 'Нельзя удалить клиента с заказами' 
-      });
-    }
-    
-    // Удаляем клиента (feedbacks и visit_logs удалятся автоматически через CASCADE)
-    db.prepare('DELETE FROM customers WHERE id = ?').run(id);
-    res.json({ ok: true });
-  } catch (error) {
-    console.error('[crm] Delete customer error:', error);
     res.status(500).json({ error: 'failed', message: error.message });
   }
 });

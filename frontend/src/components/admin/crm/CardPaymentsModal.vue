@@ -582,7 +582,11 @@ import { useCrmStore } from "@/stores/crm";
 type TabId = "limits" | "accounts" | "requests" | "tariffs";
 type Snapshot = NonNullable<ReturnType<typeof useCrmStore>["cardPaymentAdminSnapshot"]>;
 
-const props = defineProps<{ isOpen: boolean }>();
+const props = defineProps<{
+  isOpen: boolean;
+  /** @username или Telegram ID: окно откроется на «Аккаунтах» сразу с этим клиентом. */
+  focusAccount?: string | null;
+}>();
 const emit = defineEmits<{ close: [] }>();
 const crm = useCrmStore();
 
@@ -647,9 +651,14 @@ watch(
   () => props.isOpen,
   (open) => {
     if (open) {
-      activeTab.value = "limits";
       accountError.value = "";
+      const focus = String(props.focusAccount || "").trim().replace(/^@+/, "");
+      activeTab.value = focus ? "accounts" : "limits";
       void load();
+      if (focus) {
+        accountUsername.value = focus;
+        void searchProfile();
+      }
     } else {
       foundProfile.value = null;
       profileSearching.value = false;

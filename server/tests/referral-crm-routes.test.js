@@ -151,18 +151,71 @@ try {
     INSERT INTO referral_auth_states (telegram_id, customer_id, attempts_used, status)
     VALUES ('100', 'blocked-new', 3, 'blocked')
   `).run();
-  const blockedDelete = await json('/api/admin/crm/customers/blocked-new', {
-    method: 'DELETE', headers: auth,
-  });
-  assert.equal(blockedDelete.response.status, 400);
-  assert.equal(blockedDelete.data.error, 'must_unblock_first');
-  assert.ok(db.prepare("SELECT 1 FROM customers WHERE id = 'blocked-new'").get());
+  // --- Постраничные списки для вкладки «Списки» ---
+  const counts0 = await json('/api/admin/crm/customer-lists/counts', { headers: auth });
+  assert.equal(counts0.response.status, 200);
+  assert.equal((await json('/api/admin/crm/customer-lists/counts')).response.status, 401);
+  assert.equal(counts0.data.blocked, 1, 'активный authorization_failed блок учтён');
+  assert.equal(counts0.data.auth_errors, 2, 'пользователи 99 и 100 с ошибками');
 
-  db.prepare("UPDATE customer_blocks SET active = 0, unblocked_at = DATETIME('now') WHERE id = 'authorization-block'").run();
-  db.prepare("UPDATE referral_auth_states SET attempts_used = 0, status = 'pending' WHERE telegram_id = '100'").run();
-  assert.equal((await json('/api/admin/crm/customers/blocked-new', {
-    method: 'DELETE', headers: auth,
-  })).response.status, 200);
+  const blocksPage = await json('/api/admin/crm/blocks?limit=20', { headers: auth });
+  assert.equal(blocksPage.data.total, 1);
+  assert.equal(blocksPage.data.items[0].block_type, 'authorization_failed');
+  assert.equal(blocksPage.data.items[0].kind, 'active');
+  await json('/api/admin/crm/blocks', {
+    method: 'POST', headers: auth,
+    body: JSON.stringify({ telegram_username: 'pending_ghost', reason: 'превентивно' }),
+  });
+  const blocksAll = await json('/api/admin/crm/blocks?limit=1&offset=0', { headers: auth });
+  assert.equal(blocksAll.data.total, 2);
+  assert.equal(blocksAll.data.items.length, 1, 'limit ограничивает выдачу');
+  const blocksSearch = await json('/api/admin/crm/blocks?q=@PENDING_gh', { headers: auth });
+  assert.equal(blocksSearch.data.total, 1);
+  assert.equal(blocksSearch.data.items[0].kind, 'pending');
+  const blocksById = await json('/api/admin/crm/blocks?q=100', { headers: auth });
+  assert.equal(blocksById.data.items[0].telegram_id, '100', 'поиск по Telegram ID');
+  const blocksCapped = await json('/api/admin/crm/blocks?limit=9999', { headers: auth });
+  assert.equal(blocksCapped.data.limit, 100, 'limit не больше 100');
+  assert.ok(Array.isArray((await json('/api/admin/crm/blocks', { headers: auth })).data.active), 'без параметров формат прежний');
+
+  const errorsPage = await json('/api/admin/crm/referral-authorizations?filter=errors&limit=1', { headers: auth });
+  assert.equal(errorsPage.data.total, 2);
+  assert.equal(errorsPage.data.items.length, 1);
+  const blockedOnly = await json('/api/admin/crm/referral-authorizations?filter=blocked', { headers: auth });
+  assert.equal(blockedOnly.data.total, 1);
+  assert.equal(blockedOnly.data.items[0].telegram_id, '100');
+
+  await json('/api/admin/crm/referral-authorization/disallowed-usernames', {
+    method: 'POST', headers: auth, body: JSON.stringify({ usernames: ['ours_one', 'ours_two', 'other_acc'] }),
+  });
+  const reservedPage = await json('/api/admin/crm/referral-authorization/disallowed-usernames?q=ours&limit=1&offset=1', { headers: auth });
+  assert.equal(reservedPage.data.total, 2);
+  assert.equal(reservedPage.data.items.length, 1);
+  assert.equal(reservedPage.data.items[0].username, 'ours_two');
+
+  await json('/api/admin/crm/referral-authorization/staff-access', {
+    method: 'POST', headers: auth, body: JSON.stringify({ telegram_username: 'staff_ghost' }),
+  });
+  const staffPage = await json('/api/admin/crm/referral-authorization/staff-access?limit=20', { headers: auth });
+  assert.equal(staffPage.data.total, 1);
+  assert.equal(staffPage.data.items[0].kind, 'pending');
+
+  await json('/api/admin/crm/invite-bans', {
+    method: 'POST', headers: auth, body: JSON.stringify({ telegram_username: 'ban_ghost' }),
+  });
+  const invitePage = await json('/api/admin/crm/invite-bans?q=ban_gh', { headers: auth });
+  assert.equal(invitePage.data.total, 1);
+  assert.equal(invitePage.data.items[0].kind, 'pending');
+
+  const counts1 = await json('/api/admin/crm/customer-lists/counts', { headers: auth });
+  assert.deepEqual(
+    { r: counts1.data.reserved - counts0.data.reserved, s: counts1.data.staff_access, i: counts1.data.invite_bans, b: counts1.data.blocked },
+    { r: 3, s: 1, i: 1, b: 2 },
+  );
+
+  // Удалённые роуты больше не отвечают.
+  assert.equal((await json('/api/admin/crm/customer-feedbacks', { headers: auth })).response.status, 404);
+  assert.equal((await json('/api/admin/crm/customers/blocked-new', { method: 'DELETE', headers: auth })).response.status, 404);
   console.log('referral-crm-routes.test.js: ok');
 } finally {
   await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));

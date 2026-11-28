@@ -1199,6 +1199,7 @@
 
     <CardPaymentsModal
       :isOpen="cardPaymentsModalOpen"
+      :focus-account="cardPaymentsFocusAccount"
       @close="cardPaymentsModalOpen = false"
     />
 
@@ -1392,6 +1393,8 @@
       @inviter-action="handleCustomerHubInviterAction"
       @customer-found="rememberHubCustomer"
       @notify="handleCustomerHubNotify"
+      @open-order="openOrderFromCustomerHub"
+      @open-card-settings="openCardSettingsFromCustomerHub"
     />
 
     <!-- Блокировка клиента -->
@@ -1765,6 +1768,7 @@ import CustomerNoteModal from "@/components/admin/CustomerNoteModal.vue";
 import CustomerSettingsModal from "@/components/admin/crm/CustomerSettingsModal.vue";
 import CustomerInviteBanModal from "@/components/admin/CustomerInviteBanModal.vue";
 import DiscountBlockModal from "@/components/admin/DiscountBlockModal.vue";
+import { copyText } from '@/utils/copyText';
 import CustomerHubModal, { type CustomerHubAction, type CustomerHubActionContext, type CustomerHubInviter, type HubInviterAction } from "@/components/admin/crm/CustomerHubModal.vue";
 import FindInviterModal, { type InviterAction } from "@/components/admin/crm/FindInviterModal.vue";
 import FinancialDayCloseModal from "@/components/admin/crm/FinancialDayCloseModal.vue";
@@ -2062,6 +2066,11 @@ function maybeReopenCustomerHub() {
   showCustomerHubModal.value = true;
 }
 
+function openOrderFromCustomerHub(orderId: string) {
+  closeCustomerHub();
+  viewOrder(orderId);
+}
+
 function handleCustomerHubNotify(payload: { ok: boolean; message: string }) {
   showOrderToast({ kind: payload.ok ? 'success' : 'error', message: payload.message });
 }
@@ -2168,26 +2177,7 @@ function openBlockModal(prefill?: string, customerId: string | null = null) {
 async function copyInviterUsername(username?: string | null) {
   if (!username) return;
   const text = `@${username}`;
-  let copied = false;
-  try {
-    await navigator.clipboard.writeText(text);
-    copied = true;
-  } catch {
-    const input = document.createElement('textarea');
-    input.value = text;
-    input.style.position = 'fixed';
-    input.style.opacity = '0';
-    document.body.appendChild(input);
-    try {
-      input.select();
-      copied = document.execCommand('copy');
-    } catch {
-      copied = false;
-    } finally {
-      input.remove();
-    }
-  }
-  if (!copied) {
+  if (!(await copyText(text))) {
     window.prompt('Скопируйте username', text);
   } else {
     showOrderToast({ kind: 'success', message: `${text} скопирован` });
@@ -2463,8 +2453,18 @@ watch(cardPaymentsModalOpen, (open) => {
   if (!open) void refreshToolbarCardLimit();
 });
 
-function openCardPaymentsModal() {
+// Клиент, на котором окно оплаты картой откроется сразу (из карточки клиента).
+const cardPaymentsFocusAccount = ref<string | null>(null);
+
+function openCardPaymentsModal(focusAccount: string | null = null) {
+  cardPaymentsFocusAccount.value = focusAccount;
   cardPaymentsModalOpen.value = true;
+}
+
+/** Клик по данным оплаты картой в карточке клиента — к его настройкам в «Аккаунтах». */
+function openCardSettingsFromCustomerHub(account: string) {
+  closeCustomerHub();
+  openCardPaymentsModal(account);
 }
 
 async function loadPickupCells() {

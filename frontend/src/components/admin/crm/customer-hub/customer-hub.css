@@ -1,0 +1,318 @@
+/* Карточка клиента в стиле страницы «Заказы».
+   Как читается окно:
+   — кто это и какой у него доступ — в заголовке окна (аватар, имя, статус);
+   — у каждого блока свой «якорь» — градиентная иконка в заголовке, глаз находит блок по ней;
+   — синий градиент CRM — навигация и главное действие, красный градиент — ограничения;
+   — данные лежат на мягком бело-голубом градиенте (как итоги на «Заказах»), остальное — белое;
+   — текст лёгкий: жирным только цифры и названия, подписи — обычным весом.
+   Зелёный и жёлтый не используются. */
+.crm-customer-hub,
+.crm-hub-title {
+  --hub-ink: #081b4b;
+  --hub-text: #233e70;
+  --hub-muted: #66799e;
+  --hub-faint: #8999b7;
+  --hub-line: #eaf0f9;
+  --hub-field: #dce8fa;
+  --hub-soft: #f7fbff;
+  --hub-tint: #f2f6fd;
+  --hub-accent: #1759ed;
+  --hub-accent-soft: #edf5ff;
+  --hub-danger-ink: #d92342;
+  --hub-danger-soft: #fff1f3;
+  --hub-primary: linear-gradient(100deg, #05b8ff, #185dff);
+  --hub-secondary: linear-gradient(#f7faff, #e9f0fa);
+  --hub-danger: linear-gradient(115deg, #ff685a, #fa104f);
+  --hub-card: linear-gradient(140deg, #fff, #edf6ff);
+}
+.crm-customer-hub {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  color: var(--hub-ink);
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.crm-customer-hub *, .crm-customer-hub *::before { box-sizing: border-box; }
+.crm-customer-hub p { margin: 0; }
+.crm-customer-hub button { font-family: inherit; }
+.crm-customer-hub :is(input, textarea, button):focus-visible { outline: 2px solid #0958ff; outline-offset: 2px; }
+.crm-customer-hub ::selection { background: #d9ecff; color: var(--hub-ink); }
+
+/* ===== Компоновка ===== */
+.crm-hub-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.crm-hub-layout { display: grid; grid-template-columns: minmax(0, 292px) minmax(0, 1fr); gap: 14px; align-items: start; }
+.crm-hub-col { display: grid; gap: 14px; min-width: 0; }
+
+/* Карточка-блок: одна зона внимания. */
+.crm-hub-panel {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px 16px 16px;
+  border: 1px solid var(--hub-line);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 2px 8px #20386908;
+}
+.crm-hub-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 28px; }
+.crm-hub-section-title {
+  color: #5b6d93;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  line-height: 1.3;
+  text-transform: uppercase;
+}
+/* Заголовок блока: градиентная иконка-якорь + подпись. */
+.crm-hub-head { display: inline-flex; align-items: center; gap: 9px; min-width: 0; }
+.crm-hub-head-icon {
+  display: grid; place-items: center; flex-shrink: 0;
+  width: 26px; height: 26px; border-radius: 8px;
+  background: var(--hub-primary); color: #fff;
+}
+.crm-hub-head-icon svg { width: 15px; height: 15px; stroke-width: 2; }
+/* Части одной карточки (Доступ: пригласивший + авторизация) — через тонкий разделитель. */
+.crm-hub-subsection { display: grid; align-content: start; gap: 8px; min-width: 0; }
+.crm-hub-subsection + .crm-hub-subsection { padding-top: 12px; border-top: 1px solid var(--hub-line); }
+.crm-hub-access-panel { gap: 12px; }
+
+/* ===== Текст ===== */
+.crm-note-hint { color: var(--hub-muted); font-size: 12px; line-height: 1.45; }
+.crm-note-error { padding: 8px 12px; border: 1px solid #ffd4dc; border-radius: 12px; background: #fff4f6; color: #b82648; font-size: 12px; overflow-wrap: anywhere; }
+.crm-hub-loading p { color: var(--hub-muted); }
+.crm-hub-fact-list { display: grid; gap: 6px; }
+.crm-hub-fact { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; min-width: 0; font-size: 12px; }
+.crm-hub-fact > span { flex: 0 0 auto; color: var(--hub-muted); }
+.crm-hub-fact > strong { min-width: 0; color: var(--hub-ink); font-weight: 650; text-align: right; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.crm-hub-link { padding: 0; border: 0; background: none; color: var(--hub-accent); font: inherit; font-weight: 700; cursor: pointer; }
+.crm-hub-link:hover { text-decoration: underline; }
+.crm-hub-sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; clip: rect(0 0 0 0); clip-path: inset(50%); overflow: hidden; white-space: nowrap; }
+
+/* ===== Поля ===== */
+.crm-customer-hub label { display: block; }
+.crm-customer-hub input, .crm-customer-hub textarea {
+  width: 100%; min-width: 0; max-width: 100%; padding: 9px 12px;
+  border: 1px solid var(--hub-field); border-radius: 12px; background: var(--hub-soft);
+  color: var(--hub-ink); font: inherit; font-size: 13px; line-height: 1.4; box-shadow: none; caret-color: #0958ff;
+}
+.crm-customer-hub input::placeholder, .crm-customer-hub textarea::placeholder { color: #9ba8c0; opacity: 1; }
+.crm-customer-settings-search { display: flex; gap: 8px; align-items: stretch; }
+.crm-customer-settings-field { flex: 1 1 auto; }
+.crm-note-username { position: relative; }
+
+/* ===== Кнопки: три вида на всё окно ===== */
+.crm-hub-btn,
+.crm-customer-hub .crm-note-secondary,
+.crm-customer-settings-find {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 32px; padding: 6px 14px; border: 0; border-radius: 10px;
+  background: var(--hub-secondary); color: var(--hub-text);
+  font-size: 12px; font-weight: 750; line-height: 1.2; white-space: nowrap; cursor: pointer;
+  transition: filter 140ms ease-out;
+}
+.crm-hub-btn--primary, .crm-customer-settings-find { background: var(--hub-primary); color: #fff; box-shadow: 0 6px 14px #148cff2e; }
+.crm-hub-btn--danger { background: linear-gradient(115deg, #ff685a, #fa104f); color: #fff; box-shadow: 0 6px 14px #fa104f24; }
+.crm-customer-settings-find { min-height: 40px; padding: 8px 20px; border-radius: 12px; font-size: 13px; }
+.crm-customer-hub .crm-note-secondary { min-height: 34px; }
+:is(.crm-hub-btn, .crm-note-secondary, .crm-customer-settings-find):not(:disabled):hover { filter: brightness(1.04); }
+:is(.crm-hub-btn, .crm-note-secondary, .crm-customer-settings-find):disabled { opacity: .5; cursor: not-allowed; }
+.crm-hub-inline-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.crm-hub-stack { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-width: 0; }
+.crm-hub-stack > .crm-note-hint { flex-basis: 100%; }
+.crm-hub-stack:empty { display: none; }
+
+/* Подтверждение: спокойная нейтральная плашка, решение — кнопками. */
+.crm-hub-confirm { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid var(--hub-field); border-radius: 12px; background: var(--hub-soft); font-size: 12px; }
+.crm-hub-confirm p { color: var(--hub-text); }
+
+/* ===== Плашки статусов: нейтральная, синяя, красная ===== */
+.crm-hub-plate {
+  display: inline-flex; align-items: center;
+  padding: 3px 9px; border-radius: 999px;
+  background: #f0f4fa; color: #425778;
+  font-size: 11px; font-weight: 700; line-height: 1.3; white-space: nowrap;
+}
+.crm-hub-plate--info { background: #edf5ff; color: var(--hub-accent); }
+.crm-hub-plate--danger { background: #fff1f3; color: #d92342; }
+/* Статус оплаты картой — главный ответ блока, поэтому залит градиентом. */
+.crm-hub-card-heading .crm-hub-plate--info { background: var(--hub-primary); color: #fff; box-shadow: 0 4px 10px #148cff2e; }
+.crm-hub-card-heading .crm-hub-plate--danger { background: var(--hub-danger); color: #fff; box-shadow: 0 4px 10px #fa104f24; }
+
+/* ===== Сегмент «Клиент · Списки» ===== */
+.crm-hub-segment { display: inline-grid; grid-auto-flow: column; gap: 2px; padding: 3px; border-radius: 12px; background: #eef3fa; }
+.crm-hub-segment-btn { min-height: 30px; padding: 4px 16px; border: 0; border-radius: 9px; background: transparent; color: var(--hub-muted); font-size: 13px; font-weight: 750; cursor: pointer; }
+.crm-hub-segment-btn:hover:not(.is-active) { color: var(--hub-text); }
+.crm-hub-segment-btn.is-active { background: #fff; color: var(--hub-ink); box-shadow: 0 2px 8px #20386914; }
+
+/* ===== Заголовок окна: аватар, имя, статус доступа ===== */
+.crm-hub-title { display: flex; align-items: center; gap: 10px; min-width: 0; color: var(--hub-ink); text-transform: none; letter-spacing: normal; font-weight: 500; font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; }
+.crm-hub-avatar {
+  display: grid; place-items: center; flex-shrink: 0;
+  width: 36px; height: 36px; border-radius: 11px;
+  background: var(--hub-primary); color: #fff; font-size: 13px; font-weight: 800;
+}
+.crm-hub-title-main { display: grid; gap: 2px; min-width: 0; }
+.crm-hub-title-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; }
+.crm-hub-title-name { min-width: 0; font-size: 16px; font-weight: 800; letter-spacing: -.02em; line-height: 1.25; overflow-wrap: anywhere; }
+.crm-hub-customer-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; color: var(--hub-muted); font-size: 12px; font-weight: 500; line-height: 1.4; }
+.crm-hub-copy {
+  padding: 0; border: 0; background: none; color: var(--hub-faint);
+  font: inherit; font-variant-numeric: tabular-nums; cursor: pointer;
+}
+.crm-hub-copy:hover { color: var(--hub-accent); }
+.crm-hub-copy:focus-visible { outline: 2px solid #0958ff; outline-offset: 2px; border-radius: 4px; }
+
+/* Отметки над колонками: блокировка и причины ограничений. */
+.crm-hub-notices { display: grid; gap: 6px; }
+/* Блокировка — единственная заметная красная зона карточки. */
+.crm-hub-block-notice { display: grid; gap: 2px; padding: 9px 12px; border: 1px solid #ffd4dc; border-radius: 12px; background: #fff4f6; color: #b82648; font-size: 12px; overflow-wrap: anywhere; }
+.crm-hub-block-notice strong { font-weight: 800; }
+.crm-hub-block-notice small { color: #c4566f; font-size: 11px; }
+
+/* ===== Действия: сначала рабочие (синие), под разделителем — ограничения.
+   Красный градиент — только у блокировки, остальные ограничения — мягкая красная плитка. ===== */
+.crm-hub-actions { display: grid; gap: 1px; margin: 0 -6px; }
+.crm-hub-action {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; min-height: 34px; padding: 3px 6px;
+  border: 0; border-radius: 10px; background: transparent;
+  color: #102456; font-size: 13px; font-weight: 600; line-height: 1.3; text-align: left;
+  cursor: pointer; transition: background-color 140ms ease-out;
+}
+.crm-hub-action-icon {
+  display: grid; place-items: center; flex-shrink: 0;
+  width: 28px; height: 28px; border-radius: 8px;
+  background: var(--hub-primary); color: #fff;
+}
+.crm-hub-action-icon svg { width: 15px; height: 15px; stroke-width: 2; }
+.crm-hub-action > span:not(.crm-hub-action-icon) { min-width: 0; overflow-wrap: anywhere; }
+.crm-hub-action:hover:not(:disabled) { background: var(--hub-tint); }
+.crm-hub-action:disabled { opacity: .5; cursor: not-allowed; }
+.crm-hub-action--danger .crm-hub-action-icon { background: var(--hub-danger); color: #fff; }
+.crm-hub-action--soft-danger .crm-hub-action-icon { background: var(--hub-danger-soft); color: var(--hub-danger-ink); }
+:is(.crm-hub-action--danger, .crm-hub-action--soft-danger):hover:not(:disabled) { background: #fff6f8; }
+.crm-hub-actions-sep { height: 1px; margin: 3px 6px; background: var(--hub-line); }
+.crm-hub-actions > .crm-hub-confirm { margin: 0 6px; }
+
+/* ===== Оплата картой ===== */
+.crm-hub-card-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+/* Данные — кнопка перехода в настройки карты: мягкая подсветка, как плашка лимита на «Заказах». */
+.crm-hub-card-details {
+  display: grid; gap: 6px; width: 100%; padding: 10px 12px;
+  border: 1px solid var(--hub-field); border-radius: 12px; background: var(--hub-card);
+  color: inherit; font: inherit; text-align: left; cursor: pointer;
+  transition: border-color 140ms ease-out, box-shadow 140ms ease-out;
+}
+.crm-hub-card-details:not(:disabled):hover { border-color: #9cc2ff; box-shadow: 0 6px 16px #148cff14; }
+.crm-hub-card-details:disabled { cursor: default; }
+.crm-hub-card-empty { color: var(--hub-muted); font-size: 12px; line-height: 1.45; }
+.crm-hub-card-more { display: inline-flex; align-items: center; gap: 2px; color: var(--hub-accent); font-size: 12px; font-weight: 700; }
+.crm-hub-card-more svg { width: 14px; height: 14px; transition: transform 140ms ease-out; }
+.crm-hub-card-details:not(:disabled):hover .crm-hub-card-more svg { transform: translateX(2px); }
+.crm-hub-card-buttons { display: flex; gap: 6px; }
+.crm-hub-card-buttons > button { flex: 1 1 0; min-width: 0; }
+
+/* ===== Статистика ===== */
+.crm-hub-stats { gap: 10px; }
+.crm-hub-stat-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.crm-hub-stat { display: grid; align-content: start; gap: 4px; min-width: 0; padding: 11px 13px; border: 1px solid var(--hub-field); border-radius: 13px; background: var(--hub-card); }
+.crm-hub-stat-label { color: #5b6d93; font-size: 10px; font-weight: 800; letter-spacing: .08em; line-height: 1.3; text-transform: uppercase; }
+.crm-hub-stat-value { color: var(--hub-ink); font-size: 21px; font-weight: 800; letter-spacing: -.03em; line-height: 1.2; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.crm-hub-stat-unit { margin-left: 3px; color: var(--hub-muted); font-size: 11px; font-weight: 700; letter-spacing: 0; }
+.crm-hub-stat small { color: var(--hub-muted); font-size: 11px; line-height: 1.3; overflow-wrap: anywhere; }
+.crm-hub-stat small.is-danger { color: var(--hub-danger-ink); font-weight: 700; }
+.crm-hub-stat-breakdown { display: grid; gap: 1px; }
+.crm-hub-stat-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; padding: 0 2px; color: var(--hub-muted); font-size: 12px; }
+.crm-hub-stat-foot > span { display: inline-flex; align-items: center; gap: 6px; min-width: 0; overflow-wrap: anywhere; }
+[data-test="customer-hub-stat-favorite"] { color: var(--hub-ink); font-weight: 700; }
+.crm-hub-stat-foot svg { width: 14px; height: 14px; flex-shrink: 0; color: #fa3d5a; }
+.crm-hub-stat-foot em { color: var(--hub-muted); font-style: normal; font-weight: 600; }
+
+/* ===== Последние заказы: строка — переход в заказ ===== */
+.crm-hub-orders { display: grid; margin: 0 -6px; padding: 0; list-style: none; }
+.crm-hub-orders li + li { border-top: 1px solid #f0f4fa; }
+.crm-hub-order-row {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 6px;
+  border: 0; border-radius: 10px; background: none; color: inherit; font: inherit; font-size: 12px; text-align: left; cursor: pointer;
+  transition: background-color 140ms ease-out;
+}
+.crm-hub-order-row:hover { background: var(--hub-tint); }
+.crm-hub-order-row > strong:first-child { min-width: 52px; font-weight: 700; }
+.crm-hub-order-date { color: var(--hub-muted); }
+.crm-hub-orders-amount { margin-left: auto; font-weight: 700; font-variant-numeric: tabular-nums; }
+.crm-hub-order-arrow { width: 14px; height: 14px; flex-shrink: 0; color: var(--hub-faint); transition: transform 140ms ease-out, color 140ms ease-out; }
+.crm-hub-order-row:hover .crm-hub-order-arrow { color: var(--hub-accent); transform: translateX(2px); }
+.crm-hub-order-row:disabled { cursor: default; }
+/* Вся история раскрывается в этом же блоке со своей прокруткой. */
+.crm-hub-orders.is-history { max-height: 320px; overflow-y: auto; overscroll-behavior: contain; }
+.crm-hub-orders-more { justify-self: start; font-size: 12px; }
+.crm-hub-orders-more:disabled { color: var(--hub-muted); cursor: default; text-decoration: none; }
+
+/* ===== Заметка ===== */
+.crm-hub-note-text { color: var(--hub-text); font-size: 13px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* ===== Пригласивший ===== */
+.crm-hub-inviter-line { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; }
+.crm-hub-inviter-text { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; min-width: 0; overflow-wrap: anywhere; }
+.crm-hub-inviter-label, .crm-hub-inviter-date { color: var(--hub-muted); }
+.crm-hub-inviter-text strong { font-weight: 700; }
+
+/* Технические подробности авторизации — свёрнуты по умолчанию. */
+.crm-hub-details { border-top: 1px solid var(--hub-line); padding-top: 8px; }
+.crm-hub-details > summary { width: fit-content; color: var(--hub-accent); font-size: 12px; font-weight: 700; cursor: pointer; }
+.crm-hub-details > summary:hover { text-decoration: underline; }
+.crm-hub-details[open] > summary { margin-bottom: 8px; }
+.crm-hub-details-body { display: grid; gap: 8px; }
+.crm-hub-inviter { display: grid; gap: 8px; }
+.crm-hub-inviter-identity { display: grid; gap: 2px; padding: 10px 12px; border-radius: 12px; background: var(--hub-soft); overflow-wrap: anywhere; }
+.crm-hub-inviter-identity strong { font-size: 13px; font-weight: 750; }
+.crm-hub-inviter-identity span { color: var(--hub-muted); font-size: 12px; }
+.crm-hub-inviter-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.crm-hub-inviter-actions button {
+  min-height: 34px; padding: 6px 12px; border: 0; border-radius: 10px;
+  background: var(--hub-secondary); color: var(--hub-text);
+  font-size: 12px; font-weight: 700; line-height: 1.3; text-align: left; overflow-wrap: anywhere; cursor: pointer;
+}
+.crm-hub-inviter-actions button:hover:not(:disabled) { filter: brightness(1.04); }
+.crm-hub-inviter-actions button:disabled { opacity: .5; cursor: not-allowed; }
+.crm-hub-inviter-actions .crm-hub-inviter-danger { color: var(--hub-danger-ink); }
+
+/* ===== Вкладка «Списки» ===== */
+.crm-hub-lists { display: grid; gap: 10px; min-width: 0; }
+.crm-hub-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.crm-hub-chip {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 4px 12px;
+  border: 0; border-radius: 999px; background: var(--hub-secondary); color: var(--hub-text);
+  font-size: 12px; font-weight: 750; cursor: pointer;
+}
+.crm-hub-chip:hover:not(.is-active) { filter: brightness(1.04); }
+.crm-hub-chip.is-active { background: var(--hub-primary); color: #fff; box-shadow: 0 6px 14px #148cff2e; }
+.crm-hub-chip-badge { min-width: 20px; padding: 1px 7px; border-radius: 999px; background: #fff; color: var(--hub-text); font-size: 11px; text-align: center; }
+.crm-hub-chip.is-active .crm-hub-chip-badge { background: #ffffff33; color: #fff; }
+.crm-hub-list-search { display: grid; }
+.crm-hub-reserved-form { display: grid; gap: 6px; padding: 10px 12px; border: 1px dashed var(--hub-field); border-radius: 12px; }
+.crm-hub-reserved-form > button { justify-self: start; }
+.crm-hub-rows { display: grid; margin: 0 -6px; padding: 0; list-style: none; }
+.crm-hub-row { display: flex; align-items: center; gap: 10px; padding: 7px 6px; border-radius: 10px; }
+.crm-hub-row + .crm-hub-row { border-top: 1px solid #f0f4fa; }
+.crm-hub-row:hover { background: var(--hub-tint); }
+.crm-hub-row-main { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 8px; flex: 1 1 auto; min-width: 0; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.crm-hub-row-main:disabled { cursor: default; }
+.crm-hub-row-main strong { font-weight: 750; overflow-wrap: anywhere; }
+.crm-hub-row-main span, .crm-hub-row-main small { color: var(--hub-muted); font-size: 12px; overflow-wrap: anywhere; }
+.crm-hub-row-confirm { display: flex; gap: 6px; flex: 0 0 auto; }
+
+/* ===== Адаптив ===== */
+@media (max-width: 760px) {
+  .crm-hub-layout { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 560px) {
+  .crm-customer-settings-search { flex-direction: column; }
+  .crm-hub-stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .crm-hub-inviter-actions { grid-template-columns: minmax(0, 1fr); }
+  .crm-hub-row { flex-wrap: wrap; }
+}
+@media (prefers-reduced-motion: reduce) { .crm-customer-hub * { transition: none !important; } }

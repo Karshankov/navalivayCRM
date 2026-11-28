@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { mount } from "@vue/test-utils";
+import { flushPromises, mount } from "@vue/test-utils";
 import { nextTick } from "vue";
 import CardPaymentsModal from "@/components/admin/crm/CardPaymentsModal.vue";
 
@@ -336,6 +336,22 @@ describe("CardPaymentsModal — аккаунты", () => {
     });
     wrapper.unmount();
     crmStoreMock.searchCardProfile = defaultSearchProfile;
+  });
+
+  it("focusAccount открывает «Аккаунты» сразу с карточкой этого клиента", async () => {
+    const wrapper = mount(CardPaymentsModal, {
+      props: { isOpen: true, focusAccount: "@alice" },
+      global: { stubs: { teleport: true, transition: false } },
+    });
+    await flushPromises();
+    expect(crmStoreMock.searchCardProfile).toHaveBeenCalledWith("alice");
+    const active = wrapper.findAll("nav button").find((b) => b.attributes("aria-current") === "page");
+    expect(active?.text()).toContain("Аккаунты");
+    expect(
+      (wrapper.find('input[aria-label="Telegram username без собаки"]').element as HTMLInputElement).value,
+    ).toBe("alice");
+    expect(wrapper.text()).toContain("@alice");
+    wrapper.unmount();
   });
 
   it("поиск по @username загружает карточку клиента и разрешение в один клик", async () => {

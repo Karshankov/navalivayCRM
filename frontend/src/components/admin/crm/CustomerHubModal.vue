@@ -2,298 +2,255 @@
   <AdminModal
     :is-open="isOpen"
     title="Клиент"
-    description="Карточка клиента и все действия с ним в одном месте."
-    size="md"
+    size="xl"
     reference-design
     :show-actions="false"
     @close="handleClose"
     @cancel="handleClose"
   >
+    <template #title>
+      <HubProfileHeader v-if="hub && tab === 'client'" :hub="hub" />
+      <template v-else>Клиент</template>
+    </template>
     <div class="crm-customer-hub" :aria-busy="busy ? 'true' : undefined">
-      <!-- Статус для скринридеров: найден клиент / идёт поиск. -->
       <p class="crm-hub-sr-only" role="status" aria-live="polite">{{ srStatus }}</p>
-      <!-- Поиск по @username: скрываем, пока грузится предзаполненный клиент. -->
-      <section v-if="!hub && searching" class="crm-hub-panel crm-hub-loading" aria-live="polite">
-        <span class="crm-hub-section-title">Клиент</span>
-        <p>Загружаем данные клиента…</p>
-      </section>
-      <section v-else-if="!hub" class="crm-hub-panel crm-hub-search">
-        <label for="customer-hub-username" class="crm-hub-section-title">Telegram username</label>
-        <form class="crm-customer-settings-search" @submit.prevent="search">
-          <div class="crm-note-username crm-customer-settings-field">
-            <span aria-hidden="true">@</span>
-            <input
-              id="customer-hub-username"
-              ref="usernameInputRef"
-              v-model.trim="formUsername"
-              type="text"
-              placeholder="username"
-              autocomplete="off"
-              autocapitalize="none"
-              :spellcheck="false"
-              aria-describedby="customer-hub-hint"
-              required
-            >
-          </div>
-          <button
-            type="submit"
-            class="crm-customer-settings-find"
-            :disabled="searching"
-            data-test="customer-hub-find"
-          >{{ searching ? 'Ищем…' : 'Найти' }}</button>
-        </form>
-        <p id="customer-hub-hint" class="crm-note-hint">
-          Клиент должен быть в базе — найдём по username из его заказов.
-        </p>
-      </section>
 
-      <template v-if="hub">
-        <!-- Обзор: карточка клиента и оплата картой в одну строку. -->
-        <div class="crm-hub-overview">
-          <!-- Карточка клиента -->
-          <section class="crm-hub-panel crm-hub-customer-card" data-test="customer-hub-customer">
-            <div class="crm-hub-customer-head">
-              <span class="crm-hub-avatar" aria-hidden="true">{{ customerInitials }}</span>
-              <div class="crm-hub-customer-main">
-                <strong data-test="customer-hub-name">{{ customerName || 'Клиент' }}</strong>
-                <span>@{{ hub.customer.telegram_username || formUsername }}</span>
-                <span v-if="hub.customer.telegram_id">TG ID {{ hub.customer.telegram_id }}</span>
-                <span v-if="hub.customer.total_orders > 0">{{ hub.customer.total_orders }} {{ pluralOrders(hub.customer.total_orders) }}</span>
-              </div>
-            </div>
-            <div class="crm-hub-customer">
-              <div class="crm-hub-badges">
-                <span
-                  class="crm-hub-plate"
-                  :class="hub.invite_ban ? 'crm-hub-plate--danger' : 'crm-hub-plate--success'"
-                  data-test="customer-hub-invite-ban-badge"
-                >{{ hub.invite_ban ? 'Приглашения запрещены' : 'Приглашения разрешены' }}</span>
-                <span v-if="hub.block" class="crm-hub-plate crm-hub-plate--danger" data-test="customer-hub-block-badge">
-                  {{ hub.block.kind === 'pending' ? 'Блокировка ожидает' : 'Заблокирован' }}
-                </span>
-                <span v-if="hub.customer.wholesale_min_override !== null" class="crm-hub-plate crm-hub-plate--info">
-                  Опт-минимум: {{ hub.customer.wholesale_min_override }}
-                </span>
-              </div>
-              <p v-if="hub.invite_ban?.reason" class="crm-note-hint">Причина запрета приглашать: {{ hub.invite_ban.reason }}</p>
-            </div>
-            <p v-if="hub.block?.reason" class="crm-note-hint">Причина блокировки: {{ hub.block.reason }}</p>
-          </section>
-
-          <!-- Виджет оплаты картой -->
-          <section class="crm-hub-panel crm-hub-card" data-test="customer-hub-card">
-            <div class="crm-hub-card-heading">
-              <span class="crm-hub-section-title">Оплата картой</span>
-              <span
-                class="crm-hub-plate"
-                :class="cardStatus.class"
-                data-test="customer-hub-card-status"
-              >{{ cardStatus.label }}</span>
-            </div>
-
-            <div v-if="hub.card_profile" class="crm-hub-card-details">
-              <div class="crm-hub-card-row">
-                <span>Максимум на заказ</span>
-                <strong>{{ formatByn(hub.card_profile.max_order_minor) }}</strong>
-              </div>
-              <div v-if="hub.card_profile.tariff_title" class="crm-hub-card-row">
-                <span>Тариф</span>
-                <strong>{{ hub.card_profile.tariff_title }}</strong>
-              </div>
-              <div class="crm-hub-card-row">
-                <span>Пауза после заказа</span>
-                <strong data-test="customer-hub-card-cooldown">{{ cooldownText }}</strong>
-              </div>
-            </div>
-            <p v-else class="crm-note-hint">Аккаунт не настроен. Разрешите оплату — лимиты возьмутся стандартные.</p>
-
-            <button
-              type="button"
-              class="crm-hub-card-toggle"
-              :class="cardPaymentAllowed ? 'crm-hub-card-toggle--danger' : 'crm-hub-card-toggle--primary'"
-              :disabled="togglingCard || !hub.customer.telegram_id"
-              data-test="customer-hub-card-toggle"
-              @click="toggleCardPayment"
-            >
-              {{ togglingCard ? 'Сохраняем…' : toggleCardLabel }}
-            </button>
-            <!-- Ошибка виджета — рядом с его кнопкой, а не в подвале модалки. -->
-            <p v-if="cardError" class="crm-note-error" role="alert">{{ cardError }}</p>
-            <p v-if="!hub.customer.telegram_id" class="crm-note-hint">
-              У клиента нет Telegram ID — заведите карточный аккаунт в меню «Действия с заказами» → «Оплата картой».
-            </p>
-          </section>
-        </div>
-
-        <!-- Действия -->
-        <section class="crm-hub-panel">
-          <span class="crm-hub-section-title">Действия</span>
-          <div class="crm-hub-actions">
-            <button
-              type="button"
-              class="crm-hub-action crm-hub-action--danger"
-              :disabled="busy"
-              data-test="customer-hub-block"
-              @click="emitAction('block')"
-            >
-              <span class="crm-hub-action-icon" aria-hidden="true"><NoSymbolIcon /></span>
-              <span>{{ hub.block ? 'Заблокировать заново' : 'Заблокировать' }}</span>
-              <ChevronRightIcon aria-hidden="true" class="crm-hub-action-arrow" />
-            </button>
-            <button
-              type="button"
-              class="crm-hub-action crm-hub-action--danger"
-              :disabled="busy"
-              data-test="customer-hub-discount-block"
-              @click="emitAction('discount-block')"
-            >
-              <span class="crm-hub-action-icon" aria-hidden="true"><LockClosedIcon /></span>
-              <span>{{ hub.customer.discount_block?.blocked ? `Скидки заморожены до ${discountBlockUntilLabel}` : 'Заморозить скидки' }}</span>
-              <ChevronRightIcon aria-hidden="true" class="crm-hub-action-arrow" />
-            </button>
-            <button
-              type="button"
-              class="crm-hub-action"
-              :disabled="busy"
-              data-test="customer-hub-note"
-              @click="emitAction('note')"
-            >
-              <span class="crm-hub-action-icon" aria-hidden="true"><PencilSquareIcon /></span>
-              <span>Сделать заметку</span>
-              <ChevronRightIcon aria-hidden="true" class="crm-hub-action-arrow" />
-            </button>
-            <button
-              v-if="!hub.invite_ban"
-              type="button"
-              class="crm-hub-action crm-hub-action--danger"
-              :disabled="busy"
-              data-test="customer-hub-invite-ban"
-              @click="emitAction('invite-ban')"
-            >
-              <span class="crm-hub-action-icon" aria-hidden="true"><UserMinusIcon /></span>
-              <span>Запретить приглашать</span>
-              <ChevronRightIcon aria-hidden="true" class="crm-hub-action-arrow" />
-            </button>
-            <button
-              v-else
-              type="button"
-              class="crm-hub-action crm-hub-action--info"
-              :disabled="busy"
-              data-test="customer-hub-invite-unban"
-              @click="emitAction('remove-invite-ban')"
-            >
-              <span class="crm-hub-action-icon" aria-hidden="true"><CheckCircleIcon /></span>
-              <span>Разрешить приглашать</span>
-              <ChevronRightIcon aria-hidden="true" class="crm-hub-action-arrow" />
-            </button>
-            <button
-              type="button"
-              class="crm-hub-action"
-              :disabled="busy"
-              data-test="customer-hub-inviter"
-              @click="toggleInviter"
-            >
-              <span class="crm-hub-action-icon" aria-hidden="true"><UserGroupIcon /></span>
-              <span>{{ hub.inviter ? 'Пригласивший' : 'Найти пригласившего' }}</span>
-              <component
-                :is="hub.inviter ? ChevronDownIcon : ChevronRightIcon"
-                aria-hidden="true"
-                class="crm-hub-action-arrow"
-                :class="{ 'is-expanded': inviterExpanded }"
-              />
-            </button>
-            <button
-              type="button"
-              class="crm-hub-action crm-hub-action--info"
-              :disabled="busy"
-              data-test="customer-hub-wholesale"
-              @click="emitAction('wholesale')"
-            >
-              <span class="crm-hub-action-icon" aria-hidden="true"><Cog6ToothIcon /></span>
-              <span>Настройки опта</span>
-              <ChevronRightIcon aria-hidden="true" class="crm-hub-action-arrow" />
-            </button>
-            <button
-              type="button"
-              class="crm-hub-action"
-              :disabled="busy || !(hub.customer.telegram_username || hub.customer.telegram_id)"
-              data-test="customer-hub-chat"
-              @click="emitAction('chat')"
-            >
-              <span class="crm-hub-action-icon" aria-hidden="true"><PaperAirplaneIcon /></span>
-              <span>Написать в Telegram</span>
-              <ChevronRightIcon aria-hidden="true" class="crm-hub-action-arrow" />
-            </button>
-            <button
-              v-if="hubOrderId"
-              type="button"
-              class="crm-hub-action"
-              :disabled="busy || Boolean(generatingMessage)"
-              data-test="customer-hub-contact"
-              @click="emitAction('contact')"
-            >
-              <span class="crm-hub-action-icon" aria-hidden="true"><ChatBubbleLeftRightIcon /></span>
-              <span>{{ generatingMessage ? 'Подготавливаем…' : 'Написать клиенту' }}</span>
-              <ChevronRightIcon aria-hidden="true" class="crm-hub-action-arrow" />
-            </button>
-          </div>
-        </section>
-
-        <!-- Пригласивший -->
-        <section
-          v-if="hub.inviter && inviterExpanded"
-          class="crm-hub-panel crm-hub-inviter"
-          data-test="customer-hub-inviter-panel"
-        >
-          <span class="crm-hub-section-title">Пригласивший</span>
-          <div class="crm-hub-inviter-identity">
-            <div>
-              <strong>{{ inviterName || 'Пригласивший' }}</strong>
-              <span>@{{ hub.inviter.username || 'username не указан' }}</span>
-            </div>
-            <span v-if="hub.inviter.is_invite_banned" class="crm-hub-plate crm-hub-plate--danger">
-              Приглашения запрещены
-            </span>
-          </div>
-          <p class="crm-note-hint">Действия ниже относятся к пригласившему, не к этому клиенту.</p>
-          <div class="crm-hub-inviter-actions">
-            <button type="button" :disabled="busy || !hub.inviter?.username" @click="emitInviterAction('copy')">Скопировать username</button>
-            <button type="button" :disabled="busy || !hub.inviter?.customer_id" @click="emitInviterAction('message')">Написать</button>
-            <button type="button" :disabled="busy" @click="emitInviterAction('block')">Заблокировать</button>
-            <button
-              v-if="!hub.inviter?.is_invite_banned"
-              type="button"
-              class="crm-hub-inviter-danger"
-              :disabled="busy"
-              @click="emitInviterAction('invite-ban')"
-            >Запретить приглашать</button>
-            <button
-              v-else
-              type="button"
-              :disabled="busy || !hub.inviter?.invite_ban_id"
-              @click="emitInviterAction('remove-ban')"
-            >Разрешить приглашать</button>
-          </div>
-        </section>
-      </template>
+      <div class="crm-hub-toolbar">
+      <div class="crm-hub-segment" role="group" aria-label="Раздел">
+        <button
+          type="button"
+          class="crm-hub-segment-btn"
+          :class="{ 'is-active': tab === 'client' }"
+          :aria-pressed="tab === 'client' ? 'true' : 'false'"
+          data-test="customer-hub-tab-client"
+          @click="tab = 'client'"
+        >Клиент</button>
+        <button
+          type="button"
+          class="crm-hub-segment-btn"
+          :class="{ 'is-active': tab === 'lists' }"
+          :aria-pressed="tab === 'lists' ? 'true' : 'false'"
+          data-test="customer-hub-tab-lists"
+          @click="tab = 'lists'"
+        >Списки</button>
+      </div>
+      <button v-if="hub && tab === 'client'" type="button" class="crm-note-secondary" @click="resetToSearch">Другой клиент</button>
+      </div>
 
       <div v-if="errorMessage" class="crm-note-error" role="alert">{{ errorMessage }}</div>
 
-      <div class="crm-note-actions">
-        <div class="crm-note-main-actions">
-          <button
-            v-if="hub"
-            type="button"
-            class="crm-note-secondary"
-            @click="resetToSearch"
-          >Другой клиент</button>
-          <button
-            type="button"
-            class="crm-note-secondary"
-            @click="handleClose"
-          >Закрыть</button>
+      <HubListsTab
+        v-if="tab === 'lists'"
+        :disabled="busy"
+        @open-customer="openFromList"
+        @notify="(payload) => emit('notify', payload)"
+        @mutated="onListMutated"
+      />
+
+      <template v-else>
+        <section v-if="!hub && searching" class="crm-hub-panel crm-hub-loading" aria-live="polite">
+          <span class="crm-hub-section-title">Клиент</span>
+          <p>Загружаем данные клиента…</p>
+        </section>
+        <section v-else-if="!hub" class="crm-hub-panel crm-hub-search">
+          <label for="customer-hub-username" class="crm-hub-section-title">Найти клиента</label>
+          <form class="crm-customer-settings-search" @submit.prevent="search">
+            <div class="crm-note-username crm-customer-settings-field">
+              <input
+                id="customer-hub-username"
+                ref="usernameInputRef"
+                v-model.trim="formQuery"
+                type="text"
+                placeholder="@username или Telegram ID"
+                autocomplete="off"
+                autocapitalize="none"
+                :spellcheck="false"
+                aria-describedby="customer-hub-hint"
+                required
+              >
+            </div>
+            <button
+              type="submit"
+              class="crm-customer-settings-find"
+              :disabled="searching"
+              data-test="customer-hub-find"
+            >{{ searching ? 'Ищем…' : 'Найти' }}</button>
+          </form>
+          <p id="customer-hub-hint" class="crm-note-hint">
+            Подойдёт и тот, кто ещё не заказывал или не заходил в магазин.
+          </p>
+        </section>
+
+        <HubNotices v-if="hub" :hub="hub" />
+        <div v-if="hub" class="crm-hub-layout">
+          <div class="crm-hub-col crm-hub-col--side">
+          <!-- Действия: сначала повседневные, ниже отдельной группой — ограничения. -->
+          <section class="crm-hub-panel" data-test="customer-hub-actions">
+            <span class="crm-hub-head"><span class="crm-hub-head-icon" aria-hidden="true"><BoltIcon /></span><span class="crm-hub-section-title">Действия</span></span>
+            <div class="crm-hub-actions">
+              <template v-if="customer">
+              <button
+                type="button"
+                class="crm-hub-action"
+                :disabled="busy || !(customer.telegram_username || customer.telegram_id)"
+                data-test="customer-hub-chat"
+                @click="emitAction('chat')"
+              >
+                <span class="crm-hub-action-icon" aria-hidden="true"><PaperAirplaneIcon /></span>
+                <span>Написать в Telegram</span>
+              </button>
+              <button type="button" class="crm-hub-action" :disabled="busy" data-test="customer-hub-note" @click="emitAction('note')">
+                <span class="crm-hub-action-icon" aria-hidden="true"><PencilSquareIcon /></span>
+                <span>{{ customer.notes ? 'Изменить заметку' : 'Добавить заметку' }}</span>
+              </button>
+              <button type="button" class="crm-hub-action" :disabled="busy" data-test="customer-hub-wholesale" @click="emitAction('wholesale')">
+                <span class="crm-hub-action-icon" aria-hidden="true"><Cog6ToothIcon /></span>
+                <span>Настройки опта</span>
+              </button>
+              <button
+                v-if="hubOrderId"
+                type="button"
+                class="crm-hub-action"
+                :disabled="busy || Boolean(generatingMessage)"
+                data-test="customer-hub-contact"
+                @click="emitAction('contact')"
+              >
+                <span class="crm-hub-action-icon" aria-hidden="true"><ChatBubbleLeftRightIcon /></span>
+                <span>{{ generatingMessage ? 'Подготавливаем…' : 'Написать клиенту' }}</span>
+              </button>
+              <span class="crm-hub-actions-sep" aria-hidden="true" />
+              </template>
+              <HubModerationActions
+                :hub="hub"
+                :busy="busy"
+                :disabled="busy"
+                :can-block="Boolean(lookupUsername || customer?.id)"
+                :can-use-username="Boolean(lookupUsername)"
+                @block="emitAction('block')"
+                @unblock="unblock"
+                @action="emitAction"
+                @remove-pending-invite-ban="removePendingInviteBan"
+              />
+              <button
+                v-if="customer"
+                type="button"
+                class="crm-hub-action crm-hub-action--soft-danger"
+                :disabled="busy"
+                data-test="customer-hub-discount-block"
+                @click="emitAction('discount-block')"
+              >
+                <span class="crm-hub-action-icon" aria-hidden="true"><LockClosedIcon /></span>
+                <span>{{ customer.discount_block?.blocked ? `Скидки заморожены до ${discountBlockUntilLabel}` : 'Заморозить скидки' }}</span>
+              </button>
+            </div>
+          </section>
+          <!-- Виджет оплаты картой: нужен реальный клиент. -->
+          <section v-if="customer" class="crm-hub-panel crm-hub-card" data-test="customer-hub-card">
+            <div class="crm-hub-card-heading">
+              <span class="crm-hub-head"><span class="crm-hub-head-icon" aria-hidden="true"><CreditCardIcon /></span><span class="crm-hub-section-title">Оплата картой</span></span>
+              <span class="crm-hub-plate" :class="cardStatus.class" data-test="customer-hub-card-status">{{ cardStatus.label }}</span>
+            </div>
+            <!-- Клик по данным — к настройкам этого клиента в окне «Оплата картой и лимиты». -->
+            <button
+              type="button"
+              class="crm-hub-card-details"
+              :disabled="busy || !cardSettingsAccount"
+              title="Открыть настройки оплаты картой для этого клиента"
+              data-test="customer-hub-card-settings"
+              @click="openCardSettings"
+            >
+              <template v-if="hub.card_profile">
+                <span class="crm-hub-fact">
+                  <span>Максимум на заказ</span>
+                  <strong>{{ formatByn(hub.card_profile.max_order_minor) }}</strong>
+                </span>
+                <span v-if="hub.card_profile.tariff_title" class="crm-hub-fact">
+                  <span>Тариф</span>
+                  <strong>{{ hub.card_profile.tariff_title }}</strong>
+                </span>
+                <span class="crm-hub-fact">
+                  <span>Пауза после заказа</span>
+                  <strong data-test="customer-hub-card-cooldown">{{ cooldownText }}</strong>
+                </span>
+              </template>
+              <span v-else class="crm-hub-card-empty">Аккаунт не настроен — при разрешении возьмутся стандартные лимиты.</span>
+              <span class="crm-hub-card-more">Лимиты и настройки<ChevronRightIcon aria-hidden="true" /></span>
+            </button>
+            <div v-if="confirmingCooldown" class="crm-hub-confirm" role="group" aria-label="Подтверждение снятия паузы" data-test="customer-hub-card-cooldown-confirm">
+              <p>Снять паузу? Клиент сможет оплатить картой сразу, после следующей выдачи пауза вернётся.</p>
+              <div class="crm-hub-inline-row">
+                <button
+                  type="button"
+                  class="crm-hub-btn crm-hub-btn--primary"
+                  :disabled="busy"
+                  data-test="customer-hub-card-cooldown-confirm-yes"
+                  @click="clearCardCooldown"
+                >{{ acting ? 'Снимаем…' : 'Да, снять' }}</button>
+                <button type="button" class="crm-hub-btn" :disabled="acting" @click="confirmingCooldown = false">Нет</button>
+              </div>
+            </div>
+            <div v-else class="crm-hub-card-buttons">
+              <button
+                type="button"
+                class="crm-hub-btn"
+                :class="{ 'crm-hub-btn--primary': !cardPaymentAllowed }"
+                :disabled="busy || !customer.telegram_id"
+                :title="toggleCardLabel"
+                data-test="customer-hub-card-toggle"
+                @click="toggleCardPayment"
+              >{{ togglingCard ? 'Сохраняем…' : (cardPaymentAllowed ? 'Запретить' : 'Разрешить') }}</button>
+              <button
+                v-if="cooldownActive"
+                type="button"
+                class="crm-hub-btn"
+                :disabled="busy || !cardTelegramId"
+                data-test="customer-hub-card-clear-cooldown"
+                @click="confirmingCooldown = true"
+              >Снять паузу</button>
+            </div>
+            <p v-if="cardError" class="crm-note-error" role="alert">{{ cardError }}</p>
+            <p v-if="!customer.telegram_id" class="crm-note-hint">
+              У клиента нет Telegram ID — заведите карточный аккаунт в меню «Действия с заказами» → «Оплата картой».
+            </p>
+          </section>
+
+          </div>
+          <div class="crm-hub-col">
+          <HubStats v-if="hub.stats" :stats="hub.stats" />
+          <HubNote v-if="customer?.notes" :notes="customer.notes" :disabled="busy" @edit="emitAction('note')" />
+          <HubRecentOrders
+            v-if="customer"
+            :orders="hub.recent_orders || []"
+            :customer-id="customer.id"
+            :total="hub.stats?.orders_total ?? hub.recent_orders?.length ?? 0"
+            :disabled="busy"
+            @open-order="openOrder"
+          />
+          <!-- Доступ: пригласивший одной строкой, подробности авторизации — в раскрываемом разделе. -->
+          <section class="crm-hub-panel crm-hub-access-panel" data-test="customer-hub-access">
+            <span class="crm-hub-head"><span class="crm-hub-head-icon" aria-hidden="true"><ShieldCheckIcon /></span><span class="crm-hub-section-title">Доступ</span></span>
+            <HubInvitesSection
+              v-if="customer"
+              :hub="hub"
+              :busy="busy"
+              :disabled="busy"
+              :inviter-expanded="inviterExpanded"
+              @inviter-action="emitInviterAction"
+              @toggle-inviter="toggleInviter"
+            />
+            <HubAuthorizationSection
+              :hub="hub"
+              :busy="busy"
+              :disabled="busy"
+              @grant="grant"
+              @revoke="revoke"
+              @revoke-pending="revokePending"
+            />
+          </section>
+          </div>
         </div>
-      </div>
+      </template>
+
     </div>
   </AdminModal>
 </template>
@@ -301,20 +258,39 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import {
+  BoltIcon,
   ChatBubbleLeftRightIcon,
-  CheckCircleIcon,
-  ChevronDownIcon,
   ChevronRightIcon,
   Cog6ToothIcon,
+  CreditCardIcon,
   LockClosedIcon,
-  NoSymbolIcon,
   PaperAirplaneIcon,
   PencilSquareIcon,
-  UserGroupIcon,
-  UserMinusIcon,
+  ShieldCheckIcon,
 } from '@heroicons/vue/24/outline'
 import AdminModal from '@/components/AdminModal.vue'
-import { useCrmStore, type CustomerHubData } from '@/stores/crm'
+import { useCrmStore } from '@/stores/crm'
+import {
+  fetchCustomerHub,
+  grantStaffAccess,
+  hubErrorText,
+  normalizeHubQuery,
+  removeBlock,
+  removeInviteBan,
+  removePendingStaffAccess,
+  revokeStaffAccess,
+  type CustomerHubData,
+} from '@/utils/crmCustomerHubApi'
+import HubProfileHeader from './customer-hub/HubProfileHeader.vue'
+import HubModerationActions from './customer-hub/HubModerationActions.vue'
+import HubNotices from './customer-hub/HubNotices.vue'
+import HubNote from './customer-hub/HubNote.vue'
+import HubStats from './customer-hub/HubStats.vue'
+import HubAuthorizationSection from './customer-hub/HubAuthorizationSection.vue'
+import HubInvitesSection from './customer-hub/HubInvitesSection.vue'
+import HubRecentOrders from './customer-hub/HubRecentOrders.vue'
+import HubListsTab from './customer-hub/HubListsTab.vue'
+import './customer-hub/customer-hub.css'
 
 export type CustomerHubAction = 'block' | 'discount-block' | 'note' | 'invite-ban' | 'remove-invite-ban' | 'wholesale' | 'find-inviter' | 'contact' | 'chat'
 export type HubInviterAction = 'copy' | 'message' | 'block' | 'invite-ban' | 'remove-ban'
@@ -356,48 +332,64 @@ const emit = defineEmits<{
   (e: 'inviter-action', action: HubInviterAction, inviter: CustomerHubInviter): void
   (e: 'customer-found', payload: { username: string; customerId: string | null; customerName: string | null }): void
   (e: 'notify', payload: { ok: boolean; message: string }): void
+  (e: 'open-order', orderId: string): void
+  /** @username или Telegram ID клиента — открыть его настройки оплаты картой. */
+  (e: 'open-card-settings', account: string): void
 }>()
 
 const crmStore = useCrmStore()
 
-const formUsername = ref('')
+const tab = ref<'client' | 'lists'>('client')
+const formQuery = ref('')
 const searching = ref(false)
+const acting = ref(false)
 const togglingCard = ref(false)
 const errorMessage = ref('')
-// Ошибка виджета оплаты картой — показывается рядом с ним, а не в подвале.
 const cardError = ref('')
+const confirmingCooldown = ref(false)
 const hub = ref<CustomerHubData | null>(null)
 const inviterExpanded = ref(false)
 const usernameInputRef = ref<HTMLInputElement | null>(null)
-
-const busy = computed(() => searching.value || togglingCard.value)
-const generatingMessage = computed(() => Boolean(props.messageGenerating))
-
 /** Заказ, из карточки которого открыт хаб — включает действие «Написать клиенту». */
 const hubOrderId = ref<string | null>(null)
+
+const busy = computed(() => searching.value || acting.value || togglingCard.value)
+const generatingMessage = computed(() => Boolean(props.messageGenerating))
+const customer = computed(() => hub.value?.customer ?? null)
 
 // Ревизия запроса: поздний ответ закрытого/перезапущенного поиска отбрасывается,
 // чтобы клиент A не попал в хаб, открытый для клиента B.
 let requestRevision = 0
 
+const customerName = computed(() => {
+  const c = customer.value
+  if (!c) return ''
+  return [c.first_name, c.last_name].filter(Boolean).join(' ') || ''
+})
+
+/** Username для действий: у клиента из базы или у «призрака». Пусто для призрака с одним TG ID. */
+const lookupUsername = computed(() =>
+  customer.value?.telegram_username || hub.value?.username || '',
+)
+
+/** Ключ перечитывания: Telegram ID однозначен, username у разных клиентов может совпасть. */
+const lookupQuery = computed(() =>
+  customer.value?.telegram_id || hub.value?.telegram_id || lookupUsername.value,
+)
+
 const srStatus = computed(() => {
   if (searching.value) return 'Ищем клиента…'
   if (hub.value) {
-    const username = hub.value.customer.telegram_username || formUsername.value
-    return `Клиент найден: ${customerName.value || 'Клиент'} @${username}`
+    const who = lookupUsername.value ? `@${lookupUsername.value}` : `TG ID ${hub.value.telegram_id || ''}`
+    return hub.value.ghost
+      ? `Клиента нет в базе: ${who}`
+      : `Клиент найден: ${customerName.value || 'Клиент'} ${who}`
   }
   return ''
 })
 
-const customerName = computed(() => {
-  const customer = hub.value?.customer
-  if (!customer) return ''
-  return [customer.first_name, customer.last_name].filter(Boolean).join(' ') || ''
-})
-
-/** Дата окончания заморозки скидочной системы (Минск, ДД.ММ.ГГГГ). */
 const discountBlockUntilLabel = computed(() => {
-  const until = hub.value?.customer.discount_block?.until
+  const until = customer.value?.discount_block?.until
   if (!until) return ''
   const normalized = until.includes('T') ? until : until.replace(' ', 'T') + 'Z'
   const parsed = new Date(normalized)
@@ -408,29 +400,11 @@ const discountBlockUntilLabel = computed(() => {
   return `${day}.${month}.${minsk.getUTCFullYear()}`
 })
 
-/** Инициалы для плашки-аватара в шапке карточки клиента. */
-const customerInitials = computed(() => {
-  const name = customerName.value || hub.value?.customer.telegram_username || ''
-  const parts = name.trim().split(/\s+/).filter(Boolean)
-  if (!parts.length) return '?'
-  return (parts[0][0] + (parts[1]?.[0] || '')).toUpperCase()
-})
-
-const inviterName = computed(() => {
-  const inviter = hub.value?.inviter
-  if (!inviter) return ''
-  return [inviter.first_name, inviter.last_name].filter(Boolean).join(' ') || ''
-})
-
 const cardPaymentAllowed = computed(() => Boolean(hub.value?.card_profile?.enabled))
 
 const cardStatus = computed(() => {
-  if (!hub.value?.card_profile) {
-    return { label: 'Не настроена', class: 'crm-hub-plate--neutral' }
-  }
-  if (hub.value.card_profile.enabled) {
-    return { label: 'Разрешена', class: 'crm-hub-plate--success' }
-  }
+  if (!hub.value?.card_profile) return { label: 'Не настроена', class: '' }
+  if (hub.value.card_profile.enabled) return { label: 'Разрешена', class: 'crm-hub-plate--info' }
   return { label: 'Запрещена', class: 'crm-hub-plate--danger' }
 })
 
@@ -439,9 +413,23 @@ const toggleCardLabel = computed(() => {
   return hub.value.card_profile.enabled ? 'Запретить оплату картой' : 'Разрешить оплату картой'
 })
 
+/** Пауза после оплаты картой ещё идёт — её можно снять досрочно. */
+const cooldownActive = computed(() => {
+  const profile = hub.value?.card_profile
+  if (!profile?.cooldown_until) return false
+  const until = new Date(profile.cooldown_until).getTime()
+  return Number.isNaN(until) ? Number(profile.cooldown_days_left) > 0 : until > Date.now()
+})
+
+/** Telegram ID карточного аккаунта: по нему сервер снимает паузу. */
+const cardTelegramId = computed(() => hub.value?.card_profile?.telegram_id || customer.value?.telegram_id || null)
+
+/** Ключ для поиска клиента в окне «Оплата картой и лимиты». */
+const cardSettingsAccount = computed(() => customer.value?.telegram_username || lookupUsername.value || cardTelegramId.value || '')
+
 const cooldownText = computed(() => {
   const profile = hub.value?.card_profile
-  if (!profile?.cooldown_until) return 'нет'
+  if (!profile?.cooldown_until || !cooldownActive.value) return 'нет'
   const until = new Date(profile.cooldown_until)
   const date = Number.isNaN(until.getTime())
     ? profile.cooldown_until
@@ -454,69 +442,73 @@ function formatByn(minor: number | null | undefined) {
   return `${value.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} BYN`
 }
 
-function pluralOrders(value: number) {
-  const mod10 = value % 10
-  const mod100 = value % 100
-  if (mod10 === 1 && mod100 !== 11) return 'заказ'
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return 'заказа'
-  return 'заказов'
-}
-
-function stripAt(value: string) {
-  return String(value || '').trim().replace(/^@+/, '')
-}
-
 function handleClose() {
-  // Модалка закрывается и во время запроса: поздний ответ отбрасывается ревизией.
   emit('close')
+}
+
+function openCardSettings() {
+  const account = cardSettingsAccount.value
+  if (!account || busy.value) return
+  emit('open-card-settings', account)
+}
+
+function clearCardCooldown() {
+  const telegramId = cardTelegramId.value
+  if (!telegramId) return
+  const label = lookupUsername.value ? `@${lookupUsername.value}` : `TG ${telegramId}`
+  void runAction(() => crmStore.clearCardAccountCooldown(String(telegramId)), `Пауза оплаты картой снята: ${label}`)
+}
+
+// Подтверждение снятия паузы живёт до перечитывания карточки или смены клиента.
+watch(hub, () => { confirmingCooldown.value = false })
+
+/** Открытие заказа из «Последних заказов» — страница заказов закроет хаб и перейдёт к заказу. */
+function openOrder(orderId: string) {
+  if (busy.value) return
+  emit('open-order', orderId)
 }
 
 function resetToSearch() {
   requestRevision += 1
   searching.value = false
-  // Летящий переключатель оплаты отменяется ревизией — снимаем занятость сразу.
+  acting.value = false
   togglingCard.value = false
   hub.value = null
   inviterExpanded.value = false
-  formUsername.value = ''
+  formQuery.value = ''
   hubOrderId.value = null
   errorMessage.value = ''
   cardError.value = ''
-  nextTick(() => {
-    usernameInputRef.value?.focus()
-  })
+  nextTick(() => usernameInputRef.value?.focus())
+}
+
+function buildContext(): CustomerHubActionContext | null {
+  const current = hub.value
+  if (!current) return null
+  const c = current.customer
+  return {
+    username: lookupUsername.value,
+    customerId: c?.id ?? null,
+    customerName: customerName.value || null,
+    notes: c?.notes ?? null,
+    orderId: hubOrderId.value,
+    inviteBanId: current.invite_ban?.id ?? null,
+    discountBlock: c?.discount_block ?? null,
+    telegramId: c?.telegram_id ?? current.telegram_id ?? null,
+  }
 }
 
 function emitAction(action: CustomerHubAction) {
-  const customer = hub.value?.customer
-  if (!customer) return
-  emit('action', action, {
-    username: customer.telegram_username || formUsername.value,
-    customerId: customer.id,
-    customerName: customerName.value || null,
-    notes: customer.notes ?? null,
-    orderId: hubOrderId.value,
-    inviteBanId: hub.value?.invite_ban?.id ?? null,
-    discountBlock: customer.discount_block ?? null,
-    telegramId: customer.telegram_id ?? null,
-  })
+  const context = buildContext()
+  if (!context) return
+  emit('action', action, context)
 }
 
 function toggleInviter() {
   const current = hub.value
   if (!current) return
   if (!current.inviter) {
-    // Пригласившего нет в базе — ищем через отдельную модалку.
-    emit('action', 'find-inviter', {
-      username: current.customer.telegram_username || formUsername.value,
-      customerId: current.customer.id,
-      customerName: customerName.value || null,
-      notes: current.customer.notes ?? null,
-      orderId: hubOrderId.value,
-      inviteBanId: current.invite_ban?.id ?? null,
-      discountBlock: current.customer.discount_block ?? null,
-      telegramId: current.customer.telegram_id ?? null,
-    })
+    emitAction('find-inviter')
     return
   }
   inviterExpanded.value = !inviterExpanded.value
@@ -529,32 +521,33 @@ function emitInviterAction(action: HubInviterAction) {
 }
 
 function formatError(err: unknown) {
-  const code = (err as { code?: string })?.code
-  if (code === 'customer_not_found') return 'Клиент с таким username не найден.'
-  return (err as { message?: string })?.message || 'Не удалось загрузить данные клиента.'
+  return hubErrorText(err, 'Не удалось загрузить данные клиента.')
+}
+
+function announceFound(data: CustomerHubData, fallbackQuery: string) {
+  emit('customer-found', {
+    username: data.customer?.telegram_username || data.username || fallbackQuery,
+    customerId: data.customer?.id ?? null,
+    customerName: customerName.value || null,
+  })
 }
 
 async function search() {
   errorMessage.value = ''
   hub.value = null
   inviterExpanded.value = false
-  const username = stripAt(formUsername.value)
-  if (!username) {
-    errorMessage.value = 'Введите @username клиента.'
+  const query = normalizeHubQuery(formQuery.value)
+  if (!query) {
+    errorMessage.value = 'Введите @username или Telegram ID клиента.'
     return
   }
   searching.value = true
   const revision = ++requestRevision
   try {
-    const data = await crmStore.fetchCustomerHub(username)
+    const data = await fetchCustomerHub(query)
     if (revision !== requestRevision) return
     hub.value = data
-    // Помечаем найденного клиента, чтобы родитель запомнил его для возврата в хаб.
-    emit('customer-found', {
-      username: data.customer.telegram_username || username,
-      customerId: data.customer.id,
-      customerName: customerName.value || null,
-    })
+    announceFound(data, query)
   } catch (err: unknown) {
     if (revision !== requestRevision) return
     errorMessage.value = formatError(err)
@@ -563,41 +556,125 @@ async function search() {
   }
 }
 
+/** Тихо перечитывает хаб после действия, не сбрасывая экран на поиск. */
+async function reloadHub(revision: number) {
+  const current = hub.value
+  if (!current) return
+  const query = lookupQuery.value
+  if (!query) return
+  const fresh = await fetchCustomerHub(query)
+  if (revision !== requestRevision) return
+  hub.value = fresh
+  announceFound(fresh, query)
+}
+
+async function runAction(fn: () => Promise<unknown>, successMessage: string) {
+  if (acting.value || !hub.value) return
+  acting.value = true
+  errorMessage.value = ''
+  const revision = ++requestRevision
+  try {
+    await fn()
+    if (revision !== requestRevision) return
+    emit('notify', { ok: true, message: successMessage })
+    // Действие уже выполнено: сбой перечитывания не должен выглядеть как провал действия.
+    try {
+      await reloadHub(revision)
+    } catch {
+      if (revision === requestRevision) errorMessage.value = 'Действие выполнено, но карточку не удалось обновить. Найдите клиента заново.'
+    }
+  } catch (err: unknown) {
+    if (revision !== requestRevision) return
+    const message = hubErrorText(err)
+    errorMessage.value = message
+    emit('notify', { ok: false, message })
+    // Состояние на сервере могло измениться — подтягиваем актуальное.
+    try { await reloadHub(revision) } catch { /* оставляем сообщение об ошибке */ }
+  } finally {
+    if (revision === requestRevision) acting.value = false
+  }
+}
+
+const who = () => (lookupUsername.value ? `@${lookupUsername.value}` : 'клиента')
+
+function unblock() {
+  const block = hub.value?.block
+  if (!block) return
+  void runAction(
+    () => removeBlock(block.id),
+    block.kind === 'pending' ? `Превентивный бан для ${who()} отменён` : `${who()} разблокирован`,
+  )
+}
+
+function grant() {
+  const c = customer.value
+  void runAction(
+    () => grantStaffAccess({ customerId: c?.id ?? null, username: lookupUsername.value }),
+    c ? `Доступ без пригласившего выдан: ${who()}` : `Отложенный доступ создан для ${who()}`,
+  )
+}
+
+function revoke() {
+  const id = customer.value?.id
+  if (!id) return
+  void runAction(() => revokeStaffAccess(id), `Доступ без пригласившего отменён: ${who()}`)
+}
+
+function revokePending() {
+  const id = hub.value?.authorization?.staff_access.pending_id
+  if (id == null) return
+  void runAction(() => removePendingStaffAccess(id), `Отложенный доступ отменён: ${who()}`)
+}
+
+function removePendingInviteBan() {
+  const pending = hub.value?.pending_invite_ban
+  if (!pending) return
+  void runAction(() => removeInviteBan(pending.id, true), `Отложенный запрет приглашать снят: ${who()}`)
+}
+
+function openFromList(key: string) {
+  if (!key) return
+  tab.value = 'client'
+  formQuery.value = key
+  void search()
+}
+
+function onListMutated() {
+  // Открытая карточка могла устареть из-за действия в списке.
+  if (!hub.value || searching.value || acting.value) return
+  const revision = requestRevision
+  void reloadHub(revision).catch(() => { /* карточка обновится при следующем открытии */ })
+}
+
 async function toggleCardPayment() {
   const current = hub.value
-  const customer = current?.customer
-  if (!current || !customer || togglingCard.value) return
+  const c = current?.customer
+  if (!current || !c || togglingCard.value) return
   togglingCard.value = true
   errorMessage.value = ''
   cardError.value = ''
   const nextEnabled = !cardPaymentAllowed.value
-  const username = customer.telegram_username || formUsername.value
+  const username = c.telegram_username || lookupUsername.value
+  const reloadKey = lookupQuery.value
   const profile = current.card_profile
   const revision = ++requestRevision
   try {
     await crmStore.setCustomerCardPaymentEnabled(
       username,
-      customer.telegram_id,
+      c.telegram_id,
       nextEnabled,
-      profile
-        ? {
-            telegram_id: profile.telegram_id ?? null,
-            max_order_minor: profile.max_order_minor,
-          }
-        : null,
+      profile ? { telegram_id: profile.telegram_id ?? null, max_order_minor: profile.max_order_minor } : null,
     )
     if (revision !== requestRevision) return
-    // Перезагружаем карточку, чтобы виджет показал свежие лимиты и паузу.
-    // Сначала проверяем ревизию, потом пишем в hub — поздний ответ не должен
-    // возвращать в хаб клиента, от которого уже ушли («Другой клиент»).
-    const fresh = await crmStore.fetchCustomerHub(username)
+    const fresh = await fetchCustomerHub(reloadKey)
     if (revision !== requestRevision) return
     hub.value = fresh
+    const label = username ? `@${username}` : `TG ${c.telegram_id}`
     emit('notify', {
       ok: true,
       message: nextEnabled
-        ? `Оплата картой разрешена для @${username}`
-        : `Оплата картой запрещена для @${username}`,
+        ? `Оплата картой разрешена для ${label}`
+        : `Оплата картой запрещена для ${label}`,
     })
   } catch (err: unknown) {
     if (revision !== requestRevision) return
@@ -612,223 +689,24 @@ watch(
   () => props.isOpen,
   (open) => {
     if (!open) {
-      // Закрытие хаба отменяет летящие запросы и снимает занятость.
       requestRevision += 1
       searching.value = false
+      acting.value = false
       togglingCard.value = false
       return
     }
-    formUsername.value = stripAt(props.prefill?.username || '')
+    tab.value = 'client'
+    formQuery.value = normalizeHubQuery(props.prefill?.username || '')
     hubOrderId.value = props.prefill?.orderId || null
     hub.value = null
     inviterExpanded.value = false
     errorMessage.value = ''
     cardError.value = ''
-    if (formUsername.value) {
+    if (formQuery.value) {
       void search()
     } else {
-      nextTick(() => {
-        usernameInputRef.value?.focus()
-      })
+      nextTick(() => usernameInputRef.value?.focus())
     }
   },
 )
 </script>
-
-<style scoped>
-/* Палитра страницы «Заказы»: чернильный текст, синий и красный градиенты,
-   белые карточки с мягкими тенями. */
-.crm-customer-hub {
-  --hub-ink: #081b4b;
-  --hub-muted: #66799e;
-  --hub-primary: linear-gradient(100deg, #05b8ff, #185dff);
-  --hub-danger: linear-gradient(115deg, #ff685a, #fa104f);
-  display: grid;
-  gap: 12px;
-  min-width: 0;
-  color: var(--hub-ink);
-  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
-  font-size: 13px;
-  line-height: 1.5;
-}
-.crm-customer-hub *, .crm-customer-hub *::before { box-sizing: border-box; }
-.crm-customer-hub p { margin: 0; }
-
-/* Панели-блоки: одна карточка — одна зона внимания. */
-.crm-hub-panel {
-  display: grid;
-  gap: 10px;
-  min-width: 0;
-  padding: 16px;
-  border: 1px solid #eaf0f9;
-  border-radius: 16px;
-  background: #fff;
-  box-shadow: 0 10px 30px #20386905;
-}
-/* Предзаполненный клиент грузится — показываем статус вместо пустого поиска. */
-.crm-hub-loading p { color: var(--hub-muted); }
-.crm-hub-section-title {
-  color: #7584a7;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: .17em;
-  line-height: 1.3;
-  text-transform: uppercase;
-}
-
-/* Поиск клиента. */
-.crm-customer-hub label { display: block; }
-.crm-customer-settings-search { display: flex; gap: 10px; align-items: stretch; }
-.crm-customer-settings-field { flex: 1 1 auto; }
-.crm-note-username { position: relative; }
-.crm-note-username > span { position: absolute; top: 50%; left: 12px; transform: translateY(-50%); color: var(--hub-muted); pointer-events: none; }
-.crm-note-username > input { padding-left: 30px; }
-.crm-customer-hub input, .crm-customer-hub textarea { width: 100%; min-width: 0; max-width: 100%; padding: 11px 12px; border: 1px solid #dce8fa; border-radius: 10px; background: #f7fbff; color: var(--hub-ink); font: inherit; font-size: 13px; line-height: 1.5; box-shadow: none; }
-.crm-customer-hub input::placeholder { color: #8999b7; opacity: 1; }
-.crm-customer-hub :is(input, textarea, button):focus-visible { outline: 2px solid #0958ff; outline-offset: 3px; }
-.crm-customer-settings-find { min-height: 44px; padding: 11px 18px; border: 1px solid transparent; border-radius: 12px; background: var(--hub-primary); color: #fff; font-family: inherit; font-size: 13px; font-weight: 750; cursor: pointer; box-shadow: 0 6px 14px #148cff24; }
-.crm-customer-settings-find:disabled { opacity: .5; cursor: not-allowed; }
-.crm-customer-settings-find:not(:disabled):hover { filter: brightness(1.04); }
-.crm-note-hint { color: var(--hub-muted); font-size: 11px; line-height: 1.6; }
-.crm-note-error { padding: 12px 14px; border: 1px solid #ffd4dc; border-radius: 12px; background: #fff4f6; color: #b82648; overflow-wrap: anywhere; }
-
-/* Обзор: клиент и оплата картой рядом, узкими колонками. */
-.crm-hub-overview { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; align-items: stretch; }
-
-/* Карточка клиента: тёмная шапка как ячейка заказа + светлые плашки статусов. */
-.crm-hub-customer-card { gap: 12px; }
-.crm-hub-customer-head {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 0;
-  padding: 14px;
-  border-radius: 12px;
-  background: linear-gradient(145deg, #09265c, #06143b);
-  box-shadow: 0 6px 13px #0a1e4033;
-}
-.crm-hub-avatar {
-  display: grid;
-  place-items: center;
-  flex-shrink: 0;
-  width: 42px;
-  height: 42px;
-  border-radius: 12px;
-  background: var(--hub-primary);
-  box-shadow: 0 8px 17px #328aff40;
-  color: #fff;
-  font-size: 15px;
-  font-weight: 800;
-}
-.crm-hub-customer-main { display: grid; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
-.crm-hub-customer-main strong { color: #fff; font-size: 16px; font-weight: 800; letter-spacing: -.02em; line-height: 1.2; }
-.crm-hub-customer-main > span { color: #ffffffb8; font-size: 12px; line-height: 1.35; }
-.crm-hub-customer { display: grid; gap: 10px; min-width: 0; }
-.crm-hub-badges { display: flex; flex-wrap: wrap; gap: 6px; }
-
-/* Плашки статусов: маленькие, цвет говорит сам за себя. */
-.crm-hub-plate {
-  display: inline-flex;
-  align-items: center;
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 750;
-  line-height: 1.3;
-}
-.crm-hub-plate--danger { background: #fff1f3; color: #d92342; }
-.crm-hub-plate--warning { background: #fff8e8; color: #a06414; }
-.crm-hub-plate--info { background: #eef4ff; color: #1555e8; }
-.crm-hub-plate--success { background: #eaf8f0; color: #20704a; }
-.crm-hub-plate--neutral { background: #f0f4fa; color: #425778; }
-
-/* Виджет оплаты картой. */
-.crm-hub-card-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
-.crm-hub-card-details { display: grid; gap: 6px; padding: 12px 14px; border: 1px solid #dce8fa; border-radius: 12px; background: #f7fbff; }
-.crm-hub-card-row { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px; }
-.crm-hub-card-row > span { color: var(--hub-muted); font-size: 12px; }
-.crm-hub-card-row > strong { font-size: 12px; font-weight: 750; font-variant-numeric: tabular-nums; }
-.crm-hub-card-toggle { min-height: 44px; padding: 11px 18px; border: 1px solid transparent; border-radius: 12px; font-family: inherit; font-size: 13px; font-weight: 750; cursor: pointer; }
-.crm-hub-card-toggle:disabled { opacity: .5; cursor: not-allowed; }
-.crm-hub-card-toggle:not(:disabled):hover { filter: brightness(1.04); }
-.crm-hub-card-toggle--primary { background: var(--hub-primary); color: #fff; box-shadow: 0 6px 14px #148cff24; }
-.crm-hub-card-toggle--danger { background: var(--hub-danger); color: #fff; box-shadow: 0 6px 14px #fa104f24; }
-
-/* Кнопки действий — крупные и раздельные, чтобы легко ориентироваться. */
-.crm-hub-actions { display: grid; gap: 9px; }
-.crm-hub-action {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  width: 100%;
-  min-height: 50px;
-  padding: 9px 12px;
-  border: 1px solid #eaf0f9;
-  border-radius: 12px;
-  background: #fff;
-  color: #102456;
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: 750;
-  line-height: normal;
-  text-align: left;
-  cursor: pointer;
-  transition: background-color 140ms ease-out, border-color 140ms ease-out;
-}
-.crm-hub-action-icon {
-  display: grid;
-  place-items: center;
-  flex-shrink: 0;
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
-  background: #f2f6fd;
-  color: #1759ed;
-}
-.crm-hub-action-icon svg { width: 18px; height: 18px; }
-.crm-hub-action > span:not(.crm-hub-action-icon) { min-width: 0; overflow-wrap: anywhere; }
-.crm-hub-action .crm-hub-action-arrow { width: 16px; height: 16px; margin-left: auto; flex-shrink: 0; color: #8999b7; }
-.crm-hub-action .is-expanded { transform: rotate(180deg); }
-.crm-hub-action:hover:not(:disabled) { background: #f7faff; border-color: #b8cef5; }
-.crm-hub-action:disabled { opacity: .55; cursor: not-allowed; }
-/* Отключённая строка не обещает переход — стрелку убираем. */
-.crm-hub-action:disabled .crm-hub-action-arrow { display: none; }
-.crm-hub-action--danger { color: #d92342; }
-.crm-hub-action--danger .crm-hub-action-icon { background: #fff1f3; color: #d92342; }
-.crm-hub-action--danger:hover:not(:disabled) { background: #fff6f8; border-color: #f6c4ce; }
-.crm-hub-action--info { color: #1555e8; }
-.crm-hub-action--info .crm-hub-action-icon { background: #edf5ff; color: #1555e8; }
-.crm-hub-action--info:hover:not(:disabled) { background: #f5f9ff; border-color: #b8cef5; }
-.crm-hub-action:focus-visible { outline: 2px solid #0958ff; outline-offset: 3px; }
-
-/* Пригласивший. */
-.crm-hub-inviter-identity { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 14px; border: 1px solid #dce8fa; border-radius: 12px; background: #f7fbff; }
-.crm-hub-inviter-identity > div { display: grid; gap: 3px; overflow-wrap: anywhere; }
-.crm-hub-inviter-identity strong { font-size: 13px; font-weight: 750; }
-.crm-hub-inviter-identity span { color: var(--hub-muted); font-size: 12px; }
-.crm-hub-inviter-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
-.crm-hub-inviter-actions button { min-height: 44px; padding: 11px 12px; border: 1px solid #eaf0f9; border-radius: 10px; background: #fff; color: #233e70; font-family: inherit; font-size: 13px; font-weight: 650; line-height: 1.4; text-align: left; overflow-wrap: anywhere; cursor: pointer; transition: background-color 140ms ease-out, border-color 140ms ease-out; }
-.crm-hub-inviter-actions button:hover:not(:disabled) { background: #f0f5ff; border-color: #b8cef5; }
-.crm-hub-inviter-actions button:disabled { opacity: .55; cursor: not-allowed; }
-.crm-hub-inviter-actions .crm-hub-inviter-danger { color: #d92342; }
-.crm-hub-inviter-actions button:focus-visible { outline: 2px solid #1759ed; outline-offset: 2px; }
-
-/* Футер. */
-.crm-note-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
-.crm-note-main-actions { display: flex; justify-content: flex-end; gap: 10px; margin-left: auto; }
-.crm-customer-hub .crm-note-secondary { min-height: 44px; padding: 11px 18px; border: 1px solid #dce8fa; border-radius: 12px; background: linear-gradient(#f7faff, #e9f0fa); color: #233e70; font-family: inherit; font-size: 13px; font-weight: 750; cursor: pointer; }
-.crm-customer-hub .crm-note-secondary:disabled { opacity: .5; cursor: not-allowed; }
-.crm-customer-hub .crm-note-secondary:not(:disabled):hover { filter: brightness(1.04); }
-
-/* Скринридер-статус. */
-.crm-hub-sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; clip: rect(0 0 0 0); clip-path: inset(50%); overflow: hidden; white-space: nowrap; }
-
-@media (max-width: 640px) {
-  .crm-hub-overview { grid-template-columns: minmax(0, 1fr); }
-  .crm-customer-settings-search { flex-direction: column; }
-  .crm-hub-inviter-actions { grid-template-columns: minmax(0, 1fr); }
-  .crm-note-main-actions { width: 100%; }
-  .crm-note-main-actions .crm-note-secondary { flex: 1; }
-}
-@media (prefers-reduced-motion: reduce) { .crm-customer-hub * { transition: none !important; } }
-</style>

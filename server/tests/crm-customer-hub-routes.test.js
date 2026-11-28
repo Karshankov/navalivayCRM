@@ -108,13 +108,32 @@ async function main() {
       ok(missing.response.status === 401, "GET без токена отклоняется");
     }
 
-    console.log("\n=== H-API2: неизвестный username → 404 ===");
+    console.log("\n=== H-API2: невалидный ввод → 404, неизвестный username → «призрак» ===");
     {
-      const missing = await requestJson("/api/admin/crm/customer-hub/ghost_user", {
-        headers: authHeaders(),
-      });
-      ok(missing.response.status === 404, "GET неизвестного клиента → 404");
-      ok(missing.data?.error === "customer_not_found", "код customer_not_found");
+      const invalid = await requestJson("/api/admin/crm/customer-hub/ab", { headers: authHeaders() });
+      ok(invalid.response.status === 404, "слишком короткий ввод → 404");
+      const ghost = await requestJson("/api/admin/crm/customer-hub/ghost_user", { headers: authHeaders() });
+      ok(ghost.response.status === 200, "неизвестный username → 200");
+      ok(ghost.data?.ghost === true && ghost.data?.customer === null, "ghost: true, customer: null");
+      ok(ghost.data?.username === "ghost_user", "username в ответе");
+      ok(ghost.data?.authorization?.is_authorized === false, "призрак не авторизован");
+      const noId = await requestJson("/api/admin/crm/customer-hub/5550001", { headers: authHeaders() });
+      ok(noId.response.status === 404, "числовой ID без следов → 404");
+
+      db.prepare(`INSERT INTO pending_customer_bans (telegram_username, reason, created_by) VALUES ('ghost_banned', 'заранее', 'manager')`).run();
+      db.prepare(`INSERT INTO pending_customer_invite_bans (telegram_username, reason, banned_by) VALUES ('ghost_banned', 'не звать', 'manager')`).run();
+      db.prepare(`INSERT INTO pending_staff_access_grants (telegram_username, granted_by) VALUES ('ghost_banned', 'manager')`).run();
+      db.prepare(`INSERT INTO referral_disallowed_inviter_usernames (username, added_by) VALUES ('ghost_banned', 'manager')`).run();
+      const banned = await requestJson("/api/admin/crm/customer-hub/@Ghost_Banned", { headers: authHeaders() });
+      ok(banned.data?.block?.kind === "pending" && banned.data?.block?.reason === "заранее", "превентивный бан призрака");
+      ok(banned.data?.pending_invite_ban?.reason === "не звать", "отложенный запрет приглашать");
+      ok(Boolean(banned.data?.authorization?.staff_access?.pending_id), "отложенный доступ без пригласившего");
+      ok(banned.data?.authorization?.is_reserved_inviter === true, "«Наш аккаунт» призрака");
+
+      db.prepare(`INSERT INTO referral_auth_states (telegram_id, attempts_used, status, last_error_code) VALUES ('5550002', 2, 'pending', 'referral_username_invalid')`).run();
+      const byId = await requestJson("/api/admin/crm/customer-hub/5550002", { headers: authHeaders() });
+      ok(byId.response.status === 200 && byId.data?.ghost === true, "TG ID с состоянием авторизации → призрак");
+      ok(byId.data?.authorization?.state?.attempts_used === 2, "попытки призрака 2/3");
     }
 
     insertCustomer({
@@ -241,6 +260,58 @@ async function main() {
         headers: authHeaders(),
       });
       ok(disabled.data?.card_profile?.enabled === false, "оплата картой запрещена после выключения");
+    }
+
+    console.log("\n=== H-API8: авторизация, TG ID и последние заказы ===");
+    {
+      insertCustomer({ id: "cust-hub-auth", telegram_id: "9020", telegram_username: "hub_auth" });
+      db.prepare(`UPDATE customers SET access_authorized_at = DATETIME('now'), access_authorization_source = 'staff', access_authorized_by = 'manager' WHERE id = 'cust-hub-auth'`).run();
+      db.prepare(`INSERT INTO referral_auth_states (telegram_id, customer_id, attempts_used, status) VALUES ('9020', 'cust-hub-auth', 1, 'authorized')`).run();
+      db.prepare(`INSERT OR IGNORE INTO referral_disallowed_inviter_usernames (username) VALUES ('hub_auth')`).run();
+      const byTg = await requestJson("/api/admin/crm/customer-hub/9020", { headers: authHeaders() });
+      ok(byTg.data?.customer?.id === "cust-hub-auth", "поиск по Telegram ID");
+      const auth = byTg.data?.authorization;
+      ok(auth?.is_authorized === true && auth?.source === "staff", "доступ staff");
+      ok(auth?.authorized_by === "manager", "кто выдал доступ");
+      ok(auth?.staff_access?.active === true && auth?.staff_access?.permanent === false, "доступ не постоянный");
+      ok(auth?.is_reserved_inviter === true, "наш аккаунт");
+      ok(auth?.state?.max_attempts === 3 && auth?.state?.attempts_used === 1, "попытки 1/3");
+
+      insertOrder({ id: "ord-hub-auth-1", customer_id: "cust-hub-auth", status: "delivered" });
+      for (let i = 0; i < 6; i += 1) insertOrder({ id: `ord-hub-auth-r${i}`, customer_id: "cust-hub-auth" });
+      const withOrders = await requestJson("/api/admin/crm/customer-hub/hub_auth", { headers: authHeaders() });
+      ok(withOrders.data?.authorization?.staff_access?.permanent === true, "выданный заказ делает доступ постоянным");
+      ok(withOrders.data?.recent_orders?.length === 5, "последних заказов 5");
+      insertOrder({ id: "ord-hub-auth-2", customer_id: "cust-hub-auth", status: "delivered" });
+      insertOrder({ id: "ord-hub-auth-c", customer_id: "cust-hub-auth", status: "cancelled" });
+      db.prepare(`UPDATE orders SET final_amount = 30 WHERE id = 'ord-hub-auth-2'`).run();
+      db.prepare(`INSERT INTO order_items (id, order_id, product_title, quantity, price_per_unit, total_price) VALUES ('oi-hub-1', 'ord-hub-auth-1', 'Жидкость А', 2, 5, 10), ('oi-hub-2', 'ord-hub-auth-2', 'Жидкость Б', 3, 10, 30)`).run();
+      insertCustomer({ id: "cust-hub-invitee-a", telegram_id: "9031", telegram_username: "hub_invitee_a" });
+      insertCustomer({ id: "cust-hub-invitee-b", telegram_id: "9032", telegram_username: "hub_invitee_b" });
+      db.prepare(`INSERT INTO customer_referrals (invitee_customer_id, inviter_customer_id, inviter_username_snapshot, submitted_username) VALUES ('cust-hub-invitee-a', 'cust-hub-auth', 'hub_auth', 'hub_auth'), ('cust-hub-invitee-b', 'cust-hub-auth', 'hub_auth', 'hub_auth')`).run();
+      insertOrder({ id: "ord-hub-invitee-a", customer_id: "cust-hub-invitee-a", status: "delivered" });
+      const withStats = await requestJson("/api/admin/crm/customer-hub/hub_auth", { headers: authHeaders() });
+      const stats = withStats.data?.stats;
+      ok(stats?.orders_delivered === 2 && stats?.orders_cancelled === 1, "статистика: выдано 2, отменён 1");
+      ok(stats?.orders_total === 9 && stats?.orders_active === 6, "статистика: всего 9, в работе 6");
+      const history = await requestJson("/api/admin/crm/customer-hub/cust-hub-auth/orders", { headers: authHeaders() });
+      ok(history.response.status === 200 && history.data?.orders?.length === 9, "вся история: 9 заказов");
+      ok(history.data?.orders?.every((o) => typeof o.order_number === "number" && typeof o.amount === "number"), "вся история: поля строк");
+      const historyNoAuth = await requestJson("/api/admin/crm/customer-hub/cust-hub-auth/orders");
+      ok(historyNoAuth.response.status === 401, "вся история без авторизации → 401");
+      const historyMissing = await requestJson("/api/admin/crm/customer-hub/no-such-customer/orders", { headers: authHeaders() });
+      ok(historyMissing.response.status === 404, "вся история: неизвестный клиент → 404");
+      const invitee = await requestJson("/api/admin/crm/customer-hub/hub_invitee_a", { headers: authHeaders() });
+      ok(invitee.data?.inviter?.username === "hub_auth" && typeof invitee.data?.inviter?.invited_at === "string", "пригласивший с датой приглашения");
+      ok(stats?.total_spent === 40 && stats?.average_check === 20, "статистика: сумма 40, средний чек 20");
+      ok(stats?.invited_total === 2 && stats?.invited_with_orders === 1, "статистика: пригласил 2, с заказом 1");
+      ok(stats?.favorite_product?.title === "Жидкость Б" && stats?.favorite_product?.quantity === 3, "статистика: любимый товар");
+      ok(typeof stats?.first_order_at === "string", "статистика: первый заказ");
+      ok(typeof withOrders.data?.last_order_at === "string", "last_order_at заполнен");
+
+      db.prepare(`INSERT INTO customer_blocks (id, customer_id, block_type, reason, blocked_by, active) VALUES ('block-hub-af', 'cust-hub-auth', 'authorization_failed', 'Авторизация не пройдена', 'system', 1)`).run();
+      const blocked = await requestJson("/api/admin/crm/customer-hub/hub_auth", { headers: authHeaders() });
+      ok(blocked.data?.block?.block_type === "authorization_failed", "тип блокировки в ответе");
     }
 
     console.log("\n=== H-API7: активный оптовый заказ в ответе ===");

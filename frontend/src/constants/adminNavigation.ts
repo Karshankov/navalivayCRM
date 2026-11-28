@@ -5,7 +5,6 @@ import {
   HomeIcon,
   Cog6ToothIcon,
   ClipboardDocumentCheckIcon,
-  UserGroupIcon,
   ArrowDownTrayIcon,
   BanknotesIcon,
   ArchiveBoxXMarkIcon,
@@ -53,13 +52,6 @@ export const crmLinks: SidebarLink[] = [
     description: 'Управление заказами',
     icon: ClipboardDocumentCheckIcon,
     to: '/admin/crm/orders'
-  },
-  {
-    id: 'crm-customers',
-    name: 'Клиенты',
-    description: 'База клиентов',
-    icon: UserGroupIcon,
-    to: '/admin/crm/customers'
   },
   {
     id: 'crm-employees',

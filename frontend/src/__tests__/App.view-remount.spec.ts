@@ -70,7 +70,7 @@ function makeRouter(): Router {
         component: AdminShell,
         children: [
           { path: "crm/orders", component: section("orders") },
-          { path: "crm/customers", component: section("customers") },
+          { path: "crm/procurements", component: section("procurements") },
         ],
       },
     ],
@@ -129,12 +129,12 @@ describe("App: пересборка верхнего экрана", () => {
     expect(mounted.shell).toBe(1);
     expect(wrapper.text()).toContain("orders");
 
-    await router.push("/admin/crm/customers");
+    await router.push("/admin/crm/procurements");
     await flushPromises();
 
     expect(mounted.shell).toBe(1);
     // Раздел при этом обязан смениться: экран не пересобрали, но содержимое новое.
-    expect(wrapper.text()).toContain("customers");
+    expect(wrapper.text()).toContain("procurements");
     wrapper.unmount();
   });
 

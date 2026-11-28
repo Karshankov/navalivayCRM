@@ -1059,16 +1059,6 @@ export interface MessageTemplate {
   updated_at: string | null;
 }
 
-export interface CustomerFeedback {
-  id: string;
-  customer_id: string;
-  telegram_username: string | null;
-  customer_name: string | null;
-  reason: string;
-  processed_at: string;
-  created_at: string;
-}
-
 export interface DashboardStats {
   period: string;
   stats: {
@@ -1707,38 +1697,7 @@ function stripTelegramAt(value: unknown) {
   return String(value || "").trim().replace(/^@+/, "");
 }
 
-/** Единый хаб действий с клиентом (карточка + все доступные действия). */
-export interface CustomerHubData {
-  customer: CustomerWholesaleSettings["customer"] & {
-    total_orders: number;
-    notes: string | null;
-  };
-  block: {
-    id: string;
-    kind: "active" | "pending";
-    block_until: string | null;
-    reason: string | null;
-    blocked_at: string | null;
-    blocked_by: string | null;
-  } | null;
-  invite_ban: {
-    id: string;
-    reason: string | null;
-    banned_by: string | null;
-    banned_at: string | null;
-  } | null;
-  inviter: {
-    customer_id: string | null;
-    username: string | null;
-    first_name: string | null;
-    last_name: string | null;
-    invite_ban_id: string | null;
-    is_invite_banned: boolean;
-  } | null;
-  card_profile: CardAccountProfile | null;
-  tiers: CustomerWholesaleTier[];
-  active_wholesale_order: CustomerWholesaleSettings["active_wholesale_order"];
-}
+export type { CustomerHubData } from "@/utils/crmCustomerHubApi";
 
 // TODO: при появлении ролевой модели (manager/cashier) — рассмотреть отдельную
 // обработку 403 (Forbidden). Сейчас на бэке используется только 401 для всех
@@ -3927,12 +3886,10 @@ export const useCrmStore = defineStore("crm", () => {
   let customersRequestId = 0;
 
   // Customer Feedbacks
-  const customerFeedbacks = ref<CustomerFeedback[]>([]);
-  const loadingCustomerFeedbacks = ref(false);
 
   async function fetchCustomers(
-    filter?: "inactive" | "cold",
-    options: { limit?: number; query?: string; unprocessed?: boolean } = {},
+    filter?: "cold",
+    options: { limit?: number; query?: string } = {},
   ) {
     const requestId = ++customersRequestId;
     loadingCustomers.value = true;
@@ -3941,7 +3898,6 @@ export const useCrmStore = defineStore("crm", () => {
       if (filter) params.set("filter", filter);
       if (options.limit) params.set("limit", String(options.limit));
       if (options.query) params.set("q", options.query);
-      if (options.unprocessed) params.set("unprocessed", "1");
       const suffix = params.size ? `?${params.toString()}` : "";
       const result = await fetchAPI<Customer[]>(`${API_BASE}/customers${suffix}`);
       if (requestId === customersRequestId) customers.value = result;
@@ -3970,21 +3926,6 @@ export const useCrmStore = defineStore("crm", () => {
       customers.value[index] = customer;
     }
     return customer;
-  }
-
-  async function blockCustomer(id: string, reason: string) {
-    await fetchAPI(`${API_BASE}/customers/${id}/block`, {
-      method: "POST",
-      body: JSON.stringify({ reason }),
-    });
-    await fetchCustomer(id);
-  }
-
-  async function unblockCustomer(id: string) {
-    await fetchAPI(`${API_BASE}/customers/${id}/unblock`, {
-      method: "POST",
-    });
-    await fetchCustomer(id);
   }
 
   // ===== Заморозка скидочной системы =====
@@ -4031,25 +3972,6 @@ export const useCrmStore = defineStore("crm", () => {
   }
 
   // ===== Универсальные блокировки клиентов (новый API) =====
-  const customerBlocksList = ref<{
-    active: ActiveCustomerBlock[];
-    pending: PendingCustomerBlock[];
-  }>({ active: [], pending: [] });
-  const loadingCustomerBlocks = ref(false);
-
-  async function fetchCustomerBlocksList() {
-    loadingCustomerBlocks.value = true;
-    try {
-      customerBlocksList.value = await fetchAPI<{
-        active: ActiveCustomerBlock[];
-        pending: PendingCustomerBlock[];
-      }>(`${API_BASE}/blocks`);
-      return customerBlocksList.value;
-    } finally {
-      loadingCustomerBlocks.value = false;
-    }
-  }
-
   async function createCustomerBlock(payload: CreateCustomerBlockPayload) {
     const result = await fetchAPI<{
       ok: true;
@@ -4060,16 +3982,6 @@ export const useCrmStore = defineStore("crm", () => {
       body: JSON.stringify(payload),
     });
     return result;
-  }
-
-  async function removeCustomerBlock(blockId: string | number, unblock_reason?: string) {
-    return fetchAPI<{ ok: true; kind: "unblocked" | "pending_removed" }>(
-      `${API_BASE}/blocks/${blockId}`,
-      {
-        method: "DELETE",
-        body: JSON.stringify({ unblock_reason: unblock_reason ?? null }),
-      },
-    );
   }
 
   // ===== Заметки о клиентах (канбан) =====
@@ -4184,19 +4096,7 @@ export const useCrmStore = defineStore("crm", () => {
     );
   }
 
-  // ===== Хаб действий с клиентом =====
-
-  async function fetchCustomerHub(username: string) {
-    const normalized = stripTelegramAt(username);
-    if (!normalized) {
-      throw new StaffApiError("Укажите @username клиента.", {
-        code: "invalid_telegram_username",
-      });
-    }
-    return await fetchAPI<CustomerHubData>(
-      `${API_BASE}/customer-hub/${encodeURIComponent(normalized)}`,
-    );
-  }
+  // ===== Хаб действий с клиентом: данные читает utils/crmCustomerHubApi.ts =====
 
   /**
    * Разрешить/запретить оплату картой из хаба. Привязанный аккаунт есть —
@@ -4305,49 +4205,6 @@ export const useCrmStore = defineStore("crm", () => {
       }>;
     }>(`${API_BASE}/customers/${customerId}/purchases?${params.toString()}`);
     return result.items;
-  }
-
-  async function deleteCustomer(id: string) {
-    await fetchAPI(`${API_BASE}/customers/${id}`, {
-      method: "DELETE",
-    });
-    customers.value = customers.value.filter((c) => c.id !== id);
-  }
-
-  // Customer Feedbacks
-  async function fetchCustomerFeedbacks() {
-    loadingCustomerFeedbacks.value = true;
-    try {
-      customerFeedbacks.value = await fetchAPI<CustomerFeedback[]>(
-        `${API_BASE}/customer-feedbacks`,
-      );
-    } finally {
-      loadingCustomerFeedbacks.value = false;
-    }
-  }
-
-  async function createCustomerFeedback(data: {
-    customer_id: string;
-    reason: string;
-  }) {
-    const feedback = await fetchAPI<CustomerFeedback>(
-      `${API_BASE}/customer-feedbacks`,
-      {
-        method: "POST",
-        body: JSON.stringify(data),
-      },
-    );
-    customerFeedbacks.value.unshift(feedback);
-    return feedback;
-  }
-
-  async function deleteCustomerFeedback(id: string) {
-    await fetchAPI(`${API_BASE}/customer-feedbacks/${id}`, {
-      method: "DELETE",
-    });
-    customerFeedbacks.value = customerFeedbacks.value.filter(
-      (f) => f.id !== id,
-    );
   }
 
   // Orders (shallowRef — большие списки без deep-reactivity на каждую позицию)
@@ -6338,9 +6195,6 @@ export const useCrmStore = defineStore("crm", () => {
     fetchCustomers,
     fetchCustomer,
     updateCustomer,
-    blockCustomer,
-    unblockCustomer,
-    deleteCustomer,
 
     // Заморозка скидочной системы
     blockCustomerDiscount,
@@ -6349,11 +6203,7 @@ export const useCrmStore = defineStore("crm", () => {
     saveDiscountBlockTemplate,
 
     // Универсальные блокировки (новый API: pre-ban по @username + срок)
-    customerBlocksList,
-    loadingCustomerBlocks,
-    fetchCustomerBlocksList,
     createCustomerBlock,
-    removeCustomerBlock,
 
     patchCustomerNotesOnOrders,
     upsertCustomerNote,
@@ -6363,7 +6213,6 @@ export const useCrmStore = defineStore("crm", () => {
     // Настройки клиента (оптовый персональный минимум)
     fetchCustomerWholesaleSettings,
     saveCustomerWholesaleMinOverride,
-    fetchCustomerHub,
     setCustomerCardPaymentEnabled,
 
     // POS-клиенты (касса)
@@ -6373,11 +6222,6 @@ export const useCrmStore = defineStore("crm", () => {
     fetchCustomerPurchaseHistory,
 
     // Customer Feedbacks
-    customerFeedbacks,
-    loadingCustomerFeedbacks,
-    fetchCustomerFeedbacks,
-    createCustomerFeedback,
-    deleteCustomerFeedback,
 
     // Orders
     orders,

@@ -1,4 +1,5 @@
 import { db } from '../db.js';
+import { runPagedQuery } from './list-paging.js';
 
 /**
  * Ядро логики блокировок клиентов.
@@ -436,12 +437,14 @@ export function serializeBlock(block, kind = 'active') {
       reason: block.reason ?? null,
       blocked_at: block.created_at,
       blocked_by: block.created_by ?? null,
+      block_type: 'delivery',
     };
   }
   return {
     id: block.id,
     kind: 'active',
     customer_id: block.customer_id,
+    block_type: block.block_type ?? 'delivery',
     block_until: block.block_until ?? null,
     reason: block.reason ?? null,
     blocked_at: block.blocked_at,
@@ -450,4 +453,27 @@ export function serializeBlock(block, kind = 'active') {
     unblocked_by: block.unblocked_by ?? null,
     unblock_reason: block.unblock_reason ?? null,
   };
+}
+
+/** Постраничный список: активные и превентивные блокировки вместе, с типом. */
+export function listBlocksPage(paging) {
+  return runPagedQuery(
+    `SELECT 'active' AS kind, cb.id AS id, cb.customer_id, c.telegram_id, c.telegram_username,
+            c.first_name, c.last_name, cb.block_type, cb.reason, cb.blocked_at AS blocked_at,
+            cb.blocked_by, cb.block_until
+     FROM customer_blocks cb
+     JOIN customers c ON c.id = cb.customer_id
+     WHERE cb.active = 1 AND (cb.block_until IS NULL OR cb.block_until > DATETIME('now'))
+     UNION ALL
+     SELECT 'pending', CAST(p.id AS TEXT), NULL, NULL, p.telegram_username, NULL, NULL,
+            'delivery', p.reason, p.created_at, p.created_by, p.block_until
+     FROM pending_customer_bans p
+     WHERE ${PENDING_ACTIVE_PREDICATE.replaceAll('block_until', 'p.block_until')}`,
+    {},
+    paging,
+    {
+      searchColumns: ['telegram_username', 'first_name', 'last_name', 'telegram_id'],
+      orderBy: 'blocked_at DESC, id DESC',
+    },
+  );
 }

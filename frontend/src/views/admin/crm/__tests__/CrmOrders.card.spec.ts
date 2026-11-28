@@ -404,7 +404,7 @@ describe('CrmOrders: redesign preserves order-card behavior', () => {
 
   it('keeps the approved HTML customer-hub palette', async () => {
     const { readFileSync } = await import('node:fs');
-    const source = readFileSync('src/components/admin/crm/CustomerHubModal.vue', 'utf8');
+    const source = readFileSync('src/components/admin/crm/customer-hub/customer-hub.css', 'utf8');
     expect(source).toContain('.crm-hub-action');
     expect(source).toContain('background: #fff1f3');
     expect(source).toContain('color: #d92342');

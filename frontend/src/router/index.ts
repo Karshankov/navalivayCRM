@@ -158,17 +158,9 @@ const router = createRouter({
           beforeEnter: requireAdminAuth,
         },
         {
-          path: "crm/customers",
-          name: "CrmCustomers",
-          component: () => import("@/views/admin/crm/CrmCustomers.vue"),
-          beforeEnter: requireAdminAuth,
-        },
-        {
-          path: "crm/customers/:id",
-          name: "CrmCustomerDetail",
-          component: () => import("@/views/admin/crm/CrmCustomerDetail.vue"),
-          props: true,
-          beforeEnter: requireAdminAuth,
+          // Страница «Клиенты» перенесена в модалку «Клиент» на странице заказов.
+          path: "crm/customers/:rest(.*)?",
+          redirect: "/admin/crm/orders",
         },
         {
           path: "crm/procurements",

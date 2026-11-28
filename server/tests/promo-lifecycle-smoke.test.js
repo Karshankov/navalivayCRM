@@ -414,7 +414,7 @@ async function testPromoReservationCanBeReusedBySameOrder() {
   seedPromo({ promoId, code: promoCode });
 
   const identity = {
-    telegram_id: "promo-user-1",
+    telegram_id: "9901001",
     telegram_username: "promo_user_1",
   };
 
@@ -474,7 +474,7 @@ async function testPromoReservationCanBeReusedBySameOrder() {
   assert.equal(getPromo(promoId).current_uses, 0);
 
   const secondIdentity = {
-    telegram_id: "promo-user-2",
+    telegram_id: "9901002",
     telegram_username: "promo_user_2",
   };
   const recreated = await createOrder(secondIdentity, { promo_code: promoCode });
@@ -491,7 +491,7 @@ async function testPromoSwitchAndRemovalOnSameOrder() {
   seedPromo({ promoId: secondPromoId, code: secondPromoCode, discountValue: 5 });
 
   const identity = {
-    telegram_id: "promo-user-5",
+    telegram_id: "9901005",
     telegram_username: "promo_user_5",
   };
 
@@ -522,7 +522,7 @@ async function testPromoSwitchAndRemovalOnSameOrder() {
   assert.equal(getPromo(secondPromoId).current_uses, 1);
 
   const anotherIdentity = {
-    telegram_id: "promo-user-6",
+    telegram_id: "9901006",
     telegram_username: "promo_user_6",
   };
   const reusedOriginalPromo = await createOrder(anotherIdentity, {
@@ -542,7 +542,7 @@ async function testPromoSwitchAndRemovalOnSameOrder() {
   assert.equal(getPromo(secondPromoId).current_uses, 0);
 
   const thirdIdentity = {
-    telegram_id: "promo-user-7",
+    telegram_id: "9901007",
     telegram_username: "promo_user_7",
   };
   const reusedSwitchedPromo = await createOrder(thirdIdentity, {
@@ -557,7 +557,7 @@ async function testPromoConsumedAndReturnedToReservedByAdmin() {
   seedPromo({ promoId, code: promoCode });
 
   const identity = {
-    telegram_id: "promo-user-3",
+    telegram_id: "9901003",
     telegram_username: "promo_user_3",
   };
   const created = await createOrder(identity, { promo_code: promoCode });
@@ -606,7 +606,7 @@ async function testIssueAndPaymentRollbackSyncPromoUsage() {
   seedPromo({ promoId, code: promoCode });
 
   const identity = {
-    telegram_id: "promo-user-4",
+    telegram_id: "9901004",
     telegram_username: "promo_user_4",
   };
   const created = await createOrder(identity, { promo_code: promoCode });

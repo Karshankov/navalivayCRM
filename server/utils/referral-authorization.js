@@ -3,7 +3,10 @@ import {
   createBlock,
   getActiveBlockForCustomerId,
   normalizeUsername,
+  PENDING_ACTIVE_PREDICATE,
+  ACTIVE_BLOCK_PREDICATE,
 } from './customer-blocks.js';
+import { runPagedQuery } from './list-paging.js';
 
 export const REFERRAL_MAX_ATTEMPTS = 3;
 export const AUTHORIZATION_FAILED_REASON = 'Авторизация не пройдена';
@@ -777,4 +780,143 @@ export function listReferralAuthorizations() {
     LEFT JOIN customers ic ON ic.id = cr.inviter_customer_id
     ORDER BY ras.updated_at DESC
   `).all();
+}
+
+// ---------------------------------------------------------------------------
+// Страничные выборки для вкладки «Списки» в модалке «Клиент»
+// ---------------------------------------------------------------------------
+
+const NAME_SEARCH = ['telegram_username', 'first_name', 'last_name', 'telegram_id'];
+
+export function listDisallowedInviterUsernamesPage(paging) {
+  return runPagedQuery(
+    `SELECT username, added_at, added_by FROM referral_disallowed_inviter_usernames`,
+    {},
+    paging,
+    { searchColumns: ['username'], orderBy: 'username COLLATE NOCASE ASC' },
+  );
+}
+
+export function listStaffAccessGrantsPage(paging) {
+  return runPagedQuery(
+    `SELECT 'active' AS kind, c.id AS id, c.id AS customer_id, c.telegram_id, c.telegram_username,
+            c.first_name, c.last_name, c.access_authorized_by AS granted_by,
+            c.access_authorized_at AS granted_at,
+            CASE WHEN EXISTS (
+              SELECT 1 FROM orders o
+              WHERE o.customer_id = c.id AND o.status IN ('completed', 'delivered')
+            ) THEN 1 ELSE 0 END AS has_issued_order
+     FROM customers c
+     WHERE c.deleted_at IS NULL AND c.access_authorization_source = 'staff'
+     UNION ALL
+     SELECT 'pending', CAST(p.id AS TEXT), NULL, NULL, p.telegram_username,
+            NULL, NULL, p.granted_by, p.created_at, 0
+     FROM pending_staff_access_grants p`,
+    {},
+    paging,
+    { searchColumns: NAME_SEARCH, orderBy: 'granted_at DESC, id DESC' },
+  );
+}
+
+export function listInviteBansPage(paging) {
+  return runPagedQuery(
+    `SELECT 'active' AS kind, ib.id AS id, ib.customer_id, c.telegram_id, c.telegram_username,
+            c.first_name, c.last_name, ib.reason, ib.banned_by, ib.banned_at AS banned_at
+     FROM customer_invite_bans ib
+     JOIN customers c ON c.id = ib.customer_id
+     WHERE ib.active = 1
+     UNION ALL
+     SELECT 'pending', CAST(p.id AS TEXT), NULL, NULL, p.telegram_username,
+            NULL, NULL, p.reason, p.banned_by, p.created_at
+     FROM pending_customer_invite_bans p`,
+    {},
+    paging,
+    { searchColumns: NAME_SEARCH, orderBy: 'banned_at DESC, id DESC' },
+  );
+}
+
+/** filter: 'errors' — были ошибочные попытки; 'blocked' — исчерпаны попытки. */
+export function listReferralAuthorizationsPage(paging, filter = null) {
+  const filterSql = filter === 'blocked'
+    ? "WHERE ras.status = 'blocked'"
+    : filter === 'errors'
+      ? "WHERE ras.status <> 'authorized' AND (ras.last_error_code IS NOT NULL OR ras.attempts_used > 0)"
+      : '';
+  return runPagedQuery(
+    `SELECT ras.telegram_id, ras.customer_id, ras.attempts_used, ras.status, ras.last_error_code,
+            ras.last_username, ras.blocked_at, ras.updated_at,
+            c.telegram_username, c.first_name, c.last_name
+     FROM referral_auth_states ras
+     LEFT JOIN customers c ON c.telegram_id = ras.telegram_id
+     ${filterSql}`,
+    {},
+    paging,
+    { searchColumns: [...NAME_SEARCH, 'last_username'], orderBy: 'updated_at DESC, telegram_id DESC' },
+  );
+}
+
+/** Только COUNT — для бейджей вкладок. */
+export function getCustomerListCounts() {
+  const one = (sql) => Number(db.prepare(sql).get().n);
+  return {
+    blocked:
+      one(`SELECT COUNT(*) AS n FROM customer_blocks WHERE ${ACTIVE_BLOCK_PREDICATE}`)
+      + one(`SELECT COUNT(*) AS n FROM pending_customer_bans WHERE ${PENDING_ACTIVE_PREDICATE}`),
+    auth_errors: one(`
+      SELECT COUNT(*) AS n FROM referral_auth_states
+      WHERE status <> 'authorized' AND (last_error_code IS NOT NULL OR attempts_used > 0)
+    `),
+    staff_access:
+      one(`SELECT COUNT(*) AS n FROM customers WHERE deleted_at IS NULL AND access_authorization_source = 'staff'`)
+      + one('SELECT COUNT(*) AS n FROM pending_staff_access_grants'),
+    invite_bans:
+      one('SELECT COUNT(*) AS n FROM customer_invite_bans WHERE active = 1')
+      + one('SELECT COUNT(*) AS n FROM pending_customer_invite_bans'),
+    reserved: one('SELECT COUNT(*) AS n FROM referral_disallowed_inviter_usernames'),
+  };
+}
+
+/**
+ * Сводка авторизации одного клиента для хаба. Работает и для «призрака»
+ * (customer = null): тогда читает только отложенные записи по username/TG ID.
+ */
+export function getCustomerAuthorizationInfo({ customer = null, username = null, telegramId = null }) {
+  const normalizedUsername = normalizeUsername(customer?.telegram_username || username || '');
+  const tgId = customer?.telegram_id ?? telegramId ?? null;
+  const state = tgId
+    ? db.prepare('SELECT * FROM referral_auth_states WHERE telegram_id = ?').get(String(tgId))
+    : null;
+  const hasIssuedOrder = customer?.id
+    ? Boolean(db.prepare(`
+        SELECT 1 FROM orders WHERE customer_id = ? AND status IN ('completed', 'delivered') LIMIT 1
+      `).get(customer.id))
+    : false;
+  const pendingStaff = normalizedUsername
+    ? db.prepare(`
+        SELECT id FROM pending_staff_access_grants WHERE telegram_username = ? COLLATE NOCASE
+      `).get(normalizedUsername)
+    : null;
+  return {
+    feature_enabled: isReferralAuthorizationEnabled(),
+    is_authorized: customer ? isCustomerAccessAuthorized(customer) : false,
+    source: customer?.access_authorization_source || (hasIssuedOrder ? 'issued_order' : null),
+    authorized_at: customer?.access_authorized_at ?? null,
+    authorized_by: customer?.access_authorized_by ?? null,
+    state: state
+      ? {
+        status: state.status,
+        attempts_used: Math.max(0, Math.min(REFERRAL_MAX_ATTEMPTS, Number(state.attempts_used || 0))),
+        max_attempts: REFERRAL_MAX_ATTEMPTS,
+        last_error_code: state.last_error_code || null,
+        last_username: state.last_username || null,
+        blocked_at: state.blocked_at || null,
+      }
+      : null,
+    staff_access: {
+      active: customer?.access_authorization_source === 'staff',
+      permanent: hasIssuedOrder,
+      pending_id: pendingStaff?.id ?? null,
+    },
+    is_reserved_inviter: normalizedUsername ? isDisallowedInviterUsername(normalizedUsername) : false,
+  };
 }

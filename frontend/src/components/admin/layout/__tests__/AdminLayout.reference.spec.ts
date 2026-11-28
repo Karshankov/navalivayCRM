@@ -58,7 +58,7 @@ describe('AdminLayout: shared reference navigation', () => {
   });
 
   it('keeps the mobile navigation design outside orders and closes it on route changes', async () => {
-    const { router } = await setup('/admin/crm/customers');
+    const { router } = await setup('/admin/crm/procurements');
     const opener = document.querySelector<HTMLButtonElement>('[aria-label="Открыть меню"]');
     expect(opener).not.toBeNull();
     opener!.click();

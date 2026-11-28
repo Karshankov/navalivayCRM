@@ -28,7 +28,7 @@
             <!-- Header - УЛУЧШЕННЫЙ -->
             <div class="admin-modal-header flex items-start justify-between mb-3 pb-2 border-b border-gray-100 flex-shrink-0">
                 <DialogTitle class="text-base sm:text-lg text-brand-dark leading-tight pr-4" :style="referenceDesign ? undefined : 'font-family: var(--font-display); font-weight: normal; text-transform: uppercase; letter-spacing: 0.05em;'">
-                  {{ title }}
+                  <slot name="title">{{ title }}</slot>
                 </DialogTitle>
                 
                 <button
